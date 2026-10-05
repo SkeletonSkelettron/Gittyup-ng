@@ -332,6 +332,29 @@ Tree Index::writeTree() const {
 
 bool Index::hasConflicts() const { return git_index_has_conflicts(d->index); }
 
+Index Index::reopen() const {
+  // An index in memory has no file.
+  const char *path = git_index_path(d->index);
+  if (!path)
+    return Index();
+
+  git_index *index = nullptr;
+#ifdef GIT_EXPERIMENTAL_SHA256
+  git_index_options opts = GIT_INDEX_OPTIONS_INIT;
+  if (git_repository *repo = git_index_owner(d->index))
+    opts.oid_type = git_repository_oid_type(repo);
+  if (git_index_open_ext(&index, path, &opts))
+    return Index();
+#else
+  if (git_index_open(&index, path))
+    return Index();
+#endif
+
+  // Compare paths like the index of the repository.
+  git_index_set_caps(index, git_index_caps(d->index));
+  return Index(index);
+}
+
 Index Index::create() {
   git_index *index = nullptr;
   git_index_new(&index);

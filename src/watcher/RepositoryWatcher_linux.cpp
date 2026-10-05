@@ -16,8 +16,10 @@
 
 namespace {
 
-const uint kFlags = (IN_ATTRIB | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE |
-                     IN_DELETE_SELF | IN_MODIFY | IN_MOVE_SELF);
+// Editors often save a file by renaming a new file over it.
+const uint kFlags =
+    (IN_ATTRIB | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_DELETE_SELF |
+     IN_MODIFY | IN_MOVE_SELF | IN_MOVED_FROM | IN_MOVED_TO);
 
 // FIXME: Include hidden and filter .git explicitly?
 const QDir::Filters kFilters = (QDir::Dirs | QDir::NoDotAndDotDot);
@@ -84,14 +86,19 @@ public:
         for (char *ptr = buf; ptr < buf + len;
              ptr += sizeof(inotify_event) + event->len) {
           event = reinterpret_cast<inotify_event *>(ptr);
+
+          // Events were lost: anything could have changed.
+          if (event->mask & IN_Q_OVERFLOW)
+            ignored = false;
+
           if (event->len) {
             QString path = mWds.value(event->wd).filePath(event->name);
             if (!mRepo.isIgnored(path)) {
               ignored = false;
 
               // Start watching new directories.
-              uint32_t mask = (IN_CREATE | IN_ISDIR);
-              if ((event->mask & mask) == mask)
+              if ((event->mask & IN_ISDIR) &&
+                  (event->mask & (IN_CREATE | IN_MOVED_TO)))
                 watch(path);
             }
           }
@@ -138,8 +145,8 @@ RepositoryWatcher::RepositoryWatcher(const git::Repository &repo,
                                      QObject *parent)
     : QObject(parent), d(new RepositoryWatcherPrivate(repo, this)) {
   init(repo);
-  connect(d, &RepositoryWatcherPrivate::notificationReceived, &mTimer,
-          static_cast<void (QTimer::*)()>(&QTimer::start));
+  connect(d, &RepositoryWatcherPrivate::notificationReceived, this,
+          &RepositoryWatcher::notifyChanged);
 
   if (d->isValid())
     d->start();

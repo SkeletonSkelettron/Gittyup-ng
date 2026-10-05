@@ -269,6 +269,9 @@ private:
 
   QString mMessage;
   bool mPopulate = true;
+  // The status that was committed: its files are stale until the status is
+  // refreshed.
+  git::Diff mCommitted;
   QString mBranchName;
   QString mStatusText;
   QString mCommitText;

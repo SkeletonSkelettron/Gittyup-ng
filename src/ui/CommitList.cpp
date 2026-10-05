@@ -195,16 +195,27 @@ public:
 
     // Reload the index before starting the status thread. Allowing
     // it to reload on the thread frequently corrupts the index.
-    mRepo.index().read();
+    git::Index index = mRepo.index();
+    index.read();
+
+    // The thread reads the index of its own: checking out, staging and other
+    // changes of the index can't wait for it.
+    git::Index own = index.reopen();
+    if (!own.isValid())
+      own = index;
 
     // Check for uncommitted changes asynchronously.
     emit loadingChanged(true);
     mProgress = 0;
     mTimer.start(50);
-    mStatus.setFuture(QtConcurrent::run([this] {
-      // Pass the repo's index to suppress reload.
+    mStatus.setFuture(QtConcurrent::run([this, index, own] {
       bool ignoreWhitespace = Settings::instance()->isWhitespaceIgnored();
-      return mRepo.status(mRepo.index(), &mStatusCallbacks, ignoreWhitespace);
+      git::Diff diff = mRepo.status(own, &mStatusCallbacks, ignoreWhitespace);
+
+      // Stage with the index of the repository, which isn't read here.
+      if (diff.isValid())
+        diff.setIndex(index);
+      return diff;
     }));
   }
 

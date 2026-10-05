@@ -237,8 +237,10 @@ void DetailView::commit(bool force) {
     upstream = mergeHead.annotatedCommit();
 
   if (mView->commit(mMessage, upstream, nullptr, force)) {
+    mCommitted = mDiff;
     mPopulate = true;
     setCommitMessage(QString());
+    updateButtons(false);
   }
 }
 
@@ -299,6 +301,8 @@ void DetailView::setDiff(const git::Diff &diff, const QString &file,
 
   QList<git::Commit> commits = mView->commits();
   mDiff = diff;
+  if (!(diff == mCommitted))
+    mCommitted = git::Diff();
 
   if (mLoading) {
     mLoading = false;
@@ -633,7 +637,9 @@ void DetailView::updateButtons(bool yieldFocus) {
     }
   }
 
-  if (mPopulate)
+  // Don't commit the files of the last commit again.
+  bool committed = mCommitted.isValid() && mDiff == mCommitted;
+  if (mPopulate && !committed)
     populateMessage(files);
 
   int total = staged + partial + conflicted;
@@ -687,6 +693,9 @@ void DetailView::updateButtons(bool yieldFocus) {
       break;
     }
   }
+
+  if (committed)
+    mCanCommit = false;
 
   emit buttonsChanged();
 

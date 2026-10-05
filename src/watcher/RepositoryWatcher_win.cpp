@@ -14,11 +14,12 @@
 
 namespace {
 
+// Not the access time: other programs, like 'ng serve', read files all the
+// time, which would keep the status from ever being refreshed.
 const uint kFlags =
     (FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
      FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
-     FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_LAST_ACCESS |
-     FILE_NOTIFY_CHANGE_CREATION | FILE_NOTIFY_CHANGE_SECURITY);
+     FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION);
 
 } // namespace
 
@@ -28,7 +29,7 @@ class RepositoryWatcherPrivate : public QThread {
 public:
   RepositoryWatcherPrivate(const git::Repository &repo,
                            QObject *parent = nullptr)
-      : QThread(parent), mRepo(repo), mBuffer(16 * 1024) {
+      : QThread(parent), mRepo(repo), mBuffer(64 * 1024) {
     // Pass this to callback.
     ZeroMemory(&mOverlapped, sizeof(OVERLAPPED));
     mOverlapped.hEvent = this;
@@ -85,12 +86,25 @@ public:
 
   static void CALLBACK notify(DWORD errorCode, DWORD numBytes,
                               LPOVERLAPPED overlapped) {
-    if (errorCode || !numBytes)
+    // The directory was closed.
+    if (errorCode == ERROR_OPERATION_ABORTED)
+      return;
+
+    RepositoryWatcherPrivate *watcher =
+        static_cast<RepositoryWatcherPrivate *>(overlapped->hEvent);
+
+    // More changes than the buffer holds: anything could have changed. Keep
+    // watching, or no change is noticed anymore.
+    if (errorCode == ERROR_NOTIFY_ENUM_DIR || (!errorCode && !numBytes)) {
+      watcher->watch();
+      emit watcher->notificationReceived();
+      return;
+    }
+
+    if (errorCode)
       return; // FIXME: Report error?
 
     // Copy buffer and restart.
-    RepositoryWatcherPrivate *watcher =
-        static_cast<RepositoryWatcherPrivate *>(overlapped->hEvent);
     QVector<BYTE> buffer = watcher->buffer();
     watcher->watch();
 
@@ -131,8 +145,8 @@ RepositoryWatcher::RepositoryWatcher(const git::Repository &repo,
                                      QObject *parent)
     : QObject(parent), d(new RepositoryWatcherPrivate(repo, this)) {
   init(repo);
-  connect(d, &RepositoryWatcherPrivate::notificationReceived, &mTimer,
-          static_cast<void (QTimer::*)()>(&QTimer::start));
+  connect(d, &RepositoryWatcherPrivate::notificationReceived, this,
+          &RepositoryWatcher::notifyChanged);
 
   d->start();
 }

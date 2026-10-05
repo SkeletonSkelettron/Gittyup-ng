@@ -1923,6 +1923,16 @@ bool RepoView::commit(const git::Signature &author,
   QString text = tr("<i>no commit</i>");
   LogEntry *entry = addLogEntry(text, tr("Commit"), parent);
 
+  // Like git, only commit changes, unless it's a merge.
+  if (!upstream.isValid() && mRepo.state() == GIT_REPOSITORY_STATE_NONE) {
+    git::Commit target = head.isValid() ? head.target() : git::Commit();
+    git::Tree tree = mRepo.index().writeTree();
+    if (target.isValid() && tree.isValid() && tree == target.tree()) {
+      entry->addEntry(LogEntry::Error, tr("Nothing is staged to commit."));
+      return false;
+    }
+  }
+
   // Undoing a commit keeps its changes in the index.
   if (!parent && !upstream.isValid() &&
       mRepo.state() == GIT_REPOSITORY_STATE_NONE)

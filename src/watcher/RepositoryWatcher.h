@@ -25,6 +25,8 @@ public:
   void cancelPendingNotification();
 
 private:
+  void notifyChanged();
+
   QTimer mTimer;
   RepositoryWatcherPrivate *d;
 };

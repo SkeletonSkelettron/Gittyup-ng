@@ -18,3 +18,9 @@ void RepositoryWatcher::init(const git::Repository &repo) {
 }
 
 void RepositoryWatcher::cancelPendingNotification() { mTimer.stop(); }
+
+// Refresh soon after the first change, even while changes keep coming.
+void RepositoryWatcher::notifyChanged() {
+  if (!mTimer.isActive())
+    mTimer.start();
+}
