@@ -8,7 +8,9 @@ if(APPLE)
   set(APP_IMPL_FILE Application_mac.mm)
   set(THEME_IMPL_FILE CustomTheme_mac.mm)
 elseif(WIN32)
-  set(RC_FILE ${RSRC_DIR}/Gittyup.rc)
+  configure_file(${RSRC_DIR}/version.rc.in
+                 ${CMAKE_CURRENT_BINARY_DIR}/version.rc @ONLY)
+  set(RC_FILE ${RSRC_DIR}/Gittyup.rc ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
 endif()
 
 set(EMOJI ${CONF_DIR}/emoji.json)
