@@ -47,10 +47,12 @@ namespace {
 
 const QString kDownloadPlatform = "Github";
 const QString kTemplateFmt = "%1-XXXXXX.%2";
-const QString kLinkFmt = "https://github.com/Murmele/gittyup/releases/latest/"
-                         "download/Gittyup%1%2.%3";
-const QString kChangelogUrl =
-    "https://raw.githubusercontent.com/Murmele/Gittyup/gh-pages/changelog.md";
+// The releases of Gittyup-ng, not of Gittyup.
+const QString kLinkFmt = "https://github.com/SkeletonSkelettron/Gittyup-ng/"
+                         "releases/latest/download/Gittyup-ng%1%2.%3";
+const QString kChangelogUrl = "https://raw.githubusercontent.com/"
+                              "SkeletonSkelettron/Gittyup-ng/master/docs/"
+                              "changelog.md";
 
 } // namespace
 
