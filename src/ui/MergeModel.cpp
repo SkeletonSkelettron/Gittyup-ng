@@ -76,6 +76,8 @@ void MergeSideModel::reset() {
         mMerge->conflicts().at(segment.conflict);
     mRows.append({ConflictRow, segment.conflict, -1, 0, QString()});
     const QStringList &lines = conflict.lines[mSide];
+    if (lines.isEmpty())
+      mRows.append({EmptyRow, segment.conflict, -1, 0, QString()});
     for (int i = 0; i < lines.size(); ++i) {
       mRows.append({LineRow, segment.conflict, i, ++number, lines.at(i)});
       textRows.append(mRows.size() - 1);
@@ -130,7 +132,7 @@ QVariant MergeSideModel::data(const QModelIndex &index, int role) const {
     case NumberRole:
       return row.number;
     case HtmlRole:
-      if (!mHighlighter || row.kind == ConflictRow)
+      if (!mHighlighter || row.kind == ConflictRow || row.kind == EmptyRow)
         return QString();
       return mHighlighter->html(
           row.text.toUtf8(), mStyles.value(index.row()),

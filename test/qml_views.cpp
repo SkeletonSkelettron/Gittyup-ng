@@ -97,6 +97,7 @@ private slots:
   void merge();
   void mergeEncoding();
   void mergeScroll();
+  void mergeEmptySide();
   void dragTab();
   void cleanupTestCase();
 
@@ -798,6 +799,80 @@ void TestQmlViews::mergeScroll() {
   output->setProperty("contentY", 0);
   QCOMPARE(y(ours), before);
   QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
+}
+
+void TestQmlViews::mergeEmptySide() {
+  // Ours changes a line that theirs removes: theirs has no lines.
+  ScratchRepository repo;
+  auto git = [&repo](const QStringList &args) {
+    QProcess process;
+    process.setWorkingDirectory(repo->workdir().path());
+    process.start(GIT_EXECUTABLE, args);
+    return process.waitForFinished() &&
+           process.exitStatus() == QProcess::NormalExit;
+  };
+
+  auto write = [&repo](const QString &changed) {
+    QStringList lines;
+    for (int i = 1; i <= 20; ++i)
+      lines.append(i == 10 ? changed : QString("line %1").arg(i));
+    lines.removeAll(QString());
+
+    QFile file(repo->workdir().filePath("file.txt"));
+    if (file.open(QFile::WriteOnly))
+      file.write(lines.join('\n').toUtf8() + '\n');
+  };
+
+  write("line 10");
+  QVERIFY(git({"add", "file.txt"}));
+  QVERIFY(git({"commit", "-q", "-m", "Add file"}));
+  QVERIFY(git({"checkout", "-q", "-b", "other"}));
+  write(QString());
+  QVERIFY(git({"commit", "-q", "-am", "Remove the line"}));
+  QVERIFY(git({"checkout", "-q", "-"}));
+  write("ours 10");
+  QVERIFY(git({"commit", "-q", "-am", "Change the line"}));
+  git({"merge", "other"});
+
+  MainWindow window(repo);
+  window.resize(1200, 1000);
+  window.show();
+  QVERIFY(qWaitForWindowExposed(&window));
+  RepoView *view = window.currentView();
+  refresh(view);
+
+  DetailView *detail = view->findChild<DetailView *>();
+  detail->setMergeEditor(true);
+  QTRY_VERIFY((detail->selectPath("file.txt"),
+               detail->property("selectedFile").toString() == "file.txt"));
+
+  QQuickItem *panel = nullptr;
+  QTRY_VERIFY((panel = view->findChild<QQuickItem *>("mergePanel")) &&
+              panel->isVisible());
+  QObject *theirs = panel->findChild<QObject *>("mergeTheirs");
+  QVERIFY(theirs);
+  auto *model = qobject_cast<QAbstractItemModel *>(
+      theirs->property("model").value<QObject *>());
+  QVERIFY(model);
+  QTRY_VERIFY(model->rowCount() > 0);
+
+  // The header of the conflict is followed by a row that says so.
+  auto kind = [model](int row) {
+    return model->data(model->index(row, 0), MergeSideModel::KindRole).toInt();
+  };
+  int header = -1;
+  for (int row = 0; row < model->rowCount() && header < 0; ++row) {
+    if (kind(row) == MergeSideModel::ConflictRow)
+      header = row;
+  }
+  QCOMPARE(header, 9);
+  QCOMPARE(kind(header + 1), int(MergeSideModel::EmptyRow));
+  QCOMPARE(kind(header + 2), int(MergeSideModel::CommonRow));
+
+  // The panes scroll together over the rows that they show.
+  qreal line = panel->property("lineHeight").toReal();
+  QList<QVariant> bounds = panel->property("sideBounds1").toList();
+  QCOMPARE(bounds.last().toReal(), model->rowCount() * line);
 }
 
 void TestQmlViews::dragTab() {

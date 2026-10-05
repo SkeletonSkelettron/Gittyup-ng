@@ -29,7 +29,8 @@ class MergeSideModel : public QAbstractListModel {
   Q_OBJECT
 
 public:
-  enum Kind { CommonRow, ConflictRow, LineRow };
+  // A conflict without lines on this side has an empty row.
+  enum Kind { CommonRow, ConflictRow, LineRow, EmptyRow };
 
   enum Role {
     KindRole = Qt::UserRole,
