@@ -9,12 +9,12 @@ Rectangle {
 
     readonly property int rowHeight: 26
 
-    implicitHeight: Math.min(list.count, 8) * rowHeight + footer.height + 10
+    implicitHeight: Math.min(listView.count, 8) * rowHeight + footer.height + 10
     color: Theme.panel
     border.color: Theme.border
 
     ListView {
-        id: list
+        id: listView
 
         anchors.left: parent.left
         anchors.right: parent.right

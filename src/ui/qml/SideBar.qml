@@ -127,7 +127,7 @@ Rectangle {
             Controls.ScrollBar.vertical: ThinScrollBar { thickness: 6 }
 
             delegate: Item {
-                id: item
+                id: delegateItem
 
                 required property TreeView treeView
                 required property bool isTreeNode
@@ -162,14 +162,14 @@ Rectangle {
                     anchors.leftMargin: 6
                     anchors.rightMargin: 6
                     radius: 5
-                    visible: !item.isHeader
-                    color: item.highlighted ? Theme.selected
+                    visible: !delegateItem.isHeader
+                    color: delegateItem.highlighted ? Theme.selected
                                             : mouse.containsMouse ? Theme.hover
-                                            : item.selected ? Theme.pressed
+                                            : delegateItem.selected ? Theme.pressed
                                                             : "transparent"
 
                     Rectangle {
-                        visible: item.highlighted
+                        visible: delegateItem.highlighted
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         width: 3
@@ -189,62 +189,62 @@ Rectangle {
                     onClicked: (event) => {
                         if (event.button === Qt.RightButton) {
                             const p = mapToItem(null, event.x, event.y)
-                            sidebar.showContextMenu(item.modelIndex, p.x, p.y)
+                            sidebar.showContextMenu(delegateItem.modelIndex, p.x, p.y)
                             return
                         }
 
-                        if (item.hasChildren && (item.isHeader || item.kind === root.kindAccount)) {
-                            item.toggle()
+                        if (delegateItem.hasChildren && (delegateItem.isHeader || delegateItem.kind === root.kindAccount)) {
+                            delegateItem.toggle()
                             return
                         }
 
-                        tree.selectedRow = item.kind === root.kindOpen ? -1 : item.row
-                        sidebar.activate(item.modelIndex)
+                        tree.selectedRow = delegateItem.kind === root.kindOpen ? -1 : delegateItem.row
+                        sidebar.activate(delegateItem.modelIndex)
                     }
                     onDoubleClicked: (event) => {
-                        if (event.button === Qt.LeftButton && !item.isHeader)
-                            sidebar.open(item.modelIndex)
+                        if (event.button === Qt.LeftButton && !delegateItem.isHeader)
+                            sidebar.open(delegateItem.modelIndex)
                     }
                     onExited: host.hideToolTip()
                 }
 
                 Timer {
                     interval: 700
-                    running: mouse.containsMouse && !mouse.pressed && item.toolTip
+                    running: mouse.containsMouse && !mouse.pressed && delegateItem.toolTip
                     onTriggered: {
-                        const p = item.mapToItem(null, 0, 0)
-                        host.showToolTip(item.toolTip, p.x, p.y, item.width, item.height)
+                        const p = delegateItem.mapToItem(null, 0, 0)
+                        host.showToolTip(delegateItem.toolTip, p.x, p.y, delegateItem.width, delegateItem.height)
                     }
                 }
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: item.isHeader ? 10 : 16 + (item.depth - 1) * 16
+                    anchors.leftMargin: delegateItem.isHeader ? 10 : 16 + (delegateItem.depth - 1) * 16
                     anchors.rightMargin: 12
                     spacing: 6
 
                     // Expand chevron for headers and accounts.
                     Icon {
-                        visible: item.isHeader || item.kind === root.kindAccount
-                        opacity: item.hasChildren ? 1 : 0
+                        visible: delegateItem.isHeader || delegateItem.kind === root.kindAccount
+                        opacity: delegateItem.hasChildren ? 1 : 0
                         name: "chevron-right"
-                        size: item.isHeader ? 12 : 11
+                        size: delegateItem.isHeader ? 12 : 11
                         color: Theme.textMuted
-                        rotation: item.expanded ? 90 : 0
+                        rotation: delegateItem.expanded ? 90 : 0
                         Behavior on rotation { NumberAnimation { duration: 120 } }
                     }
 
                     Icon {
                         id: icon
 
-                        visible: !item.isHeader && item.iconName !== ""
-                        name: item.iconName
+                        visible: !delegateItem.isHeader && delegateItem.iconName !== ""
+                        name: delegateItem.iconName
                         size: 16
-                        color: item.kind === root.kindError ? Theme.badge
-                               : item.highlighted ? Theme.accent : Theme.textMuted
+                        color: delegateItem.kind === root.kindError ? Theme.badge
+                               : delegateItem.highlighted ? Theme.accent : Theme.textMuted
 
                         RotationAnimator on rotation {
-                            running: item.kind === root.kindProgress
+                            running: delegateItem.kind === root.kindProgress
                             loops: Animation.Infinite
                             from: 0
                             to: 360
@@ -254,22 +254,22 @@ Rectangle {
 
                     Text {
                         Layout.fillWidth: true
-                        text: item.display !== undefined ? item.display : ""
+                        text: delegateItem.display !== undefined ? delegateItem.display : ""
                         elide: Text.ElideMiddle
-                        color: item.isHeader ? Theme.textMuted
-                               : item.highlighted ? Theme.selectedText
-                               : item.kind === root.kindEmpty ? Theme.textDisabled
+                        color: delegateItem.isHeader ? Theme.textMuted
+                               : delegateItem.highlighted ? Theme.selectedText
+                               : delegateItem.kind === root.kindEmpty ? Theme.textDisabled
                                                               : Theme.text
-                        font.pixelSize: item.isHeader ? 11 : 13
-                        font.bold: item.isHeader || item.highlighted
-                        font.italic: item.kind === root.kindEmpty || item.kind === root.kindProgress
-                        font.capitalization: item.isHeader ? Font.AllUppercase : Font.MixedCase
-                        font.letterSpacing: item.isHeader ? 0.8 : 0
+                        font.pixelSize: delegateItem.isHeader ? 11 : 13
+                        font.bold: delegateItem.isHeader || delegateItem.highlighted
+                        font.italic: delegateItem.kind === root.kindEmpty || delegateItem.kind === root.kindProgress
+                        font.capitalization: delegateItem.isHeader ? Font.AllUppercase : Font.MixedCase
+                        font.letterSpacing: delegateItem.isHeader ? 0.8 : 0
                     }
 
                     // Section item count.
                     Rectangle {
-                        visible: item.isHeader && item.count > 0
+                        visible: delegateItem.isHeader && delegateItem.count > 0
                         implicitWidth: Math.max(implicitHeight, countLabel.implicitWidth + 10)
                         implicitHeight: 16
                         radius: implicitHeight / 2
@@ -279,7 +279,7 @@ Rectangle {
                             id: countLabel
 
                             anchors.centerIn: parent
-                            text: item.count
+                            text: delegateItem.count
                             color: Theme.textMuted
                             font.pixelSize: 10
                             font.bold: true
@@ -288,9 +288,9 @@ Rectangle {
 
                     // Quick action shown on hover.
                     Icon {
-                        visible: item.removable === true || item.kind === root.kindAddAccount
+                        visible: delegateItem.removable === true || delegateItem.kind === root.kindAddAccount
                         opacity: mouse.containsMouse || actionMouse.containsMouse ? 1 : 0
-                        name: item.kind === root.kindAddAccount ? "plus" : "close"
+                        name: delegateItem.kind === root.kindAddAccount ? "plus" : "close"
                         size: 14
                         color: actionMouse.containsMouse ? Theme.text : Theme.textMuted
 
@@ -301,10 +301,10 @@ Rectangle {
                             anchors.margins: -4
                             hoverEnabled: true
                             onClicked: {
-                                if (item.kind === root.kindAddAccount)
-                                    sidebar.open(item.modelIndex)
+                                if (delegateItem.kind === root.kindAddAccount)
+                                    sidebar.open(delegateItem.modelIndex)
                                 else
-                                    sidebar.remove(item.modelIndex)
+                                    sidebar.remove(delegateItem.modelIndex)
                             }
                         }
                     }

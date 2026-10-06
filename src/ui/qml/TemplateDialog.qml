@@ -45,7 +45,7 @@ DialogPage {
                 border.color: Theme.border
 
                 Text {
-                    visible: list.count === 0
+                    visible: listView.count === 0
                     anchors.centerIn: parent
                     text: qsTr("No templates yet")
                     color: Theme.textMuted
@@ -53,7 +53,7 @@ DialogPage {
                 }
 
                 ListView {
-                    id: list
+                    id: listView
 
                     anchors.fill: parent
                     anchors.margins: 4
@@ -64,7 +64,7 @@ DialogPage {
                     Controls.ScrollBar.vertical: ThinScrollBar { thickness: 6 }
 
                     delegate: Rectangle {
-                        id: item
+                        id: delegateItem
 
                         required property int index
                         required property string modelData
@@ -81,11 +81,11 @@ DialogPage {
                             anchors.right: parent.right
                             anchors.rightMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
-                            text: item.modelData
+                            text: delegateItem.modelData
                             elide: Text.ElideRight
-                            color: item.index === dialog.current ? Theme.selectedText : Theme.text
+                            color: delegateItem.index === dialog.current ? Theme.selectedText : Theme.text
                             font.pixelSize: 12
-                            font.weight: item.index === 0 ? Font.DemiBold : Font.Normal
+                            font.weight: delegateItem.index === 0 ? Font.DemiBold : Font.Normal
                         }
 
                         MouseArea {
@@ -93,7 +93,7 @@ DialogPage {
 
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: dialog.current = item.index
+                            onClicked: dialog.current = delegateItem.index
                         }
                     }
                 }

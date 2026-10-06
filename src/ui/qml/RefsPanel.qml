@@ -52,7 +52,7 @@ Rectangle {
         }
 
         ListView {
-            id: list
+            id: listView
 
             Layout.fillWidth: true
             Layout.fillHeight: true

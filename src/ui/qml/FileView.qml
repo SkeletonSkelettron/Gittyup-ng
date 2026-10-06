@@ -42,13 +42,13 @@ Rectangle {
         enabled: root.visible
 
         function onCurrentChanged(row, start, length) {
-            list.positionViewAtIndex(row, ListView.Contain)
+            listView.positionViewAtIndex(row, ListView.Contain)
             const x = root.codeX + start * root.charWidth
             const right = x + length * root.charWidth
-            if (right > list.contentX + list.width)
-                list.contentX = Math.min(right - list.width + 40, list.contentWidth - list.width)
-            else if (x < list.contentX + root.codeX)
-                list.contentX = Math.max(0, x - root.codeX - 40)
+            if (right > listView.contentX + listView.width)
+                listView.contentX = Math.min(right - listView.width + 40, listView.contentWidth - listView.width)
+            else if (x < listView.contentX + root.codeX)
+                listView.contentX = Math.max(0, x - root.codeX - 40)
         }
     }
 
@@ -165,7 +165,7 @@ Rectangle {
         }
 
         ListView {
-            id: list
+            id: listView
 
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -199,7 +199,7 @@ Rectangle {
                 required property string blameTip
                 required property var matches
 
-                width: list.contentWidth
+                width: listView.contentWidth
                 height: root.lineHeight
 
                 Item {
@@ -227,7 +227,7 @@ Rectangle {
 
                 // The gutter stays in place when the lines scroll sideways.
                 BlameGutter {
-                    x: list.contentX
+                    x: listView.contentX
                     height: parent.height
                     blame: root.content
                     blameWidth: root.blameWidth

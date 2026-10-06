@@ -25,7 +25,7 @@ Rectangle {
     }
 
     function setAction(row, action) {
-        if (action === 2 && !list.itemAtIndex(row)?.canSquash)
+        if (action === 2 && !listView.itemAtIndex(row)?.canSquash)
             return
         rebase.setAction(row, action)
     }
@@ -169,7 +169,7 @@ Rectangle {
         }
 
         ListView {
-            id: list
+            id: listView
 
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -226,7 +226,7 @@ Rectangle {
                 width: ListView.view.width
                 height: reworded ? Math.max(44, editor.implicitHeight + 16) : 44
                 color: grip.pressed ? Theme.hover
-                       : current && list.activeFocus ? root.tint(Theme.accent, 0.12)
+                       : current && listView.activeFocus ? root.tint(Theme.accent, 0.12)
                        : mouse.containsMouse ? Theme.hover : "transparent"
                 z: grip.pressed ? 1 : 0
 
@@ -245,8 +245,8 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     onPressed: {
-                        list.currentIndex = row.index
-                        list.forceActiveFocus()
+                        listView.currentIndex = row.index
+                        listView.forceActiveFocus()
                     }
                     onClicked: root.rebase.select(row.index)
                 }
@@ -296,17 +296,17 @@ Rectangle {
                             preventStealing: true
                             cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                             onPressed: {
-                                list.currentIndex = row.index
-                                list.forceActiveFocus()
+                                listView.currentIndex = row.index
+                                listView.forceActiveFocus()
                             }
                             onPositionChanged: (event) => {
                                 if (!pressed)
                                     return
-                                const p = mapToItem(list.contentItem, event.x, event.y)
-                                const target = list.indexAt(10, p.y)
+                                const p = mapToItem(listView.contentItem, event.x, event.y)
+                                const target = listView.indexAt(10, p.y)
                                 if (target >= 0 && target !== row.index) {
                                     root.rebase.move(row.index, target)
-                                    list.currentIndex = target
+                                    listView.currentIndex = target
                                 }
                             }
                         }
@@ -358,8 +358,8 @@ Rectangle {
                                         enabled: chip.available
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
-                                            list.currentIndex = row.index
-                                            list.forceActiveFocus()
+                                            listView.currentIndex = row.index
+                                            listView.forceActiveFocus()
                                             root.setAction(row.index, chip.index)
                                         }
                                     }
@@ -440,7 +440,7 @@ Rectangle {
                                     if (row.reworded && text !== row.message)
                                         root.rebase.setMessage(row.index, text)
                                 }
-                                Keys.onEscapePressed: list.forceActiveFocus()
+                                Keys.onEscapePressed: listView.forceActiveFocus()
                             }
                         }
                     }

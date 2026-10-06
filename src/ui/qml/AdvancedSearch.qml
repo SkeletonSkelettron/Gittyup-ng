@@ -185,7 +185,7 @@ Rectangle {
             completions.current = Math.max(-1, Math.min(completions.items.length - 1,
                                                          completions.current + delta))
             if (completions.current >= 0)
-                list.positionViewAtIndex(completions.current, ListView.Contain)
+                listView.positionViewAtIndex(completions.current, ListView.Contain)
             return true
         }
 
@@ -216,7 +216,7 @@ Rectangle {
         }
 
         contentItem: ListView {
-            id: list
+            id: listView
 
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -225,7 +225,7 @@ Rectangle {
             ThinScrollBar.vertical: ThinScrollBar {}
 
             delegate: Rectangle {
-                id: item
+                id: delegateItem
 
                 required property int index
                 required property string modelData
@@ -242,9 +242,9 @@ Rectangle {
                     anchors.leftMargin: 8
                     anchors.rightMargin: 8
                     verticalAlignment: Text.AlignVCenter
-                    text: item.modelData
+                    text: delegateItem.modelData
                     elide: Text.ElideRight
-                    color: item.index === completions.current ? Theme.selectedText : Theme.text
+                    color: delegateItem.index === completions.current ? Theme.selectedText : Theme.text
                     font.pixelSize: 12
                 }
 
@@ -253,7 +253,7 @@ Rectangle {
 
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: completions.apply(item.index)
+                    onClicked: completions.apply(delegateItem.index)
                 }
             }
         }

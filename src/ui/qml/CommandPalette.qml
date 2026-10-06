@@ -20,7 +20,7 @@ Item {
             input.text = commandPalette.query
             input.selectAll()
             input.forceActiveFocus()
-            list.currentIndex = 0
+            listView.currentIndex = 0
         } else if (previousFocus) {
             previousFocus.forceActiveFocus()
             previousFocus = null
@@ -98,21 +98,21 @@ Item {
 
                     onTextEdited: {
                         commandPalette.query = text
-                        list.currentIndex = 0
+                        listView.currentIndex = 0
                     }
 
-                    Keys.onUpPressed: list.decrementCurrentIndex()
-                    Keys.onDownPressed: list.incrementCurrentIndex()
-                    Keys.onReturnPressed: commandPalette.activate(list.currentIndex)
-                    Keys.onEnterPressed: commandPalette.activate(list.currentIndex)
+                    Keys.onUpPressed: listView.decrementCurrentIndex()
+                    Keys.onDownPressed: listView.incrementCurrentIndex()
+                    Keys.onReturnPressed: commandPalette.activate(listView.currentIndex)
+                    Keys.onEnterPressed: commandPalette.activate(listView.currentIndex)
                     Keys.onEscapePressed: commandPalette.close()
                     Keys.onPressed: (event) => {
-                        const page = Math.max(1, Math.floor(list.height / 38) - 1)
+                        const page = Math.max(1, Math.floor(listView.height / 38) - 1)
                         if (event.key === Qt.Key_PageDown) {
-                            list.currentIndex = Math.min(list.count - 1, list.currentIndex + page)
+                            listView.currentIndex = Math.min(listView.count - 1, listView.currentIndex + page)
                             event.accepted = true
                         } else if (event.key === Qt.Key_PageUp) {
-                            list.currentIndex = Math.max(0, list.currentIndex - page)
+                            listView.currentIndex = Math.max(0, listView.currentIndex - page)
                             event.accepted = true
                         }
                     }
@@ -126,7 +126,7 @@ Item {
             }
 
             ListView {
-                id: list
+                id: listView
 
                 width: parent.width
                 height: Math.min(count, 10) * 38 + (count > 0 ? 12 : 0)
@@ -223,7 +223,7 @@ Item {
             }
 
             Text {
-                visible: list.count === 0
+                visible: listView.count === 0
                 width: parent.width
                 height: 44
                 verticalAlignment: Text.AlignVCenter

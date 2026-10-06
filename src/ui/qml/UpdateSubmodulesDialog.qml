@@ -34,13 +34,13 @@ DialogPage {
 
     Rectangle {
         Layout.fillWidth: true
-        implicitHeight: Math.min(list.contentHeight + 8, 260)
+        implicitHeight: Math.min(listView.contentHeight + 8, 260)
         radius: 6
         color: Theme.base
         border.color: Theme.border
 
         ListView {
-            id: list
+            id: listView
 
             anchors.fill: parent
             anchors.margins: 4
@@ -51,7 +51,7 @@ DialogPage {
             Controls.ScrollBar.vertical: ThinScrollBar { thickness: 6 }
 
             delegate: Rectangle {
-                id: item
+                id: delegateItem
 
                 required property int index
                 required property var modelData
@@ -65,17 +65,17 @@ DialogPage {
                     anchors.left: parent.left
                     anchors.leftMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
-                    text: item.modelData.name
-                    checked: item.modelData.enabled
-                    onToggled: dialog.setEnabled(item.index, checked)
+                    text: delegateItem.modelData.name
+                    checked: delegateItem.modelData.enabled
+                    onToggled: dialog.setEnabled(delegateItem.index, checked)
                 }
 
                 Text {
-                    visible: item.modelData.path !== item.modelData.name
+                    visible: delegateItem.modelData.path !== delegateItem.modelData.name
                     anchors.right: parent.right
                     anchors.rightMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: item.modelData.path
+                    text: delegateItem.modelData.path
                     color: Theme.textMuted
                     font.pixelSize: 12
                 }

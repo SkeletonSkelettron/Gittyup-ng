@@ -42,13 +42,13 @@ Rectangle {
         enabled: root.visible
 
         function onCurrentChanged(row, start, length) {
-            list.positionViewAtIndex(row, ListView.Contain)
+            listView.positionViewAtIndex(row, ListView.Contain)
             const x = root.gutterWidth + start * root.charWidth
             const right = x + length * root.charWidth
-            if (right > list.contentX + list.width)
-                list.contentX = Math.min(right - list.width + 40, list.contentWidth - list.width)
-            else if (x < list.contentX + root.gutterWidth)
-                list.contentX = Math.max(0, x - root.gutterWidth - 40)
+            if (right > listView.contentX + listView.width)
+                listView.contentX = Math.min(right - listView.width + 40, listView.contentWidth - listView.width)
+            else if (x < listView.contentX + root.gutterWidth)
+                listView.contentX = Math.max(0, x - root.gutterWidth - 40)
         }
     }
 
@@ -312,7 +312,7 @@ Rectangle {
         }
 
         ListView {
-            id: list
+            id: listView
 
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -359,7 +359,7 @@ Rectangle {
                     return "transparent"
                 }
 
-                width: list.contentWidth
+                width: listView.contentWidth
                 height: isHunk ? 34 : root.lineHeight
 
                 // Hunk header with the hunk actions.
@@ -381,7 +381,7 @@ Rectangle {
                         anchors.left: parent.left
                         anchors.leftMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, list.width - hunkActions.width - 40)
+                        width: Math.min(implicitWidth, listView.width - hunkActions.width - 40)
                         text: row.header
                         elide: Text.ElideRight
                         color: Theme.textMuted
@@ -393,7 +393,7 @@ Rectangle {
                         id: hunkActions
 
                         // Stay visible while scrolling horizontally.
-                        x: list.contentX + list.width - width - 12
+                        x: listView.contentX + listView.width - width - 12
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 6
 

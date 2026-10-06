@@ -229,7 +229,7 @@ Rectangle {
         property int side
         property var model
 
-        readonly property real contentY: list.contentY
+        readonly property real contentY: listView.contentY
 
         HoverHandler {
             onHoveredChanged: {
@@ -240,12 +240,12 @@ Rectangle {
 
         function scrollTo(y) {
             // The height of the content is known after the layout.
-            list.forceLayout()
-            list.contentY = Math.max(0, Math.min(y, list.contentHeight - list.height))
+            listView.forceLayout()
+            listView.contentY = Math.max(0, Math.min(y, listView.contentHeight - listView.height))
         }
 
         function scrollXTo(x) {
-            list.contentX = Math.max(0, Math.min(x, list.contentWidth - list.width))
+            listView.contentX = Math.max(0, Math.min(x, listView.contentWidth - listView.width))
         }
 
         color: Theme.base
@@ -289,7 +289,7 @@ Rectangle {
             }
 
             ListView {
-                id: list
+                id: listView
 
                 objectName: pane.side === 0 ? "mergeOurs" : "mergeTheirs"
                 Layout.fillWidth: true
@@ -325,7 +325,7 @@ Rectangle {
 
                     // All rows have the same height, so that the panes can
                     // scroll together.
-                    width: list.contentWidth
+                    width: listView.contentWidth
                     height: root.lineHeight
                     color: isConflict ? Theme.panel
                            : isLine ? root.sideTint(pane.side, checked)

@@ -340,7 +340,7 @@ Rectangle {
         }
 
         ListView {
-            id: list
+            id: listView
 
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -363,7 +363,7 @@ Rectangle {
                 target: commitList
 
                 function onScrollRequested(row) {
-                    list.positionViewAtIndex(row, ListView.Contain)
+                    listView.positionViewAtIndex(row, ListView.Contain)
                 }
             }
 
@@ -439,7 +439,7 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onPressed: list.forceActiveFocus()
+                    onPressed: listView.forceActiveFocus()
                     onClicked: (event) => {
                         if (event.button === Qt.RightButton) {
                             const p = mapToItem(null, event.x, event.y)
@@ -482,7 +482,7 @@ Rectangle {
                                     refName: badge.ref.qualified || ""
                                     cursorShape: refName !== "" ? Qt.OpenHandCursor
                                                                 : Qt.ArrowCursor
-                                    onPressed: list.forceActiveFocus()
+                                    onPressed: listView.forceActiveFocus()
                                     onClicked: (event) => {
                                         if (dragged)
                                             return
@@ -716,7 +716,7 @@ Rectangle {
             // Shown while the first page of commits loads.
             Spinner {
                 anchors.centerIn: parent
-                running: commitList.loading && list.count === 0
+                running: commitList.loading && listView.count === 0
                 size: 28
             }
         }

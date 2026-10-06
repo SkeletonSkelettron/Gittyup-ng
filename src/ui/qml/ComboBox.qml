@@ -66,7 +66,7 @@ Controls.ComboBox {
     }
 
     delegate: Controls.ItemDelegate {
-        id: item
+        id: delegateItem
 
         required property int index
         required property var modelData
@@ -81,32 +81,32 @@ Controls.ComboBox {
 
         background: Rectangle {
             radius: 5
-            color: item.highlighted ? Theme.hover : "transparent"
+            color: delegateItem.highlighted ? Theme.hover : "transparent"
         }
 
         contentItem: Row {
             spacing: 8
 
             Icon {
-                visible: item.entry !== null && !!item.entry.icon
+                visible: delegateItem.entry !== null && !!delegateItem.entry.icon
                 anchors.verticalCenter: parent.verticalCenter
-                name: item.entry && item.entry.icon ? item.entry.icon : ""
+                name: delegateItem.entry && delegateItem.entry.icon ? delegateItem.entry.icon : ""
                 size: 14
-                color: item.index === control.currentIndex ? Theme.accent : Theme.textMuted
+                color: delegateItem.index === control.currentIndex ? Theme.accent : Theme.textMuted
             }
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: item.entry ? item.entry[control.textRole || "text"] : item.modelData
-                color: item.index === control.currentIndex ? Theme.accent : Theme.text
+                text: delegateItem.entry ? delegateItem.entry[control.textRole || "text"] : delegateItem.modelData
+                color: delegateItem.index === control.currentIndex ? Theme.accent : Theme.text
                 font.pixelSize: 13
-                font.weight: item.index === control.currentIndex ? Font.DemiBold : Font.Normal
+                font.weight: delegateItem.index === control.currentIndex ? Font.DemiBold : Font.Normal
             }
 
             Text {
-                visible: item.entry !== null && !!item.entry.detail
+                visible: delegateItem.entry !== null && !!delegateItem.entry.detail
                 anchors.verticalCenter: parent.verticalCenter
-                text: item.entry && item.entry.detail ? item.entry.detail : ""
+                text: delegateItem.entry && delegateItem.entry.detail ? delegateItem.entry.detail : ""
                 color: Theme.textMuted
                 font.pixelSize: 12
             }
