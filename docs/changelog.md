@@ -1,3 +1,13 @@
+### v0.0.2 - 2026-10-06
+
+Bug Fix release
+
+#### Fixed
+
+* The check box of a conflict on the side that has no lines takes that side, and the conflict resolves without its lines. Before, clicking it did nothing.
+
+----
+
 ### v0.0.1 - 2026-10-05
 
 The first release of Gittyup-ng, which continues Gittyup 2.0.0 with a new interface. The releases below it are the ones of Gittyup.
