@@ -873,6 +873,66 @@ void TestQmlViews::mergeEmptySide() {
   qreal line = panel->property("lineHeight").toReal();
   QList<QVariant> bounds = panel->property("sideBounds1").toList();
   QCOMPARE(bounds.last().toReal(), model->rowCount() * line);
+
+  // Clicking the row takes the side without lines, like a line.
+  auto *merge =
+      qobject_cast<MergeModel *>(panel->property("merge").value<QObject *>());
+  QVERIFY(merge);
+  QCOMPARE(merge->unresolvedCount(), 1);
+
+  // The rows are items of the list, not its children, once it's laid out.
+  auto findRow = [theirs](int kind) -> QQuickItem * {
+    QList<QQuickItem *> items =
+        qobject_cast<QQuickItem *>(theirs)->childItems();
+    while (!items.isEmpty()) {
+      QQuickItem *item = items.takeFirst();
+      if (item->property("kind").toInt() == kind && item->isVisible())
+        return item;
+      items.append(item->childItems());
+    }
+    return nullptr;
+  };
+
+  QQuickItem *conflict = nullptr;
+  QQuickItem *empty = nullptr;
+  QTRY_VERIFY((conflict = findRow(MergeSideModel::ConflictRow)) &&
+              (empty = findRow(MergeSideModel::EmptyRow)));
+
+  // The check boxes are at the start of the rows, which are wider than the
+  // pane.
+  auto click = [&window](QQuickItem *row) {
+    QPointF box = row->mapToScene(QPointF(15, row->height() / 2));
+    mouseClick(window.quickView(), Qt::LeftButton, Qt::NoModifier,
+               box.toPoint());
+  };
+
+  auto data = [model](int row, int role) {
+    return model->data(model->index(row, 0), role);
+  };
+
+  // The check box of the header of the side without lines takes it.
+  click(conflict);
+  QTRY_COMPARE(data(header, MergeSideModel::CheckStateRole).toInt(), 2);
+  QVERIFY(data(header + 1, MergeSideModel::CheckedRole).toBool());
+  QCOMPARE(merge->unresolvedCount(), 0);
+
+  click(conflict);
+  QTRY_COMPARE(data(header, MergeSideModel::CheckStateRole).toInt(), 0);
+  QVERIFY(!data(header + 1, MergeSideModel::CheckedRole).toBool());
+
+  // And the check box of its row.
+  click(empty);
+  QTRY_VERIFY(data(header + 1, MergeSideModel::CheckedRole).toBool());
+  QCOMPARE(data(header, MergeSideModel::CheckStateRole).toInt(), 2);
+
+  click(empty);
+  QTRY_VERIFY(!data(header + 1, MergeSideModel::CheckedRole).toBool());
+
+  // Taking all of theirs takes the side without lines too.
+  merge->takeAll(1);
+  QVERIFY(data(header + 1, MergeSideModel::CheckedRole).toBool());
+  merge->takeAll(0);
+  QVERIFY(!data(header + 1, MergeSideModel::CheckedRole).toBool());
 }
 
 void TestQmlViews::dragTab() {

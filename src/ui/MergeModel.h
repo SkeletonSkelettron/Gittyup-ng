@@ -100,6 +100,9 @@ public:
     QStringList lines[2];
     QStringList base;
     QList<bool> checked[2];
+    // Whether a side without lines is taken: the conflict resolves without
+    // lines of it.
+    bool empty[2] = {false, false};
     // The side whose lines come first in the output.
     int first = 0;
     bool touched = false;
@@ -141,6 +144,7 @@ public:
 
   Q_INVOKABLE void setLineChecked(int side, int conflict, int line,
                                   bool checked);
+  // Take all lines of a side of a conflict, or the side when it has none.
   Q_INVOKABLE void setConflictChecked(int side, int conflict, bool checked);
   // Take all lines of the conflicts of 'side', and none of the other side.
   Q_INVOKABLE void takeAll(int side);

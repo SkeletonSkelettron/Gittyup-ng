@@ -331,7 +331,7 @@ Rectangle {
                     height: root.lineHeight
                     color: isConflict ? Theme.panel
                            : isLine ? root.sideTint(pane.side, checked)
-                           : isEmpty ? root.sideTint(pane.side, false)
+                           : isEmpty ? root.sideTint(pane.side, checked)
                            : "transparent"
 
                     // The lines of a conflict have the bar of their side.
@@ -372,7 +372,7 @@ Rectangle {
                             height: parent.height
 
                             Check {
-                                visible: row.isLine
+                                visible: row.isLine || row.isEmpty
                                 anchors.centerIn: parent
                                 state: row.checked ? 2 : 0
                             }
@@ -402,17 +402,18 @@ Rectangle {
                         }
                     }
 
-                    // Clicking a line of a conflict or its header takes it.
+                    // Clicking a line of a conflict or its header takes it,
+                    // and the row of a side without lines takes the side.
                     MouseArea {
                         anchors.fill: parent
                         enabled: row.isConflict || row.isLine || row.isEmpty
-                        cursorShape: row.isConflict || row.isLine ? Qt.PointingHandCursor
-                                                                  : Qt.ArrowCursor
+                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
                             root.current = row.conflict
                             if (row.isEmpty)
-                                return
-                            if (row.isConflict)
+                                root.merge.setConflictChecked(pane.side, row.conflict,
+                                                              !row.checked)
+                            else if (row.isConflict)
                                 root.merge.setConflictChecked(pane.side, row.conflict,
                                                               row.checkState !== 2)
                             else

@@ -138,14 +138,19 @@ QVariant MergeSideModel::data(const QModelIndex &index, int role) const {
           row.text.toUtf8(), mStyles.value(index.row()),
           [](const QByteArray &bytes) { return QString::fromUtf8(bytes); });
     case CheckedRole:
+      if (row.kind == EmptyRow)
+        return mMerge->conflicts().at(row.conflict).empty[mSide];
       if (row.kind != LineRow)
         return false;
       return mMerge->conflicts().at(row.conflict).checked[mSide].value(row.line);
     case CheckStateRole: {
       if (row.conflict < 0)
         return 0;
-      const QList<bool> &checked =
-          mMerge->conflicts().at(row.conflict).checked[mSide];
+      const MergeModel::Conflict &conflict =
+          mMerge->conflicts().at(row.conflict);
+      const QList<bool> &checked = conflict.checked[mSide];
+      if (checked.isEmpty())
+        return conflict.empty[mSide] ? 2 : 0;
       int count = checked.count(true);
       return count == 0 ? 0 : count == checked.size() ? 2 : 1;
     }
@@ -347,6 +352,8 @@ void MergeModel::setConflictChecked(int side, int conflict, bool checked) {
 
   for (bool &value : current.checked[side])
     value = checked;
+  if (current.checked[side].isEmpty())
+    current.empty[side] = checked;
   current.touched = true;
   updateRegion(conflict);
   mSides[side]->updateChecks(conflict);
@@ -363,6 +370,8 @@ void MergeModel::takeAll(int side) {
       value = true;
     for (bool &value : conflict.checked[1 - side])
       value = false;
+    conflict.empty[side] = conflict.checked[side].isEmpty();
+    conflict.empty[1 - side] = false;
     conflict.first = side;
     conflict.touched = true;
     updateRegion(i);
