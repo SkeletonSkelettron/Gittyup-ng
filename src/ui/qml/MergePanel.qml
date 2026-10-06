@@ -59,9 +59,8 @@ Rectangle {
         const result = [0]
         let y = 0
         for (const part of root.layout) {
-            // Conflicts have a header, and a row when the side has no lines.
-            const lines = part.lines[side]
-            y += (part.conflict >= 0 ? 1 + Math.max(1, lines) : lines) * root.lineHeight
+            // Conflicts have a header.
+            y += ((part.conflict >= 0 ? 1 : 0) + part.lines[side]) * root.lineHeight
             result.push(y)
         }
         return result
@@ -323,7 +322,6 @@ Rectangle {
 
                     readonly property bool isConflict: kind === 1
                     readonly property bool isLine: kind === 2
-                    readonly property bool isEmpty: kind === 3
 
                     // All rows have the same height, so that the panes can
                     // scroll together.
@@ -331,12 +329,11 @@ Rectangle {
                     height: root.lineHeight
                     color: isConflict ? Theme.panel
                            : isLine ? root.sideTint(pane.side, checked)
-                           : isEmpty ? root.sideTint(pane.side, checked)
                            : "transparent"
 
                     // The lines of a conflict have the bar of their side.
                     Rectangle {
-                        visible: row.isConflict || row.isLine || row.isEmpty
+                        visible: row.isConflict || row.isLine
                         width: 3
                         height: parent.height
                         color: root.sideBar(pane.side)
@@ -372,7 +369,7 @@ Rectangle {
                             height: parent.height
 
                             Check {
-                                visible: row.isLine || row.isEmpty
+                                visible: row.isLine
                                 anchors.centerIn: parent
                                 state: row.checked ? 2 : 0
                             }
@@ -384,7 +381,7 @@ Rectangle {
                             rightPadding: 8
                             horizontalAlignment: Text.AlignRight
                             verticalAlignment: Text.AlignVCenter
-                            text: row.isEmpty ? "" : row.number
+                            text: row.number
                             color: Theme.textMuted
                             font.family: Theme.codeFont
                             font.pointSize: Math.max(7, Theme.codeFontSize - 1)
@@ -393,27 +390,22 @@ Rectangle {
                         Text {
                             height: parent.height
                             verticalAlignment: Text.AlignVCenter
-                            textFormat: row.isEmpty ? Text.PlainText : Text.RichText
-                            text: row.isEmpty ? qsTr("No lines on this side") : row.html
-                            color: row.isEmpty ? Theme.textMuted : Theme.text
+                            textFormat: Text.RichText
+                            text: row.html
+                            color: Theme.text
                             font.family: Theme.codeFont
                             font.pointSize: Theme.codeFontSize
-                            font.italic: row.isEmpty
                         }
                     }
 
-                    // Clicking a line of a conflict or its header takes it,
-                    // and the row of a side without lines takes the side.
+                    // Clicking a line of a conflict or its header takes it.
                     MouseArea {
                         anchors.fill: parent
-                        enabled: row.isConflict || row.isLine || row.isEmpty
+                        enabled: row.isConflict || row.isLine
                         cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                         onClicked: {
                             root.current = row.conflict
-                            if (row.isEmpty)
-                                root.merge.setConflictChecked(pane.side, row.conflict,
-                                                              !row.checked)
-                            else if (row.isConflict)
+                            if (row.isConflict)
                                 root.merge.setConflictChecked(pane.side, row.conflict,
                                                               row.checkState !== 2)
                             else
