@@ -1,0 +1,3 @@
+module Gittyup
+singleton Theme 1.0 Theme.qml
+CommitGraph 1.0 CommitGraph.qml
