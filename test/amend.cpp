@@ -5,15 +5,10 @@
 #include "git/Reference.h"
 #include "git/Tree.h"
 #include "ui/MainWindow.h"
-#include "ui/DoubleTreeWidget.h"
+#include "ui/DetailView.h"
 #include "ui/RepoView.h"
-#include "ui/TreeView.h"
 #include "dialogs/AmendDialog.h"
 
-#include <QTextEdit>
-#include <QRadioButton>
-#include <QDateTimeEdit>
-#include <QLineEdit>
 
 #define INIT_REPO(repoPath)                                                    \
   QString path = Test::extractRepository(repoPath);                            \
@@ -101,26 +96,17 @@ void TestAmend::testAmendAddFile() {
 
     Test::refresh(view);
 
-    auto doubleTree = view->findChild<DoubleTreeWidget *>();
-    QVERIFY(doubleTree);
+    auto details = view->findChild<DetailView *>();
+    QVERIFY(details);
 
-    auto files = doubleTree->findChild<TreeView *>("Unstaged");
-    QVERIFY(files);
-
-    QAbstractItemModel *model = files->model();
+    QAbstractItemModel *model = details->unstagedFiles();
     QCOMPARE(model->rowCount(), 1);
 
-    // Click on the check box.
-    QModelIndex index = model->index(0, 0);
-    QTest::mouseClick(files->viewport(), Qt::LeftButton,
-                      Qt::KeyboardModifiers(),
-                      files->checkRect(index).center());
+    // Stage the file.
+    details->stageFiles(DetailView::UnstagedFiles, 0, true);
 
     // Commit and refresh.
-    QTextEdit *editor = view->findChild<QTextEdit *>("MessageEditor");
-    QVERIFY(editor);
-
-    editor->setText("base commit");
+    details->setCommitMessage("base commit");
     view->commit();
     Test::refresh(view, false);
 
@@ -146,21 +132,13 @@ void TestAmend::testAmendAddFile() {
 
     Test::refresh(view);
 
-    auto doubleTree = view->findChild<DoubleTreeWidget *>();
-    QVERIFY(doubleTree);
+    auto details = view->findChild<DetailView *>();
+    QVERIFY(details);
 
     // Staging the file
-    auto files = doubleTree->findChild<TreeView *>("Unstaged");
-    QVERIFY(files);
-
-    QAbstractItemModel *model = files->model();
+    QAbstractItemModel *model = details->unstagedFiles();
     QCOMPARE(model->rowCount(), 1);
-
-    // Click on the check box. to stage file
-    QModelIndex index = model->index(0, 0);
-    QTest::mouseClick(files->viewport(), Qt::LeftButton,
-                      Qt::KeyboardModifiers(),
-                      files->checkRect(index).center());
+    details->stageFiles(DetailView::UnstagedFiles, 0, true);
   }
 
   // Check that changes applied after amending
@@ -207,102 +185,50 @@ void TestAmend::testAmendDialog() {
     AmendDialog d(authorSignature, committerSignature, "Test commit message");
     d.show();
 
-    {
-      const auto *authorCommitDateTimeTypeSelection =
-          d.findChild<QWidget *>(tr("Author") + "CommitDateType");
-      QVERIFY(authorCommitDateTimeTypeSelection);
-      auto *authorCurrent =
-          authorCommitDateTimeTypeSelection->findChild<QRadioButton *>(
-              "Current");
-      QVERIFY(authorCurrent);
-      auto *authorOriginal =
-          authorCommitDateTimeTypeSelection->findChild<QRadioButton *>(
-              "Original");
-      QVERIFY(authorOriginal);
-      auto *authorManual =
-          authorCommitDateTimeTypeSelection->findChild<QRadioButton *>(
-              "Manual");
-      QVERIFY(authorManual);
-      auto *authorCommitDate =
-          d.findChild<QDateTimeEdit *>(tr("Author") + "CommitDate");
-      QVERIFY(authorCommitDate);
-      authorCommitDate->setDateTime(
-          QDateTime(QDate(2012, 7, 6), QTime(8, 30, 5)));
+    using Type = ContributorInfo::SelectedDateTimeType;
+    struct Case {
+      AmendContributor *contributor;
+      ContributorInfo (*info)(const AmendInfo &);
+      QString original;
+      QDateTime manual;
+    };
+
+    QList<Case> cases = {
+        {d.author(), [](const AmendInfo &info) { return info.authorInfo; },
+         "Mon May 23 10:36:26 2022 +0200",
+         QDateTime(QDate(2012, 7, 6), QTime(8, 30, 5))},
+        {d.committer(),
+         [](const AmendInfo &info) { return info.committerInfo; },
+         "Mon May 23 11:36:26 2022 +0200",
+         QDateTime(QDate(2013, 5, 2), QTime(11, 22, 7))}};
+
+    for (const Case &c : cases) {
+      QVERIFY(c.contributor);
+      c.contributor->setManualDate(c.manual);
 
       // current
-      authorCurrent->click();
-      auto info = d.getInfo();
-      QCOMPARE(info.authorInfo.commitDateType,
-               ContributorInfo::SelectedDateTimeType::Current);
-      QCOMPARE(authorCommitDate->isVisible(), false);
+      c.contributor->setDateType(Type::Current);
+      QCOMPARE(c.info(d.getInfo()).commitDateType, Type::Current);
 
       // original
-      authorOriginal->click();
-      info = d.getInfo();
-      QCOMPARE(info.authorInfo.commitDateType,
-               ContributorInfo::SelectedDateTimeType::Original);
-      QCOMPARE(authorCommitDate->isVisible(), false);
-      QCOMPARE(info.authorInfo.commitDate,
-               QDateTime::fromString("Mon May 23 10:36:26 2022 +0200",
-                                     Qt::RFC2822Date));
+      c.contributor->setDateType(Type::Original);
+      auto info = c.info(d.getInfo());
+      QCOMPARE(info.commitDateType, Type::Original);
+      QCOMPARE(info.commitDate,
+               QDateTime::fromString(c.original, Qt::RFC2822Date));
 
       // manual
-      authorManual->click();
-      info = d.getInfo();
-      QCOMPARE(info.authorInfo.commitDateType,
-               ContributorInfo::SelectedDateTimeType::Manual);
-      QCOMPARE(authorCommitDate->isVisible(), true);
-      QCOMPARE(info.authorInfo.commitDate,
-               QDateTime(QDate(2012, 7, 6), QTime(8, 30, 5)));
-    }
+      c.contributor->setDateType(Type::Manual);
+      info = c.info(d.getInfo());
+      QCOMPARE(info.commitDateType, Type::Manual);
+      QCOMPARE(info.commitDate, c.manual);
+      QVERIFY(d.isAcceptable());
 
-    {
-      const auto *committerCommitDateTimeTypeSelection =
-          d.findChild<QWidget *>(tr("Committer") + "CommitDateType");
-      QVERIFY(committerCommitDateTimeTypeSelection);
-      auto *committerCurrent =
-          committerCommitDateTimeTypeSelection->findChild<QRadioButton *>(
-              "Current");
-      QVERIFY(committerCurrent);
-      auto *committerOriginal =
-          committerCommitDateTimeTypeSelection->findChild<QRadioButton *>(
-              "Original");
-      QVERIFY(committerOriginal);
-      auto *committerManual =
-          committerCommitDateTimeTypeSelection->findChild<QRadioButton *>(
-              "Manual");
-      QVERIFY(committerManual);
-      auto *committerCommitDate =
-          d.findChild<QDateTimeEdit *>(tr("Committer") + "CommitDate");
-      QVERIFY(committerCommitDate);
-      committerCommitDate->setDateTime(
-          QDateTime(QDate(2013, 5, 2), QTime(11, 22, 7)));
-
-      // current
-      committerCurrent->click();
-      auto info = d.getInfo();
-      QCOMPARE(info.committerInfo.commitDateType,
-               ContributorInfo::SelectedDateTimeType::Current);
-      QCOMPARE(committerCommitDate->isVisible(), false);
-
-      // original
-      committerOriginal->click();
-      info = d.getInfo();
-      QCOMPARE(info.committerInfo.commitDateType,
-               ContributorInfo::SelectedDateTimeType::Original);
-      QCOMPARE(committerCommitDate->isVisible(), false);
-      QCOMPARE(info.committerInfo.commitDate,
-               QDateTime::fromString("Mon May 23 11:36:26 2022 +0200",
-                                     Qt::RFC2822Date));
-
-      // manual
-      committerManual->click();
-      info = d.getInfo();
-      QCOMPARE(info.committerInfo.commitDateType,
-               ContributorInfo::SelectedDateTimeType::Manual);
-      QCOMPARE(committerCommitDate->isVisible(), true);
-      QCOMPARE(info.committerInfo.commitDate,
-               QDateTime(QDate(2013, 5, 2), QTime(11, 22, 7)));
+      // An invalid manual date can't be used.
+      c.contributor->setDateText("not a date");
+      QVERIFY(!c.contributor->isDateValid());
+      QVERIFY(!d.isAcceptable());
+      c.contributor->setManualDate(c.manual);
     }
 
     auto info = d.getInfo();
@@ -327,38 +253,15 @@ void TestAmend::testAmendDialog2() {
 
   AmendDialog d(authorSignature, committerSignature, "Test commit message");
 
-  auto commitMessageEditor =
-      d.findChild<QTextEdit *>("Textlabel Commit Message");
-  QVERIFY(commitMessageEditor);
-  commitMessageEditor->setText("Changing the commit message");
+  d.setCommitMessage("Changing the commit message");
 
   // Author
-  {
-    const auto *author = d.findChild<QWidget *>(tr("Author"));
-    QVERIFY(author);
-
-    auto *name = author->findChild<QLineEdit *>("Name");
-    QVERIFY(name);
-    auto *email = author->findChild<QLineEdit *>("Email");
-    QVERIFY(email);
-
-    name->setText("Another author name");
-    email->setText("Another author email address");
-  }
+  d.author()->setName("Another author name");
+  d.author()->setEmail("Another author email address");
 
   // Committer
-  {
-    const auto *committer = d.findChild<QWidget *>(tr("Committer"));
-    QVERIFY(committer);
-
-    auto *name = committer->findChild<QLineEdit *>("Name");
-    QVERIFY(name);
-    auto *email = committer->findChild<QLineEdit *>("Email");
-    QVERIFY(email);
-
-    name->setText("Another committer name");
-    email->setText("Another committer email address");
-  }
+  d.committer()->setName("Another committer name");
+  d.committer()->setEmail("Another committer email address");
 
   const auto info = d.getInfo();
 

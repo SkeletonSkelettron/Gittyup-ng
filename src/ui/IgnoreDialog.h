@@ -1,20 +1,34 @@
+//
+//          Copyright (c) 2022, Gittyup contributors
+//
+// This software is licensed under the MIT License. The LICENSE.md file
+// describes the conditions under which this software may be distributed.
+//
+
 #ifndef IGNOREDIALOG_H
 #define IGNOREDIALOG_H
 
-#include <QDialog>
+#include "dialogs/QmlDialog.h"
 
-class QDialogButtonBox;
-class QTextEdit;
-
-class IgnoreDialog : public QDialog {
+// Edit the patterns to add to .gitignore. qrc:/qml/IgnoreDialog.qml draws
+// it.
+class IgnoreDialog : public QmlDialog {
   Q_OBJECT
+
+  Q_PROPERTY(QString pattern READ ignoreText WRITE setIgnoreText NOTIFY
+                 patternChanged)
+
 public:
   IgnoreDialog(const QString &ignore, QWidget *parent = nullptr);
-  QString ignoreText() const;
+
+  QString ignoreText() const { return mIgnore; }
+  void setIgnoreText(const QString &text);
+
+signals:
+  void patternChanged();
 
 private:
-  QDialogButtonBox *mButtonBox{nullptr};
-  QTextEdit *mIgnore{nullptr};
+  QString mIgnore;
 };
 
-#endif // IGNOREDIALOG_H
+#endif

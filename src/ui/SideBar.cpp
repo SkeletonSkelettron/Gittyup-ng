@@ -8,42 +8,30 @@
 //
 
 #include "SideBar.h"
-#include "Footer.h"
+#include "dialogs/ConfirmDialog.h"
 #include "MainWindow.h"
-#include "ProgressIndicator.h"
 #include "RepoView.h"
 #include "TabWidget.h"
-#include "app/Application.h"
-#include "conf/Settings.h"
 #include "conf/RecentRepositories.h"
 #include "conf/RecentRepository.h"
+#include "conf/Settings.h"
 #include "dialogs/AccountDialog.h"
 #include "dialogs/CloneDialog.h"
 #include "host/Accounts.h"
+#include "qml/QmlSupport.h"
 #include <QAbstractItemModel>
 #include <QFileDialog>
 #include <QMenu>
-#include <QMessageBox>
 #include <QPushButton>
+#include <QQuickWidget>
 #include <QSettings>
-#include <QStyledItemDelegate>
-#include <QTreeView>
-#include <QVBoxLayout>
+#include <QStyle>
+#include <QTabBar>
 
 namespace {
 
 const QString kRemoteExpandedGroup = "remote/expanded";
-
-const QString kStyleSheet = "QTreeView {"
-#ifdef Q_OS_MAC
-                            "  background: palette(midlight);"
-#endif
-                            "  border: none"
-                            "}"
-                            "Footer {"
-                            "  border-left: none;"
-                            "  border-right: none"
-                            "}";
+const QString kSectionCollapsedGroup = "sidebar/collapsed";
 
 enum Role {
   PathRole = Qt::UserRole,
@@ -51,44 +39,34 @@ enum Role {
   RecentRole,
   AccountRole,
   AccountKindRole,
-  RepositoryRole
+  RepositoryRole,
+
+  // roles used by QML
+  KindRole,
+  IconRole,
+  CurrentRole,
+  CountRole,
+  RemovableRole
 };
 
-class ProgressDelegate : public QStyledItemDelegate {
-public:
-  ProgressDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
-
-  void paint(QPainter *painter, const QStyleOptionViewItem &option,
-             const QModelIndex &index) const override {
-    QStyleOptionViewItem opt = option;
-    initStyleOption(&opt, index);
-
-    // Draw background.
-    QStyledItemDelegate::paint(painter, opt, index);
-
-    // Draw busy indicator.
-    QVariant progress = index.data(Qt::DecorationRole);
-    if (!progress.canConvert<int>())
-      return;
-
-    QStyle *style = opt.widget ? opt.widget->style() : QApplication::style();
-    QStyle::SubElement se = QStyle::SE_ItemViewItemDecoration;
-    QRect rect = style->subElementRect(se, &opt, opt.widget);
-    ProgressIndicator::paint(painter, rect, "#808080", progress.toInt());
-  }
-
-protected:
-  void initStyleOption(QStyleOptionViewItem *option,
-                       const QModelIndex &index) const override {
-    QStyledItemDelegate::initStyleOption(option, index);
-    if (index.data(Qt::DecorationRole).canConvert<int>()) {
-      option->decorationSize = ProgressIndicator::size();
-    } else if (index.data(RepositoryRole).isValid()) {
-      option->features |= QStyleOptionViewItem::HasDecoration;
-      option->decorationSize = QSize(20, 20);
-    }
-  }
+// Keep in sync with SideBar.qml.
+enum ItemKind {
+  KindHeader,
+  KindOpen,
+  KindRecent,
+  KindAccount,
+  KindAddAccount,
+  KindRemoteRepo,
+  KindError,
+  KindProgress,
+  KindEmpty
 };
+
+// Does this index correspond to one of the open repositories?
+bool isRepoIndex(const QModelIndex &index) {
+  QModelIndex parent = index.parent();
+  return (parent.isValid() && !parent.parent().isValid() && parent.row() == 0);
+}
 
 class RepoModel : public QAbstractItemModel {
   Q_OBJECT
@@ -99,18 +77,32 @@ public:
   RepoModel(TabWidget *tabs, QObject *parent = nullptr)
       : QAbstractItemModel(parent), mTabs(tabs), mCloudIcon(":/cloud.png"),
         mErrorIcon(tabs->style()->standardIcon(QStyle::SP_MessageBoxCritical)) {
+    // Tabs are also removed without a notice, like when the window is
+    // destroyed.
     connect(tabs, &TabWidget::tabAboutToBeInserted, this,
-            &RepoModel::beginResetModel);
+            &RepoModel::beginTabsReset);
     connect(tabs, &TabWidget::tabAboutToBeRemoved, this,
-            &RepoModel::beginResetModel);
+            &RepoModel::beginTabsReset);
     connect(tabs, QOverload<>::of(&TabWidget::tabInserted), this,
-            &RepoModel::endResetModel);
+            &RepoModel::endTabsReset);
     connect(tabs, QOverload<>::of(&TabWidget::tabRemoved), this,
-            &RepoModel::endResetModel);
+            &RepoModel::endTabsReset);
     connect(tabs->tabBar(), &QTabBar::tabMoved, [this] {
       beginResetModel();
       endResetModel();
     });
+    // Queued because adding a tab changes the current tab in the middle of
+    // a model reset.
+    connect(
+        tabs, &TabWidget::currentChanged, this,
+        [this] {
+          QModelIndex parent = index(Repo, 0);
+          int rows = rowCount(parent);
+          if (rows > 0)
+            emit dataChanged(index(0, 0, parent), index(rows - 1, 0, parent),
+                             {CurrentRole});
+        },
+        Qt::QueuedConnection);
 
     RecentRepositories *repos = RecentRepositories::instance();
     connect(repos, &RecentRepositories::repositoryAboutToBeAdded, this,
@@ -269,8 +261,114 @@ public:
     return 1;
   }
 
+  QHash<int, QByteArray> roleNames() const override {
+    QHash<int, QByteArray> roles = QAbstractItemModel::roleNames();
+    roles.insert(KindRole, "kind");
+    roles.insert(IconRole, "iconName");
+    roles.insert(CurrentRole, "isCurrent");
+    roles.insert(CountRole, "count");
+    roles.insert(RemovableRole, "removable");
+    return roles;
+  }
+
   QVariant data(const QModelIndex &index,
                 int role = Qt::DisplayRole) const override {
+    switch (role) {
+      case KindRole:
+        return kind(index);
+      case IconRole:
+        return iconName(index);
+      case CurrentRole:
+        return isRepoIndex(index) && index.row() == mTabs->currentIndex();
+      case CountRole:
+        return count(index);
+      case RemovableRole:
+        return isRemovable(index);
+      case Qt::ToolTipRole:
+        // Always a string so QML can bind to it.
+        return legacyData(index, role).toString();
+      default:
+        return legacyData(index, role);
+    }
+  }
+
+  ItemKind kind(const QModelIndex &index) const {
+    QModelIndex parent = index.parent();
+    if (!parent.isValid())
+      return KindHeader;
+
+    QObject *ptr = static_cast<QObject *>(index.internalPointer());
+    if (qobject_cast<Repository *>(ptr))
+      return KindRemoteRepo;
+    if (qobject_cast<AccountError *>(ptr))
+      return KindError;
+    if (qobject_cast<AccountProgress *>(ptr))
+      return KindProgress;
+
+    switch (parent.row()) {
+      case Repo:
+        return mTabs->count() ? KindOpen : KindEmpty;
+      case Recent:
+        return RecentRepositories::instance()->count() ? KindRecent : KindEmpty;
+      case Remote:
+        return Accounts::instance()->count() ? KindAccount : KindAddAccount;
+      default:
+        return KindEmpty;
+    }
+  }
+
+  QString iconName(const QModelIndex &index) const {
+    switch (kind(index)) {
+      case KindOpen:
+        return "repo";
+      case KindRecent:
+        return "clock";
+      case KindAccount:
+      case KindAddAccount:
+        return QString("account-%1")
+            .arg(static_cast<int>(
+                index.data(AccountKindRole).value<Account::Kind>()));
+      case KindRemoteRepo:
+        return index.data(PathRole).toString().isEmpty() ? "cloud" : "repo";
+      case KindError:
+        return "alert";
+      case KindProgress:
+        return "spinner";
+      default:
+        return QString();
+    }
+  }
+
+  int count(const QModelIndex &index) const {
+    if (index.parent().isValid())
+      return 0;
+
+    switch (index.row()) {
+      case Repo:
+        return mTabs->count();
+      case Recent:
+        return RecentRepositories::instance()->count();
+      case Remote:
+        return Accounts::instance()->count();
+      default:
+        return 0;
+    }
+  }
+
+  bool isRemovable(const QModelIndex &index) const {
+    switch (kind(index)) {
+      case KindOpen:
+      case KindRecent:
+      case KindAccount:
+        return true;
+      case KindRemoteRepo:
+        return !index.data(PathRole).toString().isEmpty();
+      default:
+        return false;
+    }
+  }
+
+  QVariant legacyData(const QModelIndex &index, int role) const {
     QObject *ptr = static_cast<QObject *>(index.internalPointer());
     if (Repository *repo = qobject_cast<Repository *>(ptr)) {
       switch (role) {
@@ -541,7 +639,24 @@ public:
     endResetModel();
   }
 
+  void beginTabsReset() {
+    if (mTabsResetting)
+      return;
+
+    mTabsResetting = true;
+    beginResetModel();
+  }
+
+  void endTabsReset() {
+    if (!mTabsResetting)
+      beginResetModel();
+
+    mTabsResetting = false;
+    endResetModel();
+  }
+
 private:
+  bool mTabsResetting = false;
   TabWidget *mTabs;
   bool mShowFullPath = false;
   bool mShowFullName = false;
@@ -550,183 +665,31 @@ private:
   QIcon mErrorIcon;
 };
 
-// Does this index correspond to one of the open repositories?
-bool isRepoIndex(const QModelIndex &index) {
-  QModelIndex parent = index.parent();
-  return (parent.isValid() && !parent.parent().isValid() &&
-          parent.row() == RepoModel::Repo);
-}
-
 bool isRemoteIndex(const QModelIndex &index) {
   QModelIndex parent = index.parent();
   return (parent.isValid() && !parent.parent().isValid() &&
           parent.row() == RepoModel::Remote);
 }
 
-void storeExpansionState(QTreeView *view) {
-  QSettings settings;
-  settings.beginGroup(kRemoteExpandedGroup);
-
-  QAbstractItemModel *model = view->model();
-  QModelIndex remote = model->index(RepoModel::Remote, 0);
-  for (int i = 0; i < model->rowCount(remote); ++i) {
-    QModelIndex index = model->index(i, 0, remote);
-    QString key = index.data(Qt::DisplayRole).toString();
-    settings.setValue(key, view->isExpanded(index));
-  }
-
-  settings.endGroup();
-}
-
-void restoreExpansionState(QTreeView *view) {
-  QAbstractItemModel *model = view->model();
-  for (int i = 0; i < model->rowCount(); ++i)
-    view->expand(model->index(i, 0));
-
-  QSettings settings;
-  settings.beginGroup(kRemoteExpandedGroup);
-
-  QModelIndex remote = model->index(RepoModel::Remote, 0);
-  for (int i = 0; i < model->rowCount(remote); ++i) {
-    QModelIndex index = model->index(i, 0, remote);
-    QString key = index.data(Qt::DisplayRole).toString();
-    view->setExpanded(index, settings.value(key, true).toBool());
-  }
-
-  settings.endGroup();
+bool autoHideSideBar() {
+  return Settings::instance()
+      ->value(Setting::Id::AutoHideRepoSiderbar, true)
+      .toBool();
 }
 
 } // namespace
 
-SideBar::SideBar(TabWidget *tabs, MainWindow *mainWindow, QWidget *parent)
-    : QWidget(parent) {
-  setStyleSheet(kStyleSheet);
+SideBar::SideBar(TabWidget *tabs, MainWindow *mainWindow)
+    : QObject(mainWindow), mTabs(tabs), mMainWindow(mainWindow) {
+  RepoModel *model = new RepoModel(tabs, this);
+  mModel = model;
 
-  QTreeView *view = new QTreeView(this);
-  view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  view->setContextMenuPolicy(Qt::CustomContextMenu);
-  view->setFocusPolicy(Qt::NoFocus);
-  view->setIconSize(QSize(20, 20));
-  view->setRootIsDecorated(false);
-  view->setHeaderHidden(true);
+  // add menu
+  mAddMenu = new QMenu(mMainWindow);
 
-  view->setItemDelegate(new ProgressDelegate(view));
-
-  RepoModel *model = new RepoModel(tabs, view);
-  view->setModel(model);
-
-  // Restore selection and expansion state after model reset.
-  connect(model, &RepoModel::modelReset, view, [view, model] {
-    view->setCurrentIndex(model->currentIndex());
-    restoreExpansionState(view);
-  });
-
-  connect(tabs, &TabWidget::currentChanged, view,
-          [view, model] { view->setCurrentIndex(model->currentIndex()); });
-
-  // Store expansion state when it changes.
-  connect(view, &QTreeView::collapsed, [view](const QModelIndex &index) {
-    if (isRemoteIndex(index))
-      storeExpansionState(view);
-  });
-  connect(view, &QTreeView::expanded, [view](const QModelIndex &index) {
-    if (isRemoteIndex(index))
-      storeExpansionState(view);
-  });
-
-  connect(view, &QTreeView::clicked, [tabs](const QModelIndex &index) {
-    if (isRepoIndex(index))
-      tabs->setCurrentIndex(index.row());
-  });
-
-  connect(
-      view, &QTreeView::doubleClicked,
-      [tabs, this, mainWindow](const QModelIndex &index) {
-        if (isRepoIndex(index)) {
-          tabs->setCurrentIndex(index.row());
-          if (Settings::instance()
-                  ->value(Setting::Id::AutoHideRepoSiderbar, true)
-                  .toBool()) {
-            mainWindow->setSideBarVisible(false);
-          }
-          return;
-        }
-
-        // Open existing path.
-        QString path = index.data(PathRole).toString();
-        if (!path.isEmpty()) {
-          MainWindow::open(path);
-          if (Settings::instance()
-                  ->value(Setting::Id::AutoHideRepoSiderbar, true)
-                  .toBool()) {
-            mainWindow->setSideBarVisible(false);
-          }
-          return;
-        }
-
-        // Add remote account.
-        QVariant accountKindVariant = index.data(AccountKindRole);
-        if (accountKindVariant.isValid()) {
-          Account *account = index.data(AccountRole).value<Account *>();
-          AccountDialog *dialog = new AccountDialog(account, this);
-          dialog->setKind(accountKindVariant.value<Account::Kind>());
-          dialog->open();
-          return;
-        }
-
-        // Clone remote repository.
-        QVariant repoVariant = index.data(RepositoryRole);
-        if (repoVariant.isValid()) {
-          Repository *repo = repoVariant.value<Repository *>();
-          CloneDialog *dialog = new CloneDialog(CloneDialog::Clone, this, repo);
-          connect(dialog, &CloneDialog::accepted, [repo, dialog, mainWindow] {
-            // Set local path.
-            Account *account = repo->account();
-            account->setRepositoryPath(account->indexOf(repo), dialog->path());
-
-            // Open the repo.
-            if (Settings::instance()
-                    ->value(Setting::Id::AutoHideRepoSiderbar, true)
-                    .toBool()) {
-              mainWindow->setSideBarVisible(false);
-            }
-            MainWindow::open(dialog->path());
-          });
-
-          dialog->open();
-        }
-      });
-
-  connect(view, &QTreeView::customContextMenuRequested,
-          [this, view](const QPoint &point) {
-            QMenu menu;
-            QModelIndex index = view->indexAt(point);
-            if (RepoView *view = index.data(TabRole).value<RepoView *>()) {
-              menu.addAction(tr("Close"), view, &RepoView::close);
-            } else if (Account *account =
-                           index.data(AccountRole).value<Account *>()) {
-              menu.addAction(tr("Remove"), [this, account] {
-                promptToRemoveAccount(account);
-              });
-
-              if (account->isAuthorizeSupported())
-                menu.addAction(tr("Authorize"), account, &Account::authorize);
-            }
-
-            if (!menu.isEmpty())
-              menu.exec(view->mapToGlobal(point));
-          });
-
-  // footer
-  Footer *footer = new Footer(this);
-
-  // plus button
-  QMenu *plusMenu = new QMenu(this);
-  footer->setPlusMenu(plusMenu);
-
-  QAction *clone = plusMenu->addAction(tr("Clone Repository"));
+  QAction *clone = mAddMenu->addAction(tr("Clone Repository"));
   connect(clone, &QAction::triggered, [this] {
-    CloneDialog *dialog = new CloneDialog(CloneDialog::Clone, this);
+    CloneDialog *dialog = new CloneDialog(CloneDialog::Clone, mMainWindow);
     connect(dialog, &CloneDialog::accepted, [dialog] {
       if (MainWindow *window = MainWindow::open(dialog->path()))
         window->currentView()->addLogEntry(dialog->message(),
@@ -735,11 +698,11 @@ SideBar::SideBar(TabWidget *tabs, MainWindow *mainWindow, QWidget *parent)
     dialog->open();
   });
 
-  QAction *open = plusMenu->addAction(tr("Open Existing Repository"));
-  connect(open, &QAction::triggered, [this] {
+  QAction *openAction = mAddMenu->addAction(tr("Open Existing Repository"));
+  connect(openAction, &QAction::triggered, [this] {
     // FIXME: Filter out non-git dirs.
     QFileDialog *dialog =
-        new QFileDialog(this, tr("Open Repository"), QDir::homePath());
+        new QFileDialog(mMainWindow, tr("Open Repository"), QDir::homePath());
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setFileMode(QFileDialog::Directory);
     dialog->setOption(QFileDialog::ShowDirsOnly);
@@ -748,9 +711,9 @@ SideBar::SideBar(TabWidget *tabs, MainWindow *mainWindow, QWidget *parent)
     dialog->open();
   });
 
-  QAction *init = plusMenu->addAction(tr("Initialize New Repository"));
+  QAction *init = mAddMenu->addAction(tr("Initialize New Repository"));
   connect(init, &QAction::triggered, [this] {
-    CloneDialog *dialog = new CloneDialog(CloneDialog::Init, this);
+    CloneDialog *dialog = new CloneDialog(CloneDialog::Init, mMainWindow);
     connect(dialog, &CloneDialog::accepted, [dialog] {
       if (MainWindow *window = MainWindow::open(dialog->path()))
         window->currentView()->addLogEntry(dialog->message(),
@@ -759,79 +722,28 @@ SideBar::SideBar(TabWidget *tabs, MainWindow *mainWindow, QWidget *parent)
     dialog->open();
   });
 
-  plusMenu->addSeparator();
+  mAddMenu->addSeparator();
 
   for (int i = 0; i < Account::NUM_KINDS; ++i) {
     Account::Kind kind = static_cast<Account::Kind>(i);
     QString text = tr("Add %1 Account").arg(Account::name(kind));
-    QAction *add = plusMenu->addAction(text);
+    QAction *add = mAddMenu->addAction(text);
     connect(add, &QAction::triggered, [this, kind] {
-      AccountDialog *dialog = new AccountDialog(nullptr, this);
+      AccountDialog *dialog = new AccountDialog(nullptr, mMainWindow);
       dialog->setKind(kind);
       dialog->open();
     });
   }
 
-  // minus button
-  QItemSelectionModel *sel = view->selectionModel();
-  connect(sel, &QItemSelectionModel::selectionChanged, [footer, sel] {
-    QModelIndexList indexes = sel->selectedIndexes();
-    if (indexes.isEmpty())
-      return;
-
-    QModelIndex index = indexes.first();
-    QString path = index.data(PathRole).toString();
-    Account *account = index.data(AccountRole).value<Account *>();
-    footer->setMinusEnabled(!path.isEmpty() || account);
-  });
-
-  connect(footer, &Footer::minusClicked, [this, view, model, sel] {
-    for (const QModelIndex &index : sel->selectedIndexes()) {
-      if (RepoView *tab = index.data(TabRole).value<RepoView *>()) {
-        tab->close();
-
-      } else if (index.data(RecentRole).value<RecentRepository *>()) {
-        RecentRepositories::instance()->remove(index.row());
-
-      } else if (auto account = index.data(AccountRole).value<Account *>()) {
-        promptToRemoveAccount(account);
-
-      } else if (auto repo = index.data(RepositoryRole).value<Repository *>()) {
-        QString fmt =
-            tr("<p>Are you sure you want to remove the remote repository "
-               "association for %1?</p><p>The local clone itself will not "
-               "be affected.</p>");
-
-        QMessageBox *dialog = new QMessageBox(
-            QMessageBox::Warning, tr("Remove Repository Association?"),
-            fmt.arg(repo->fullName()), QMessageBox::Cancel, this);
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-
-        QPushButton *remove =
-            dialog->addButton(tr("Remove"), QMessageBox::AcceptRole);
-        remove->setFocus();
-        connect(remove, &QPushButton::clicked, [index, repo] {
-          repo->account()->setRepositoryPath(index.row(), QString());
-        });
-
-        dialog->open();
-      }
-    }
-
-    // Reset selection to current tab.
-    view->setCurrentIndex(model->currentIndex());
-  });
-
-  // context menu
+  // options menu
   QSettings settings;
-  QMenu *contextMenu = new QMenu(this);
-  footer->setContextMenu(contextMenu);
+  mOptionsMenu = new QMenu(mMainWindow);
 
-  QAction *clear = contextMenu->addAction(tr("Clear All Recent"));
+  QAction *clear = mOptionsMenu->addAction(tr("Clear All Recent"));
   connect(clear, &QAction::triggered,
           [] { RecentRepositories::instance()->clear(); });
 
-  QAction *showFullPath = contextMenu->addAction(tr("Show Full Path"));
+  QAction *showFullPath = mOptionsMenu->addAction(tr("Show Full Path"));
   bool recentChecked = settings.value("start/recent/fullpath").toBool();
   showFullPath->setCheckable(true);
   showFullPath->setChecked(recentChecked);
@@ -841,22 +753,22 @@ SideBar::SideBar(TabWidget *tabs, MainWindow *mainWindow, QWidget *parent)
     model->setShowFullPath(checked);
   });
 
-  QAction *filter = contextMenu->addAction(tr("Filter Non-existent Paths"));
+  QAction *filter = mOptionsMenu->addAction(tr("Filter Non-existent Paths"));
   filter->setCheckable(true);
   filter->setChecked(settings.value("recent/filter", true).toBool());
   connect(filter, &QAction::triggered,
           [](bool checked) { QSettings().setValue("recent/filter", checked); });
 
-  contextMenu->addSeparator();
+  mOptionsMenu->addSeparator();
 
-  QAction *refresh = contextMenu->addAction(tr("Refresh Remote Accounts"));
+  QAction *refresh = mOptionsMenu->addAction(tr("Refresh Remote Accounts"));
   connect(refresh, &QAction::triggered, [] {
     Accounts *accounts = Accounts::instance();
     for (int i = 0; i < accounts->count(); ++i)
       accounts->account(i)->connect();
   });
 
-  QAction *showFullName = contextMenu->addAction(tr("Show Full Name"));
+  QAction *showFullName = mOptionsMenu->addAction(tr("Show Full Name"));
   bool remoteChecked = settings.value("start/remote/fullname").toBool();
   showFullName->setCheckable(true);
   showFullName->setChecked(remoteChecked);
@@ -866,20 +778,162 @@ SideBar::SideBar(TabWidget *tabs, MainWindow *mainWindow, QWidget *parent)
     model->setShowFullName(checked);
   });
 
-  // Create layout.
-  QVBoxLayout *layout = new QVBoxLayout(this);
-  layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(0);
-  layout->addWidget(view);
-  layout->addWidget(footer);
-
-  // Disable footer resize.
-  footer->setMinimumWidth(footer->sizeHint().width());
 }
 
-QSize SideBar::sizeHint() const { return QSize(192, 0); }
+SideBar::~SideBar() {}
 
-QSize SideBar::minimumSizeHint() const { return QSize(0, 0); }
+void SideBar::activate(const QModelIndex &index) {
+  if (isRepoIndex(index))
+    mTabs->setCurrentIndex(index.row());
+}
+
+void SideBar::open(const QModelIndex &index) {
+  if (isRepoIndex(index)) {
+    mTabs->setCurrentIndex(index.row());
+    hideAfterOpen();
+    return;
+  }
+
+  // Open existing path.
+  QString path = index.data(PathRole).toString();
+  if (!path.isEmpty()) {
+    MainWindow::open(path);
+    hideAfterOpen();
+    return;
+  }
+
+  // Add remote account.
+  QVariant accountKindVariant = index.data(AccountKindRole);
+  if (accountKindVariant.isValid()) {
+    Account *account = index.data(AccountRole).value<Account *>();
+    AccountDialog *dialog = new AccountDialog(account, mMainWindow);
+    dialog->setKind(accountKindVariant.value<Account::Kind>());
+    dialog->open();
+    return;
+  }
+
+  // Clone remote repository.
+  QVariant repoVariant = index.data(RepositoryRole);
+  if (repoVariant.isValid()) {
+    Repository *repo = repoVariant.value<Repository *>();
+    CloneDialog *dialog = new CloneDialog(CloneDialog::Clone, mMainWindow, repo);
+    connect(dialog, &CloneDialog::accepted, [this, repo, dialog] {
+      // Set local path.
+      Account *account = repo->account();
+      account->setRepositoryPath(account->indexOf(repo), dialog->path());
+
+      // Open the repo.
+      hideAfterOpen();
+      MainWindow::open(dialog->path());
+    });
+
+    dialog->open();
+  }
+}
+
+void SideBar::remove(const QModelIndex &index) {
+  if (RepoView *tab = index.data(TabRole).value<RepoView *>()) {
+    tab->close();
+
+  } else if (index.data(RecentRole).value<RecentRepository *>()) {
+    RecentRepositories::instance()->remove(index.row());
+
+  } else if (auto account = index.data(AccountRole).value<Account *>()) {
+    promptToRemoveAccount(account);
+
+  } else if (auto repo = index.data(RepositoryRole).value<Repository *>()) {
+    QString fmt = tr("<p>Are you sure you want to remove the remote repository "
+                     "association for %1?</p><p>The local clone itself will "
+                     "not be affected.</p>");
+
+    ConfirmDialog *dialog = new ConfirmDialog(mMainWindow);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setTitle(tr("Remove Repository Association?"));
+    dialog->setText(fmt.arg(repo->fullName()));
+    dialog->setAcceptText(tr("Remove"));
+    dialog->setDanger(true);
+
+    int row = index.row();
+    connect(dialog, &QDialog::accepted, [row, repo] {
+      repo->account()->setRepositoryPath(row, QString());
+    });
+
+    dialog->open();
+  }
+}
+
+void SideBar::showContextMenu(const QModelIndex &index, qreal x, qreal y) {
+  QMenu *menu = new QMenu(mMainWindow);
+  menu->setAttribute(Qt::WA_DeleteOnClose);
+
+  if (RepoView *view = index.data(TabRole).value<RepoView *>()) {
+    menu->addAction(tr("Close"), view, &RepoView::close);
+  } else if (index.data(RecentRole).value<RecentRepository *>()) {
+    QPersistentModelIndex persistent(index);
+    menu->addAction(tr("Open"), [this, persistent] {
+      if (persistent.isValid())
+        open(persistent);
+    });
+    menu->addAction(tr("Remove from Recent"), [this, persistent] {
+      if (persistent.isValid())
+        remove(persistent);
+    });
+  } else if (Account *account = index.data(AccountRole).value<Account *>()) {
+    menu->addAction(tr("Remove"),
+                    [this, account] { promptToRemoveAccount(account); });
+
+    if (account->isAuthorizeSupported())
+      menu->addAction(tr("Authorize"), account, &Account::authorize);
+  }
+
+  if (menu->isEmpty()) {
+    delete menu;
+    return;
+  }
+
+  QmlSupport::host(mView)->popup(menu, x, y);
+}
+
+void SideBar::showAddMenu(qreal x, qreal y) {
+  QmlSupport::host(mView)->popup(mAddMenu, x, y);
+}
+
+void SideBar::showOptionsMenu(qreal x, qreal y) {
+  QmlSupport::host(mView)->popup(mOptionsMenu, x, y);
+}
+
+bool SideBar::isExpanded(const QModelIndex &index) const {
+  if (!index.parent().isValid()) {
+    QSettings settings;
+    settings.beginGroup(kSectionCollapsedGroup);
+    return !settings.value(QString::number(index.row()), false).toBool();
+  }
+
+  if (isRemoteIndex(index)) {
+    QSettings settings;
+    settings.beginGroup(kRemoteExpandedGroup);
+    return settings.value(index.data(Qt::DisplayRole).toString(), true)
+        .toBool();
+  }
+
+  return true;
+}
+
+void SideBar::setExpanded(const QModelIndex &index, bool expanded) {
+  QSettings settings;
+  if (!index.parent().isValid()) {
+    settings.beginGroup(kSectionCollapsedGroup);
+    settings.setValue(QString::number(index.row()), !expanded);
+  } else if (isRemoteIndex(index)) {
+    settings.beginGroup(kRemoteExpandedGroup);
+    settings.setValue(index.data(Qt::DisplayRole).toString(), expanded);
+  }
+}
+
+void SideBar::hideAfterOpen() {
+  if (autoHideSideBar())
+    mMainWindow->setSideBarVisible(false);
+}
 
 void SideBar::promptToRemoveAccount(Account *account) {
   QString fmt =
@@ -887,16 +941,14 @@ void SideBar::promptToRemoveAccount(Account *account) {
          "<p>Only the account association will be removed. Remote "
          "configurations and local clones will not be affected.</p>");
 
-  QMessageBox *dialog = new QMessageBox(
-      QMessageBox::Warning, tr("Remove Account?"),
-      fmt.arg(Account::name(account->kind()), account->username()),
-      QMessageBox::Cancel, this);
+  ConfirmDialog *dialog = new ConfirmDialog(mMainWindow);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setTitle(tr("Remove Account?"));
+  dialog->setText(fmt.arg(Account::name(account->kind()), account->username()));
+  dialog->setAcceptText(tr("Remove"));
+  dialog->setDanger(true);
 
-  QPushButton *remove =
-      dialog->addButton(tr("Remove"), QMessageBox::AcceptRole);
-  remove->setFocus();
-  connect(remove, &QPushButton::clicked,
+  connect(dialog, &QDialog::accepted,
           [account] { Accounts::instance()->removeAccount(account); });
 
   dialog->open();

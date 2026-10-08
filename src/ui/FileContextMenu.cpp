@@ -8,6 +8,7 @@
 //
 
 #include "FileContextMenu.h"
+#include "dialogs/ConfirmDialog.h"
 #include "RepoView.h"
 #include "IgnoreDialog.h"
 #include "conf/Settings.h"
@@ -22,7 +23,6 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDir>
-#include <QMessageBox>
 #include <QPushButton>
 #include <QFileDialog>
 #include <QDesktopServices>
@@ -37,9 +37,7 @@ void warnRevisionNotFound(QWidget *parent, const QString &fragment,
   QString text =
       FileContextMenu::tr("The selected file doesn't have a %1 revision.")
           .arg(fragment);
-  QMessageBox msg(QMessageBox::Warning, title, text, QMessageBox::Ok, parent);
-  msg.setInformativeText(file);
-  msg.exec();
+  ConfirmDialog::warning(parent, title, text, file);
 }
 
 void handlePath(const git::Repository &repo, const QString &path,
@@ -121,13 +119,9 @@ FileContextMenu::FileContextMenu(RepoView *view, const QStringList &files,
         if (error != ExternalTool::BashNotFound)
           return;
 
-        QString title = tr("Bash Not Found");
-        QString text = tr("Bash was not found on your PATH.");
-        QMessageBox msg(QMessageBox::Warning, title, text, QMessageBox::Ok,
-                        this);
-        msg.setInformativeText(
+        ConfirmDialog::warning(
+            this, tr("Bash Not Found"), tr("Bash was not found on your PATH."),
             tr("Bash is required to execute external tools."));
-        msg.exec();
       });
     }
 
@@ -152,13 +146,9 @@ FileContextMenu::FileContextMenu(RepoView *view, const QStringList &files,
         if (error != ExternalTool::BashNotFound)
           return;
 
-        QString title = tr("Bash Not Found");
-        QString text = tr("Bash was not found on your PATH.");
-        QMessageBox msg(QMessageBox::Warning, title, text, QMessageBox::Ok,
-                        this);
-        msg.setInformativeText(
+        ConfirmDialog::warning(
+            this, tr("Bash Not Found"), tr("Bash was not found on your PATH."),
             tr("Bash is required to execute external tools."));
-        msg.exec();
       });
     }
   }
@@ -333,30 +323,20 @@ void FileContextMenu::handleUncommittedChanges(const git::Index &index,
 
   QAction *discard =
       addAction(tr("Discard Changes"), [view, modified, submodules] {
-        QMessageBox *dialog =
-            new QMessageBox(QMessageBox::Warning, tr("Discard Changes?"),
-                            tr("Are you sure you want to discard changes in "
-                               "the selected files?"),
-                            QMessageBox::Cancel, view);
+        ConfirmDialog *dialog = new ConfirmDialog(view);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setTitle(tr("Discard Changes?"));
+        dialog->setText(tr("Are you sure you want to discard changes in "
+                           "the selected files?"));
         dialog->setInformativeText(tr("This action cannot be undone."));
         QString detailedText = modified.join('\n');
         for (const auto &s : submodules)
           detailedText += s.path() + " " + tr("(Submodule)") + "\n";
-        dialog->setDetailedText(detailedText);
+        dialog->setDetailedText(detailedText.trimmed());
+        dialog->setAcceptText(tr("Discard Changes"));
+        dialog->setDanger(true);
 
-        // Expand the Show Details
-        for (QAbstractButton *button : dialog->buttons()) {
-          if (dialog->buttonRole(button) == QMessageBox::ActionRole) {
-            button->click(); // click it to expand the text
-            break;
-          }
-        }
-
-        QString text = tr("Discard Changes");
-        QPushButton *discard = dialog->addButton(text, QMessageBox::AcceptRole);
-        discard->setObjectName("DiscardButton");
-        connect(discard, &QPushButton::clicked, [view, modified, submodules] {
+        connect(dialog, &QDialog::accepted, [view, modified, submodules] {
           git::Repository repo = view->repo();
           int strategy = GIT_CHECKOUT_FORCE;
           if (modified.count() &&
@@ -374,6 +354,7 @@ void FileContextMenu::handleUncommittedChanges(const git::Index &index,
         dialog->open();
       });
   discard->setEnabled(!modified.isEmpty() || submodules.count());
+  mDiscardAction = discard;
 
   QAction *remove = addAction(tr("Remove Untracked Files"),
                               [view, untracked] { view->clean(untracked); });
@@ -557,7 +538,7 @@ FileContextMenu::addExternalToolsAction(const QList<ExternalTool *> &tools) {
 
       QString title = tr("External Tool Not Found");
       QString text = tr("Failed to execute external %1 tool.");
-      QMessageBox::warning(this, title, text.arg(kind), QMessageBox::Ok);
+      ConfirmDialog::warning(this, title, text.arg(kind));
       SettingsDialog::openSharedInstance(SettingsDialog::Tools);
     }
   });

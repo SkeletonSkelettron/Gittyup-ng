@@ -21,10 +21,11 @@
 #include "git/Submodule.h"
 #include "git/Rebase.h"
 #include "host/Account.h"
+#include <QAbstractItemModel>
 #include <QFuture>
 #include <QFutureWatcher>
 #include <QProcess>
-#include <QSplitter>
+#include <QWidget>
 #include <QTimer>
 #include <functional>
 
@@ -33,22 +34,33 @@ class DetailView;
 class EditorWindow;
 class History;
 class Index;
+class InteractiveRebase;
 class Location;
 class LogEntry;
-class LogView;
+class LogPanel;
+class PullRequestList;
 class MainWindow;
-class PathspecWidget;
-class ReferenceWidget;
+class QQmlContext;
+class QQuickItem;
+class RefDrop;
+class RefsPanel;
 class RemoteCallbacks;
+class TreeModel;
 class ToolBar;
+class UndoHistory;
 struct ContributorInfo;
 
 namespace git {
 class Result;
 }
 
-class RepoView : public QSplitter {
+class RepoView : public QWidget {
   Q_OBJECT
+
+  Q_PROPERTY(QString pathspec READ pathspec WRITE setPathspec NOTIFY
+                 pathspecChanged)
+  Q_PROPERTY(QAbstractItemModel *pathModel READ pathModel CONSTANT)
+  Q_PROPERTY(bool maximized READ detailsMaximized NOTIFY maximizedChanged)
 
 public:
   enum ViewMode {
@@ -81,6 +93,16 @@ public:
 
   git::Repository repo() const { return mRepo; }
   History *history() const { return mHistory; }
+  DetailView *detailView() const { return mDetails; }
+
+  // The actions that can be undone and redone.
+  UndoHistory *undoHistory() const { return mUndo; }
+  // Branches dragged and dropped onto other branches.
+  RefDrop *refDrop() const { return mRefDrop; }
+  // The editor of interactive rebases.
+  InteractiveRebase *interactiveRebase() const { return mInteractiveRebase; }
+  // The open pull requests of the default remote.
+  PullRequestList *pullRequestList() const { return mPullRequests; }
   Index *index() const { return mIndex; }
 
   Repository *remoteRepo();
@@ -186,6 +208,10 @@ public:
   void pull(MergeFlags flags = Default,
             const git::Remote &remote = git::Remote(), bool tags = false,
             bool prune = false);
+
+  // Pull the checked out branch, or fetch the upstream of another local
+  // branch and fast-forward the branch to it.
+  void pullBranch(const git::Branch &branch);
   void merge(MergeFlags flags, const git::Reference &ref = git::Reference(),
              const git::AnnotatedCommit &commit = git::AnnotatedCommit(),
              LogEntry *parent = nullptr,
@@ -310,7 +336,19 @@ public:
   void refresh(bool restoreSelection);
 
   // pathspec search filter
-  void setPathspec(const QString &path);
+  QString pathspec() const { return mPathspec; }
+  Q_INVOKABLE void setPathspec(const QString &path);
+  QAbstractItemModel *pathModel() const;
+  Q_INVOKABLE void showPathContextMenu(const QString &path, qreal x, qreal y);
+
+  // The commit graph, which also knows the soloed branches.
+  CommitList *commitList() const;
+
+  // Map a point in the scene of the QML page to global coordinates.
+  QPoint mapFromPage(qreal x, qreal y) const;
+
+  // Show the page of the current tab, and hide the others.
+  void setPageVisible(bool visible);
 
   git::Commit nextRevision(const QString &path) const;
   git::Commit previousRevision(const QString &path) const;
@@ -338,7 +376,7 @@ public:
    * Returns if the details are maximized or not
    * \return
    */
-  bool detailsMaximized();
+  bool detailsMaximized() const { return mMaximized; }
   /*!
    * \brief detailSplitterMaximize
    *
@@ -365,9 +403,10 @@ private slots:
 signals:
   void statusChanged(bool dirty);
   void loadingChanged(bool loading);
+  void pathspecChanged(const QString &pathspec);
+  void maximizedChanged();
 
 protected:
-  void showEvent(QShowEvent *event) override;
   void closeEvent(QCloseEvent *event) override;
 
 private:
@@ -378,7 +417,6 @@ private:
   };
 
   ToolBar *toolBar() const;
-  CommitList *commitList() const;
 
   void notifyReferenceUpdated(const QString &name);
 
@@ -413,19 +451,25 @@ private:
   bool mRestartIndexer = false;
 
   History *mHistory;
+  UndoHistory *mUndo = nullptr;
+  RefDrop *mRefDrop = nullptr;
+  InteractiveRebase *mInteractiveRebase = nullptr;
+  PullRequestList *mPullRequests = nullptr;
 
   Repository *mRemoteRepo;
   bool mRemoteRepoCached = false;
 
-  ReferenceWidget *mRefs;
-  PathspecWidget *mPathspec;
+  RefsPanel *mRefs;
+  QString mPathspec;
+  TreeModel *mPathModel;
   CommitList *mCommits;
   DetailView *mDetails;
-  QWidget *mSideBar;
+  QQuickItem *mPage = nullptr;
+  QQmlContext *mPageContext = nullptr;
 
   LogEntry *mLogRoot;
   LogEntry *mRebase{nullptr};
-  LogView *mLogView;
+  LogPanel *mLogPanel;
   QTimer mLogTimer;
   bool mIsLogVisible = false;
 
@@ -440,15 +484,8 @@ private:
   friend class MenuBar;
 
   /*!
-   * \brief mDetailSplitter
-   * Splits the history list and the detailview (diffView, TreeView)
-   */
-  QSplitter *mDetailSplitter;
-  /*!
    * \brief mMaximized
-   * Maximizes the widgets in the mDetailSplitter
-   * true: single widget is visible and the others are invisible
-   * false: all widgets are sized normaly and visible
+   * Whether the panels around the graph or the diff are hidden.
    */
   bool mMaximized{false};
 };

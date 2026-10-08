@@ -23,7 +23,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QMessageBox>
+#include "dialogs/ConfirmDialog.h"
 #include <QNetworkReply>
 #include <QProcess>
 #include <QTemporaryFile>
@@ -47,10 +47,12 @@ namespace {
 
 const QString kDownloadPlatform = "Github";
 const QString kTemplateFmt = "%1-XXXXXX.%2";
-const QString kLinkFmt = "https://github.com/Murmele/gittyup/releases/latest/"
-                         "download/Gittyup%1%2.%3";
-const QString kChangelogUrl =
-    "https://raw.githubusercontent.com/Murmele/Gittyup/gh-pages/changelog.md";
+// The releases of Gittyup-ng, not of Gittyup.
+const QString kLinkFmt = "https://github.com/SkeletonSkelettron/Gittyup-ng/"
+                         "releases/latest/download/Gittyup-ng%1%2.%3";
+const QString kChangelogUrl = "https://raw.githubusercontent.com/"
+                              "SkeletonSkelettron/Gittyup-ng/master/docs/"
+                              "changelog.md";
 
 } // namespace
 
@@ -97,9 +99,7 @@ Updater::Updater(QObject *parent) : QObject(parent) {
 
   connect(this, &Updater::updateError,
           [](const QString &text, const QString &detail) {
-            QMessageBox mb(QMessageBox::Critical, tr("Update Failed"), text);
-            mb.setInformativeText(detail);
-            mb.exec();
+            ConfirmDialog::warning(nullptr, tr("Update Failed"), text, detail);
           });
 }
 
@@ -292,9 +292,8 @@ bool Updater::uninstallGittyup(bool system) {
 
   QStringList args;
   args.append("-c");
-  args.append(QString("flatpak-spawn --host flatpak remove -y %1 "
-                      "com.github.Murmele.Gittyup")
-                  .arg(loc));
+  args.append(QString("flatpak-spawn --host flatpak remove -y %1 %2")
+                  .arg(loc, QGuiApplication::desktopFileName()));
   auto *p = new QProcess(this);
 
   p->start(bash, args);
@@ -342,7 +341,8 @@ bool Updater::install(const DownloadRef &download, QString &error) {
   Debug("Relauncher command: " << relauncher_cmd);
 
   // Start the relaunch helper.
-  QString app = "flatpak-spawn --host flatpak run com.github.Murmele.Gittyup";
+  QString app =
+      "flatpak-spawn --host flatpak run " + QGuiApplication::desktopFileName();
   QString pid = QString::number(QCoreApplication::applicationPid());
   if (!QProcess::startDetached(relauncher_cmd, {app, pid})) {
     error = tr("Helper application failed to start");

@@ -9,29 +9,20 @@
 
 #include "qtsupport.h"
 #include "Test.h"
-#include "ui/DoubleTreeWidget.h"
+#include "ui/ChangedFilesModel.h"
+#include "ui/DetailView.h"
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
-#include "ui/TreeView.h"
-#include "ui/TreeProxy.h"
 #include "conf/Settings.h"
 #include <QFile>
-#include <QTextEdit>
 #include <QTextStream>
 
 using namespace Test;
 using namespace QTest;
 
-static void disableListView(TreeView &treeView, RepoView &repoView) {
-  auto treeProxy = dynamic_cast<TreeProxy *>(treeView.model());
-  QVERIFY(treeProxy);
-
-  auto diffTreeModel = dynamic_cast<DiffTreeModel *>(treeProxy->sourceModel());
-  QVERIFY(diffTreeModel);
-
-  diffTreeModel->enableListView(false);
-  Settings::instance()->setValue(Setting::Id::ShowChangedFilesAsList, false);
-  repoView.refresh();
+static git::Index::StagedState stageState(QAbstractItemModel *model, int row) {
+  return static_cast<git::Index::StagedState>(
+      model->index(row, 0).data(ChangedFilesModel::StageStateRole).toInt());
 }
 
 class TestIndex : public QObject {
@@ -64,40 +55,29 @@ void TestIndex::stageAddition() {
   RepoView *view = mWindow->currentView();
   refresh(view);
 
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
+  auto details = view->findChild<DetailView *>();
+  QVERIFY(details);
 
-  auto unstagedFiles = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(unstagedFiles);
+  details->setListMode(false);
 
-  disableListView(*unstagedFiles, *view);
-
-  auto stagedFiles = doubleTree->findChild<TreeView *>("Staged");
-  QVERIFY(stagedFiles);
-
-  QAbstractItemModel *unstagedModel = unstagedFiles->model();
+  QAbstractItemModel *unstagedModel = details->unstagedFiles();
   QCOMPARE(unstagedModel->rowCount(), 1);
 
   // Check that it starts unstaged.
-  QModelIndex unstagedIndex = unstagedModel->index(0, 0);
-  QVERIFY(!unstagedIndex.data(Qt::CheckStateRole).toBool());
+  QCOMPARE(stageState(unstagedModel, 0), git::Index::Unstaged);
 
-  // Click on the check box.
-  mouseClick(unstagedFiles->viewport(), Qt::LeftButton, Qt::KeyboardModifiers(),
-             unstagedFiles->checkRect(unstagedIndex).center());
+  // Stage it.
+  details->stageFiles(DetailView::UnstagedFiles, 0, true);
 
-  QAbstractItemModel *stagedModel = stagedFiles->model();
+  QAbstractItemModel *stagedModel = details->stagedFiles();
   QCOMPARE(stagedModel->rowCount(), 1);
+  QCOMPARE(unstagedModel->rowCount(), 0);
 
   // Check that it's staged now.
-  QModelIndex stagedIndex = stagedModel->index(0, 0);
-  QVERIFY(stagedIndex.data(Qt::CheckStateRole).toBool());
+  QCOMPARE(stageState(stagedModel, 0), git::Index::Staged);
 
   // Commit and refresh.
-  QTextEdit *editor = view->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-
-  editor->setText("addition");
+  details->setCommitMessage("addition");
   view->commit();
   refresh(view, false);
 }
@@ -109,38 +89,28 @@ void TestIndex::stageDeletion() {
   RepoView *view = mWindow->currentView();
   refresh(view);
 
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
+  auto details = view->findChild<DetailView *>();
+  QVERIFY(details);
 
-  auto unstagedFiles = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(unstagedFiles);
 
-  auto stagedFiles = doubleTree->findChild<TreeView *>("Staged");
-  QVERIFY(stagedFiles);
-
-  QAbstractItemModel *unstagedModel = unstagedFiles->model();
+  QAbstractItemModel *unstagedModel = details->unstagedFiles();
   QCOMPARE(unstagedModel->rowCount(), 1);
 
   // Check that it starts unstaged.
-  QModelIndex unstagedIndex = unstagedModel->index(0, 0);
-  QVERIFY(!unstagedIndex.data(Qt::CheckStateRole).toBool());
+  QCOMPARE(stageState(unstagedModel, 0), git::Index::Unstaged);
 
-  // Click on the check box.
-  mouseClick(unstagedFiles->viewport(), Qt::LeftButton, Qt::KeyboardModifiers(),
-             unstagedFiles->checkRect(unstagedIndex).center());
+  // Stage it.
+  details->stageFiles(DetailView::UnstagedFiles, 0, true);
 
-  QAbstractItemModel *stagedModel = stagedFiles->model();
+  QAbstractItemModel *stagedModel = details->stagedFiles();
   QCOMPARE(stagedModel->rowCount(), 1);
+  QCOMPARE(unstagedModel->rowCount(), 0);
 
   // Check that it's staged now.
-  QModelIndex stagedIndex = stagedModel->index(0, 0);
-  QVERIFY(stagedIndex.data(Qt::CheckStateRole).toBool());
+  QCOMPARE(stageState(stagedModel, 0), git::Index::Staged);
 
   // Commit and refresh.
-  QTextEdit *editor = view->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-
-  editor->setText("deletion");
+  details->setCommitMessage("deletion");
   view->commit();
   refresh(view, false);
 }
@@ -161,48 +131,33 @@ void TestIndex::stageDirectory() {
   RepoView *view = mWindow->currentView();
   refresh(view);
 
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
+  auto details = view->findChild<DetailView *>();
+  QVERIFY(details);
 
-  auto unstagedFiles = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(unstagedFiles);
+  details->setListMode(false);
 
-  disableListView(*unstagedFiles, *view);
+  // The directory followed by its two files.
+  QAbstractItemModel *unstagedModel = details->unstagedFiles();
+  QCOMPARE(unstagedModel->rowCount(), 3);
+  QVERIFY(unstagedModel->index(0, 0)
+              .data(ChangedFilesModel::IsDirRole)
+              .toBool());
 
-  auto stagedFiles = doubleTree->findChild<TreeView *>("Staged");
-  QVERIFY(stagedFiles);
+  // Check that they start unstaged.
+  QCOMPARE(stageState(unstagedModel, 1), git::Index::Unstaged);
+  QCOMPARE(stageState(unstagedModel, 2), git::Index::Unstaged);
 
-  QAbstractItemModel *unstagedModel = unstagedFiles->model();
-  QCOMPARE(unstagedModel->rowCount(), 1);
-
-  // Check that it starts unstaged.
-  QModelIndex unstagedIndex = unstagedModel->index(0, 0);
-  QCOMPARE(unstagedModel->rowCount(unstagedIndex), 2);
-  QVERIFY(!unstagedIndex.data(Qt::CheckStateRole).toBool());
-
-  QVERIFY(!unstagedModel->index(0, 0, unstagedIndex)
-               .data(Qt::CheckStateRole)
-               .toBool());
-  QVERIFY(!unstagedModel->index(1, 0, unstagedIndex)
-               .data(Qt::CheckStateRole)
-               .toBool());
-
-  // Click on the check box.
-  mouseClick(unstagedFiles->viewport(), Qt::LeftButton, Qt::KeyboardModifiers(),
-             unstagedFiles->checkRect(unstagedIndex).center());
+  // Stage the directory.
+  details->stageFiles(DetailView::UnstagedFiles, 0, true);
 
   // Check for two staged files.
-  QAbstractItemModel *stagedModel = stagedFiles->model();
-  QCOMPARE(stagedModel->rowCount(), 1);
-
-  QModelIndex stagedIndex = stagedModel->index(0, 0);
-  QCOMPARE(stagedModel->rowCount(stagedIndex), 2);
+  QAbstractItemModel *stagedModel = details->stagedFiles();
+  QCOMPARE(stagedModel->rowCount(), 3);
+  QCOMPARE(unstagedModel->rowCount(), 0);
 
   // Check that they're staged now.
-  QVERIFY(
-      stagedModel->index(0, 0, stagedIndex).data(Qt::CheckStateRole).toBool());
-  QVERIFY(
-      stagedModel->index(1, 0, stagedIndex).data(Qt::CheckStateRole).toBool());
+  QCOMPARE(stageState(stagedModel, 1), git::Index::Staged);
+  QCOMPARE(stageState(stagedModel, 2), git::Index::Staged);
 }
 
 void TestIndex::cleanupTestCase() { mWindow->close(); }

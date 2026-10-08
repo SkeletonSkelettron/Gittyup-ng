@@ -10,24 +10,45 @@
 #ifndef ABOUTDIALOG_H
 #define ABOUTDIALOG_H
 
-#include <QDialog>
+#include "QmlDialog.h"
 
-class QTabBar;
-
-class AboutDialog : public QDialog {
+// Information about Gittyup. qrc:/qml/AboutDialog.qml draws it.
+class AboutDialog : public QmlDialog {
   Q_OBJECT
 
+  Q_PROPERTY(QString name READ name CONSTANT)
+  Q_PROPERTY(QString version READ version CONSTANT)
+  Q_PROPERTY(QString build READ build CONSTANT)
+  Q_PROPERTY(QString copyright READ copyright CONSTANT)
+  Q_PROPERTY(QString support READ support CONSTANT)
+  Q_PROPERTY(int index READ index WRITE setIndex NOTIFY indexChanged)
+  Q_PROPERTY(QString document READ document NOTIFY indexChanged)
+
 public:
+  // Keep in sync with AboutDialog.qml.
   enum Index { Changelog, Acknowledgments, Privacy };
 
   AboutDialog(QWidget *parent = nullptr);
 
   static void openSharedInstance(Index index = Changelog);
 
-private:
-  void setCurrentIndex(Index index);
+  QString name() const;
+  QString version() const;
+  QString build() const;
+  QString copyright() const;
+  QString support() const;
 
-  QTabBar *mTabs;
+  int index() const { return mIndex; }
+  void setIndex(int index);
+
+  // The HTML of the current tab.
+  QString document() const;
+
+signals:
+  void indexChanged();
+
+private:
+  int mIndex = Changelog;
 };
 
 #endif

@@ -1,30 +1,22 @@
+//
+//          Copyright (c) 2022, Gittyup contributors
+//
+// This software is licensed under the MIT License. The LICENSE.md file
+// describes the conditions under which this software may be distributed.
+//
+
 #include "IgnoreDialog.h"
 
-#include <QDialogButtonBox>
-#include <QLabel>
-#include <QTextEdit>
-#include <QVBoxLayout>
-
 IgnoreDialog::IgnoreDialog(const QString &ignore, QWidget *parent)
-    : QDialog(parent) {
-  QLabel *lbl = new QLabel(tr("Ignore Pattern"));
-  mIgnore = new QTextEdit(this);
-  mIgnore->setText(ignore);
-
-  // TODO: show preview of files which are effected
-
-  mButtonBox = new QDialogButtonBox(
-      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-
-  QVBoxLayout *vBox = new QVBoxLayout();
-  vBox->addWidget(lbl);
-  vBox->addWidget(mIgnore);
-  vBox->addWidget(mButtonBox);
-
-  setLayout(vBox);
-
-  connect(mButtonBox, &QDialogButtonBox::accepted, this, &IgnoreDialog::accept);
-  connect(mButtonBox, &QDialogButtonBox::rejected, this, &IgnoreDialog::reject);
+    : QmlDialog(parent), mIgnore(ignore) {
+  setWindowTitle(tr("Ignore"));
+  setContent("IgnoreDialog");
 }
 
-QString IgnoreDialog::ignoreText() const { return mIgnore->toPlainText(); }
+void IgnoreDialog::setIgnoreText(const QString &text) {
+  if (text == mIgnore)
+    return;
+
+  mIgnore = text;
+  emit patternChanged();
+}

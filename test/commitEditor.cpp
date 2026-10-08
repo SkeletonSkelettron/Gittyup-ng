@@ -1,8 +1,6 @@
 #include "Test.h"
 
-#include "ui/CommitEditor.h"
-
-#include <QTextEdit>
+#include "ui/CommitMessage.h"
 
 class TestCommitEditor : public QObject {
   Q_OBJECT
@@ -14,44 +12,37 @@ private slots:
 };
 
 void TestCommitEditor::testCreateFileList() {
-  QCOMPARE(CommitEditor::createFileList({"file.txt"}, 1),
+  QCOMPARE(CommitMessage::fileList({"file.txt"}, 1),
            QStringLiteral("file.txt"));
-  QCOMPARE(CommitEditor::createFileList({"file.txt", "file2.txt"}, 1),
+  QCOMPARE(CommitMessage::fileList({"file.txt", "file2.txt"}, 1),
            QStringLiteral("file.txt, and 1 more file"));
   QCOMPARE(
-      CommitEditor::createFileList({"file.txt", "file2.txt", "file2.txt"}, 1),
+      CommitMessage::fileList({"file.txt", "file2.txt", "file2.txt"}, 1),
       QStringLiteral("file.txt, and 2 more files"));
-  QCOMPARE(CommitEditor::createFileList({"file.txt", "file2.txt"}, 2),
+  QCOMPARE(CommitMessage::fileList({"file.txt", "file2.txt"}, 2),
            QStringLiteral("file.txt and file2.txt"));
   QCOMPARE(
-      CommitEditor::createFileList({"file.txt", "file2.txt", "file2.txt"}, 2),
+      CommitMessage::fileList({"file.txt", "file2.txt", "file2.txt"}, 2),
       QStringLiteral("file.txt, file2.txt, and 1 more file"));
 }
 
 void TestCommitEditor::applyTemplate1() {
-  Test::ScratchRepository repo;
-  CommitEditor e(repo);
-
-  e.applyTemplate(QStringLiteral("Description: %|\nfiles: ${files:3}"),
-                  {"file.txt"});
-  QCOMPARE(e.textEdit()->toPlainText(),
-           QStringLiteral("Description: \nfiles: file.txt"));
-  QCOMPARE(e.textEdit()->textCursor().position(), 13);
+  CommitMessage::Result result = CommitMessage::applyTemplate(
+      QStringLiteral("Description: %|\nfiles: ${files:3}"), {"file.txt"});
+  QCOMPARE(result.text, QStringLiteral("Description: \nfiles: file.txt"));
+  QCOMPARE(result.cursorPosition, 13);
 }
 
 void TestCommitEditor::applyTemplate2() {
-  Test::ScratchRepository repo;
-  CommitEditor e(repo);
-
   // Cursor after inserted files
-  e.applyTemplate(
+  CommitMessage::Result result = CommitMessage::applyTemplate(
       QStringLiteral("Description: \nfiles: ${files:3}\nCursorPosition: %|"),
       {"reallylongfilename.txt"});
   QCOMPARE(
-      e.textEdit()->toPlainText(),
+      result.text,
       QStringLiteral(
           "Description: \nfiles: reallylongfilename.txt\nCursorPosition: "));
-  QCOMPARE(e.textEdit()->textCursor().position(), 60);
+  QCOMPARE(result.cursorPosition, 60);
 }
 
 TEST_MAIN(TestCommitEditor)

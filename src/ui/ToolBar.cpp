@@ -10,708 +10,22 @@
 #include "ToolBar.h"
 #include "History.h"
 #include "MainWindow.h"
-#include "qtsupport.h"
 #include "RepoView.h"
 #include "SearchField.h"
-#include "app/Application.h"
+#include "UndoHistory.h"
 #include "dialogs/PullRequestDialog.h"
-#include "git/Branch.h"
-#include "git/Commit.h"
-#include "ui/HotkeyManager.h"
 #include "dialogs/SettingsDialog.h"
-#include <QAction>
-#include <QButtonGroup>
-#include <QHBoxLayout>
+#include "git/Branch.h"
+#include "qml/QmlSupport.h"
+#include "ui/HotkeyManager.h"
 #include <QMenu>
-#include <QPainter>
-#include <QPainterPath>
-#include <QStyleOptionToolButton>
-#include <QToolButton>
-#include <QWindow>
-#include <QtMath>
+#include <QQuickWidget>
 #include <QRegularExpression>
+#include <QShortcut>
 
 namespace {
 
-const int kButtonWidth = 36;
-const int kButtonHeight = 24;
-const int kToolBarHeight = 32;
 const QString kStarredQuery = "is:starred";
-const QString kStyleSheet = "QToolButton {"
-                            "  border-radius: 4px;"
-                            "  padding: 0px 4px 0px 4px"
-                            "}"
-                            "QToolButton#first {"
-                            "  border-top-right-radius: 0px;"
-                            "  border-bottom-right-radius: 0px"
-                            "}"
-                            "QToolButton#middle {"
-                            "  border-left: none;"
-                            "  border-radius: 0px"
-                            "}"
-                            "QToolButton#last {"
-                            "  border-left: none;"
-                            "  border-top-left-radius: 0px;"
-                            "  border-bottom-left-radius: 0px"
-                            "}"
-                            "QToolButton::menu-indicator {"
-                            "  image: none"
-                            "}"
-                            "QToolButton::menu-button {"
-                            "  border: none;"
-                            "  width: 10px"
-                            "}"
-                            "QToolButton::menu-arrow {"
-                            "  image: none"
-                            "}";
-
-void drawPopupChevron(qreal width, qreal height, QPainter &painter,
-                      const QBrush &brush) {
-  // Draw relative to lower right corner.
-  qreal x = width - 9.5;
-  qreal y = height - 6.5;
-
-  QPainterPath path;
-  path.moveTo(x, y);
-  path.lineTo(x + 3, y + 3);
-  path.lineTo(x + 6, y);
-
-  painter.setPen(QPen(brush, 1.5));
-  painter.drawPath(path);
-}
-
-class Spacer : public QWidget {
-public:
-  Spacer(int width = -1, QWidget *parent = nullptr)
-      : QWidget(parent), mWidth(width) {
-    setAttribute(Qt::WA_TransparentForMouseEvents);
-    if (width < 0)
-      setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-  }
-
-  QSize sizeHint() const override {
-    return QSize(qMax(0, mWidth), kToolBarHeight);
-  }
-
-private:
-  int mWidth;
-};
-
-class Button : public QToolButton {
-public:
-  Button(QWidget *parent = nullptr) : QToolButton(parent) {}
-
-  QSize sizeHint() const override { return QSize(kButtonWidth, kButtonHeight); }
-};
-
-class SidebarButton : public Button {
-public:
-  enum Kind { Left, Right };
-
-  SidebarButton(Kind kind, QWidget *parent = nullptr)
-      : Button(parent), mKind(kind) {}
-
-  void paintEvent(QPaintEvent *event) {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QColor color = opt.palette.buttonText().color();
-    QColor light = (isEnabled() && isActiveWindow()) ? color.lighter() : color;
-
-    QPainter painter(this);
-    painter.setPen(QPen(color, 1.0));
-    if (window()->windowHandle()->devicePixelRatio() > 1.0)
-      painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal dx = 2.0;
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-    if (mKind == Right)
-      dx = -dx; // invert
-
-    painter.drawRect(QRectF(x - 8, y - 7, 16, 13));
-    painter.drawLine(QLineF(x - dx, y - 7, x - dx, y + 6));
-
-    qreal dx2x = 2 * dx;
-    qreal dx3x = 3 * dx;
-    painter.setPen(QPen(light, 1.0));
-    painter.drawLine(QLineF(x - dx3x, y - 4, x - dx2x, y - 4));
-    painter.drawLine(QLineF(x - dx3x, y - 2, x - dx2x, y - 2));
-    painter.drawLine(QLineF(x - dx3x, y, x - dx2x, y));
-  }
-
-private:
-  Kind mKind;
-};
-
-class HistoryButton : public Button {
-public:
-  enum Kind { Prev, Next };
-
-  HistoryButton(Kind kind, QWidget *parent = nullptr)
-      : Button(parent), mKind(kind) {}
-
-  QSize sizeHint() const override {
-    return QSize(QToolButton::sizeHint().width(), kButtonHeight);
-  }
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    painter.setPen(QPen(opt.palette.buttonText(), 1.5));
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal dx = 2.5;
-    qreal dy = 5.0;
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-    if (mKind == Prev)
-      dx = -dx; // invert
-
-    QPainterPath path;
-    path.moveTo(x - dx, y - dy);
-    path.lineTo(x + dx, y);
-    path.lineTo(x - dx, y + dy);
-
-    painter.drawPath(path);
-  }
-
-private:
-  Kind mKind;
-};
-
-class RemoteButton : public Button {
-  Q_OBJECT
-
-public:
-  enum Kind { Fetch, Pull, Push };
-
-  RemoteButton(Kind kind, QWidget *parent = nullptr)
-      : Button(parent), mKind(kind) {}
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    painter.setPen(QPen(opt.palette.buttonText(), 1.0));
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    QPainterPath path;
-    if (mKind == Fetch) {
-      path.moveTo(x + 8, y - 6);
-      path.quadTo(x + 8, y - 2, x - 1, y - 2);
-      path.lineTo(x - 1, y - 6);
-      path.lineTo(x - 7, y);
-      path.lineTo(x - 1, y + 6);
-      path.lineTo(x - 1, y + 2);
-      path.quadTo(x + 8, y + 2, x + 8, y - 6);
-    } else if (mKind == Pull) {
-      path.moveTo(x - 7, y);
-      path.lineTo(x - 1, y - 6);
-      path.lineTo(x - 1, y - 2);
-      path.lineTo(x + 7, y - 2);
-      path.lineTo(x + 7, y + 2);
-      path.lineTo(x - 1, y + 2);
-      path.lineTo(x - 1, y + 6);
-      path.lineTo(x - 7, y);
-    } else {
-      path.moveTo(x + 7, y);
-      path.lineTo(x + 1, y + 6);
-      path.lineTo(x + 1, y + 2);
-      path.lineTo(x - 7, y + 2);
-      path.lineTo(x - 7, y - 2);
-      path.lineTo(x + 1, y - 2);
-      path.lineTo(x + 1, y - 6);
-      path.lineTo(x + 7, y);
-    }
-
-    // Draw outline on high resolution displays.
-    if (window()->windowHandle()->devicePixelRatio() > 1.0) {
-      painter.drawPath(path);
-    } else {
-      painter.fillPath(path, opt.palette.buttonText());
-    }
-
-    if (popupMode() == QToolButton::MenuButtonPopup) {
-      drawPopupChevron(width(), height(), painter, opt.palette.buttonText());
-    }
-
-    // Draw badge.
-    if (mBadge > 0) {
-#ifdef Q_OS_LINUX
-      QFont font = painter.font();
-      font.setPointSize(font.pointSize() - 2);
-      painter.setFont(font);
-#endif
-
-      QString text = (mBadge > 999) ? tr("999+") : QString::number(mBadge);
-      QFontMetrics fm = painter.fontMetrics();
-
-      int w = fm.horizontalAdvance(text) + 8;
-      QRect rect(width() - w - 2, 2, w, fm.lineSpacing() + 2);
-
-      Theme *theme = Application::theme();
-      auto state = Theme::BadgeState::Notification;
-      QColor color = theme->badge(Theme::BadgeRole::Background, state);
-      color.setAlphaF(0.6);
-      painter.setBrush(color);
-      painter.setPen(Qt::NoPen);
-      painter.drawRoundedRect(rect, 6, 6);
-
-      painter.setPen(theme->badge(Theme::BadgeRole::Foreground, state));
-      painter.drawText(rect, Qt::AlignHCenter | Qt::AlignVCenter, text);
-    }
-  }
-
-  void setBadge(int badge) {
-    mBadge = badge;
-    update();
-  }
-
-private:
-  Kind mKind;
-  int mBadge = 0;
-};
-
-class StashButton : public Button {
-public:
-  enum Kind { Stash, Pop };
-
-  StashButton(Kind kind, QWidget *parent = nullptr)
-      : Button(parent), mKind(kind) {}
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    painter.setPen(QPen(opt.palette.buttonText(), 1.0));
-    if (window()->windowHandle()->devicePixelRatio() > 1.0)
-      painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-    int offset = (mKind == Pop) ? 1 : 0;
-
-    painter.drawRect(QRectF(x - 7, y - 6 - offset, 14, 4 - offset));
-    painter.drawRect(QRectF(x - 6, y - 2, 12, 8));
-    painter.drawLine(QLineF(x - 3, y, x + 3, y));
-  }
-
-private:
-  Kind mKind;
-};
-
-class CheckButton : public Button {
-public:
-  CheckButton(QWidget *parent = nullptr) : Button(parent) {}
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    painter.setPen(QPen(opt.palette.buttonText(), 1));
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    QPainterPath path;
-    path.moveTo(x - 1, y + 2);
-    path.lineTo(x - 3, y - 1);
-    path.lineTo(x - 7, y - 1);
-    path.lineTo(x - 2, y + 6);
-    path.lineTo(x + 1, y + 6);
-    path.lineTo(x + 7, y - 6);
-    path.lineTo(x + 3, y - 6);
-    path.closeSubpath();
-
-    // Draw outline on high resolution displays.
-    if (window()->windowHandle()->devicePixelRatio() > 1.0) {
-      painter.drawPath(path);
-    } else {
-      painter.fillPath(path, opt.palette.buttonText());
-    }
-  }
-};
-
-class RefreshButton : public Button {
-  Q_OBJECT
-
-public:
-  RefreshButton(QWidget *parent = nullptr) : Button(parent) {
-    setObjectName("RefreshButton");
-    setToolTip(tr("Refresh"));
-  }
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    painter.setPen(QPen(opt.palette.buttonText(), 1.5));
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    // Subtract a diagonal rectangle from the clip area.
-    QPainterPath clip;
-    clip.addRect(rect());
-
-    QPainterPath path;
-    path.moveTo(x - 8, y);
-    path.lineTo(x + 8, y - 4);
-    path.lineTo(x + 8, y);
-    path.lineTo(x - 8, y + 4);
-    path.closeSubpath();
-
-    painter.setClipPath(clip.subtracted(path));
-    painter.drawEllipse(QPointF(x, y), 6, 6);
-    painter.setClipping(false);
-
-    QPainterPath path1;
-    path1.moveTo(x - 9, y - 1);
-    path1.lineTo(x - 6, y + 2);
-    path1.lineTo(x - 3, y - 1);
-    path1.closeSubpath();
-    painter.fillPath(path1, opt.palette.buttonText());
-
-    QPainterPath path2;
-    path2.moveTo(x + 9, y + 1);
-    path2.lineTo(x + 6, y - 2);
-    path2.lineTo(x + 3, y + 1);
-    path2.closeSubpath();
-    painter.fillPath(path2, opt.palette.buttonText());
-  }
-};
-
-class PullRequestButton : public Button {
-  Q_OBJECT
-
-public:
-  PullRequestButton(QWidget *parent = nullptr) : Button(parent) {
-    setObjectName("PullRequestButton");
-    setToolTip(tr("Create Pull Request"));
-  }
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    painter.setPen(QPen(opt.palette.buttonText(), 1.25));
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    QPainterPath path;
-    path.addEllipse(x - 6, y - 7, 4, 4);
-    path.addEllipse(x - 6, y + 3, 4, 4);
-    path.addEllipse(x + 3, y, 4, 4);
-
-    path.moveTo(x - 4, y + 3);
-    path.lineTo(x - 4, y - 3);
-    path.quadTo(x - 2, y + 2, x + 2, y + 2);
-    painter.drawPath(path);
-  }
-};
-
-class LogButton : public Button {
-public:
-  LogButton(QWidget *parent = nullptr) : Button(parent) {}
-
-  void paintEvent(QPaintEvent *event) {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QColor color = opt.palette.buttonText().color();
-    QColor light = (isEnabled() && isActiveWindow()) ? color.lighter() : color;
-
-    QPainter painter(this);
-    painter.setPen(QPen(color, 1.0));
-    if (window()->windowHandle()->devicePixelRatio() > 1.0)
-      painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    painter.drawRect(QRectF(x - 8, y - 7, 16, 13));
-    painter.drawLine(QLineF(x - 8, y, x + 8, y));
-
-    painter.setPen(QPen(light, 1.0));
-    painter.drawLine(QLineF(x - 6, y + 2, x + 6, y + 2));
-    painter.drawLine(QLineF(x - 6, y + 4, x + 6, y + 4));
-  }
-};
-
-class ModeButton : public Button {
-public:
-  ModeButton(RepoView::ViewMode mode, QWidget *parent = nullptr)
-      : Button(parent), mMode(mode) {}
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    Theme *theme = Application::theme();
-    QColor color = (isEnabled() && isActiveWindow() && isChecked())
-                       ? theme->buttonChecked()
-                       : opt.palette.color(QPalette::ButtonText);
-    painter.setPen(QPen(color, 1.25));
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    if (mMode == RepoView::DoubleTree) {
-      // Subtract a diagonal rectangle from the clip area.
-      QPainterPath clip;
-      clip.addRect(rect());
-
-      QPainterPath path;
-      path.moveTo(x - 3, y - 4);
-      path.lineTo(x + 5, y + 2);
-      path.lineTo(x + 3, y + 4);
-      path.lineTo(x - 5, y - 2);
-      path.closeSubpath();
-
-      painter.setClipPath(clip.subtracted(path));
-
-      QPainterPath path1;
-      path1.addEllipse(x + 4, y - 7, 4, 4);
-      path1.addEllipse(x - 8, y + 3, 4, 4);
-
-      path1.moveTo(x - 4, y + 3);
-      path1.lineTo(x + 4, y - 3);
-      painter.drawPath(path1);
-
-      painter.setClipping(false);
-
-      QPainterPath path2;
-      path2.addEllipse(x - 8, y - 7, 4, 4);
-      path2.addEllipse(x + 4, y + 3, 4, 4);
-
-      path2.moveTo(x - 4, y - 3);
-      path2.lineTo(x + 4, y + 3);
-      painter.drawPath(path2);
-
-    } else {
-      QPainterPath path;
-      path.addEllipse(x - 8, y - 7, 4, 4);
-      path.addEllipse(x, y - 7, 4, 4);
-      path.addEllipse(x, y + 3, 4, 4);
-
-      path.moveTo(x - 3, y - 5);
-      path.lineTo(x - 1, y - 5);
-      path.moveTo(x + 5, y - 5);
-      path.lineTo(x + 8, y - 5);
-
-      path.moveTo(x + 2, y - 2);
-      path.lineTo(x + 2, y + 2);
-      path.moveTo(x + 5, y + 5);
-      path.lineTo(x + 8, y + 5);
-      painter.drawPath(path);
-    }
-  }
-
-private:
-  RepoView::ViewMode mMode;
-};
-
-class SettingsButton : public Button {
-public:
-  SettingsButton(QWidget *parent = nullptr) : Button(parent) {}
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    painter.setPen(QPen(opt.palette.buttonText(), 2.25));
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    // radii
-    qreal inner = 4;
-    qreal outer = 6.5;
-
-    QPainterPath path;
-    path.addEllipse(QPointF(x, y), inner, inner);
-    for (int i = 0; i < 8; ++i) {
-      qreal angle = i * M_PI_4; // in radians
-      path.moveTo(x + qCos(angle) * inner, y + qSin(angle) * inner);
-      path.lineTo(x + qCos(angle) * outer, y + qSin(angle) * outer);
-    }
-
-    painter.drawPath(path);
-
-    drawPopupChevron(width(), height(), painter, opt.palette.buttonText());
-  }
-};
-
-class StarButton : public Button {
-public:
-  StarButton(QWidget *parent = nullptr) : Button(parent) { setCheckable(true); }
-
-  void paintEvent(QPaintEvent *event) override {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QPainter painter(this);
-    painter.setPen(QPen(opt.palette.buttonText(), 1.25));
-    painter.setRenderHints(QPainter::Antialiasing);
-
-    // Calculate outer radius and vertices.
-    qreal r = 8.0;
-    qreal x = width() / 2.0;
-    qreal y = (height() / 2.0) + 1.0;
-    qreal x1 = r * qCos(M_PI / 10.0);
-    qreal y1 = -r * qSin(M_PI / 10.0);
-    qreal x2 = r * qCos(17.0 * M_PI / 10.0);
-    qreal y2 = -r * qSin(17.0 * M_PI / 10.0);
-
-    // Calculate inner radius and verices.
-    qreal xi = ((y1 + r) * x2) / (y2 + r);
-    qreal ri = qSqrt(qPow(xi, 2.0) + qPow(y1, 2.0));
-    qreal xi1 = ri * qCos(3.0 * M_PI / 10.0);
-    qreal yi1 = -ri * qSin(3.0 * M_PI / 10.0);
-    qreal xi2 = ri * qCos(19.0 * M_PI / 10.0);
-    qreal yi2 = -ri * qSin(19.0 * M_PI / 10.0);
-
-    QPolygonF polygon({QPointF(0, -r), QPointF(xi1, yi1), QPointF(x1, y1),
-                       QPointF(xi2, yi2), QPointF(x2, y2), QPointF(0, ri),
-                       QPointF(-x2, y2), QPointF(-xi2, yi2), QPointF(-x1, y1),
-                       QPointF(-xi1, yi1)});
-
-    if (isChecked())
-      painter.setBrush(Application::theme()->star());
-    painter.drawPolygon(polygon.translated(x, y));
-  }
-};
-
-class SegmentedButton : public QWidget {
-public:
-  SegmentedButton(QWidget *parent = nullptr) : QWidget(parent) {
-    mLayout = new QHBoxLayout(this);
-    mLayout->setContentsMargins(0, 0, 0, 0);
-    mLayout->setSpacing(0);
-  }
-
-  void addButton(QAbstractButton *button, const QString &text = QString(),
-                 bool checkable = false) {
-    button->setToolTip(text);
-    button->setCheckable(checkable);
-
-    mLayout->addWidget(button);
-    mButtons.addButton(button, mButtons.buttons().size());
-
-    if (mButtons.buttons().size() > 1) {
-      mButtons.buttons().first()->setObjectName("first");
-      mButtons.buttons().last()->setObjectName("last");
-    }
-
-    for (int i = 1; i < mButtons.buttons().size() - 1; ++i)
-      mButtons.buttons().at(i)->setObjectName("middle");
-  }
-
-  const QButtonGroup *buttonGroup() const { return &mButtons; }
-
-private:
-  QHBoxLayout *mLayout;
-  QButtonGroup mButtons;
-};
-
-class TerminalButton : public Button {
-public:
-  TerminalButton(QWidget *parent = nullptr) : Button(parent) {}
-
-  void paintEvent(QPaintEvent *event) {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QColor color = opt.palette.buttonText().color();
-    QColor light = (isEnabled() && isActiveWindow()) ? color.lighter() : color;
-
-    QPainter painter(this);
-    painter.setPen(QPen(color, 1.0));
-    if (window()->windowHandle()->devicePixelRatio() > 1.0)
-      painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    painter.drawRect(QRectF(x - 8, y - 7, 16, 13));
-
-    painter.setPen(QPen(light, 1.0));
-    painter.drawLine(QLineF(x - 6, y - 5, x - 4, y - 3));
-    painter.drawLine(QLineF(x - 6, y - 1, x - 4, y - 3));
-
-    painter.drawLine(QLineF(x - 2, y - 1, x, y - 1));
-  }
-};
-
-class FileManagerButton : public Button {
-public:
-  FileManagerButton(QWidget *parent = nullptr) : Button(parent) {}
-
-  void paintEvent(QPaintEvent *event) {
-    Button::paintEvent(event);
-
-    QStyleOptionToolButton opt;
-    initStyleOption(&opt);
-
-    QColor color = opt.palette.buttonText().color();
-
-    QPainter painter(this);
-    painter.setPen(QPen(color, 1.0));
-    if (window()->windowHandle()->devicePixelRatio() > 1.0)
-      painter.setRenderHint(QPainter::Antialiasing);
-
-    qreal x = width() / 2.0;
-    qreal y = height() / 2.0;
-
-    painter.drawPolygon(
-        QPolygonF({QPointF(16, 13), QPointF(0, 13), QPointF(0, 0),
-                   QPointF(7, 0), QPointF(7, 2), QPointF(16, 2)})
-            .translated(x - 8, y - 7));
-  }
-};
 
 static Hotkey terminalHotkey = HotkeyManager::registerHotkey(
     nullptr, "tools/terminal", "Tools/Open Terminal");
@@ -721,316 +35,261 @@ static Hotkey fileManagerHotkey = HotkeyManager::registerHotkey(
 
 } // namespace
 
-ToolBar::ToolBar(MainWindow *parent) : QToolBar(parent) {
+ToolBar::ToolBar(MainWindow *parent) : QObject(parent), mWindow(parent) {
   Q_ASSERT(parent);
 
-  setMovable(false);
-  setObjectName("toolbar");
-  setStyleSheet(kStyleSheet);
+  mPullRequestAvailable = !qgetenv("GITTYUP_OAUTH").isEmpty();
 
-  // Disable the built-in context menu.
-  setContextMenuPolicy(Qt::PreventContextMenu);
-
-  addWidget(new Spacer(4, this));
-
-  SidebarButton *sidebarButton = new SidebarButton(SidebarButton::Left, this);
-  sidebarButton->setToolTip(tr("Show repository sidebar"));
-  addWidget(sidebarButton);
-  connect(sidebarButton, &QAbstractButton::clicked,
-          [parent] { parent->setSideBarVisible(!parent->isSideBarVisible()); });
-
-  addWidget(new Spacer(4, this));
-
-  addWidget(new Spacer(4, this));
-
-  SegmentedButton *historyButton = new SegmentedButton(this);
-  addWidget(historyButton);
-
-  mPrevButton = new HistoryButton(HistoryButton::Prev, historyButton);
-  mPrevButton->setEnabled(false);
-  historyButton->addButton(mPrevButton, tr("Previous"));
-  connect(mPrevButton, &QAbstractButton::clicked,
-          [this] { currentView()->history()->prev(); });
-
-  QMenu *prevMenu = new QMenu(mPrevButton);
-  mPrevButton->setMenu(prevMenu);
-  connect(prevMenu, &QMenu::triggered, [this](QAction *action) {
+  // Menus are native so they aren't clipped to the QML view.
+  mPrevMenu = new QMenu(parent);
+  connect(mPrevMenu, &QMenu::triggered, [this](QAction *action) {
     currentView()->history()->setIndex(action->data().toInt());
   });
 
-  mNextButton = new HistoryButton(HistoryButton::Next, historyButton);
-  mNextButton->setEnabled(false);
-  historyButton->addButton(mNextButton, tr("Next"));
-  connect(mNextButton, &QAbstractButton::clicked,
-          [this] { currentView()->history()->next(); });
-
-  QMenu *nextMenu = new QMenu(mNextButton);
-  mNextButton->setMenu(nextMenu);
-  connect(nextMenu, &QMenu::triggered, [this](QAction *action) {
+  mNextMenu = new QMenu(parent);
+  connect(mNextMenu, &QMenu::triggered, [this](QAction *action) {
     currentView()->history()->setIndex(action->data().toInt());
   });
 
-  addWidget(new Spacer(4, this));
-
-  SegmentedButton *remote = new SegmentedButton(this);
-  addWidget(remote);
-
-  mFetchButton = new RemoteButton(RemoteButton::Fetch, remote);
-  remote->addButton(mFetchButton, tr("Fetch"));
-  connect(mFetchButton, &Button::clicked, [this] { currentView()->fetch(); });
-
-  mPullButton = new RemoteButton(RemoteButton::Pull, remote);
-  mPullButton->setPopupMode(QToolButton::MenuButtonPopup);
-  remote->addButton(mPullButton, tr("Pull"));
-
-  // Add pull button menu.
-  QMenu *pullMenu = new QMenu(mPullButton);
-  mPullButton->setMenu(pullMenu);
-
-  QAction *mergeAction = pullMenu->addAction(tr("Merge"));
+  mPullMenu = new QMenu(parent);
+  QAction *mergeAction = mPullMenu->addAction(tr("Merge"));
   connect(mergeAction, &QAction::triggered,
           [this] { currentView()->pull(RepoView::Merge); });
 
-  QAction *rebaseAction = pullMenu->addAction(tr("Rebase"));
+  QAction *rebaseAction = mPullMenu->addAction(tr("Rebase"));
   connect(rebaseAction, &QAction::triggered,
           [this] { currentView()->pull(RepoView::Rebase); });
 
-  connect(mPullButton, &Button::clicked, [this] { currentView()->pull(); });
-
-  mPushButton = new RemoteButton(RemoteButton::Push, remote);
-  remote->addButton(mPushButton, tr("Push"));
-  connect(mPushButton, &Button::clicked, [this] { currentView()->push(); });
-
-  addWidget(new Spacer(4, this));
-
-  mCheckoutButton = new CheckButton(this);
-  mCheckoutButton->setToolTip(tr("Checkout"));
-  addWidget(mCheckoutButton);
-  connect(mCheckoutButton, &Button::clicked,
-          [this] { currentView()->promptToCheckout(); });
-
-  addWidget(new Spacer(4, this));
-
-  SegmentedButton *stashButtons = new SegmentedButton(this);
-  addWidget(stashButtons);
-
-  mStashButton = new StashButton(StashButton::Stash, stashButtons);
-  mStashButton->setEnabled(false);
-  stashButtons->addButton(mStashButton, tr("Stash"));
-  connect(mStashButton, &Button::clicked,
-          [this] { currentView()->promptToStash(); });
-
-  mStashPopButton = new StashButton(StashButton::Pop, stashButtons);
-  stashButtons->addButton(mStashPopButton, tr("Pop Stash"));
-  connect(mStashPopButton, &Button::clicked,
-          [this] { currentView()->popStash(); });
-
-  addWidget(new Spacer(4, this));
-
-  mRefreshButton = new RefreshButton(this);
-  addWidget(mRefreshButton);
-  connect(mRefreshButton, &Button::clicked,
-          [this] { currentView()->refresh(); });
-
-  if (!qgetenv("GITTYUP_OAUTH").isEmpty()) {
-    addWidget(new Spacer(4, this));
-
-    mPullRequestButton = new PullRequestButton(this);
-    addWidget(mPullRequestButton);
-    connect(mPullRequestButton, &Button::clicked, [this] {
-      PullRequestDialog *dialog = new PullRequestDialog(currentView());
-      dialog->open();
-    });
-  }
-
-  addWidget(new Spacer(-1, this));
-
-  mTerminalButton = new TerminalButton(this);
-  mTerminalButton->setToolTip(tr("Open Terminal"));
-  addWidget(mTerminalButton);
-  connect(mTerminalButton, &Button::clicked,
-          [this] { currentView()->openTerminal(); });
-
-  QShortcut *shortcut = new QShortcut(this);
-  terminalHotkey.use(shortcut);
-  connect(shortcut, &QShortcut::activated, mTerminalButton, &Button::click);
-
-  addWidget(new Spacer(4, this));
-
-  mFileManagerButton = new FileManagerButton(this);
-  mFileManagerButton->setToolTip(tr("Open file manager"));
-  addWidget(mFileManagerButton);
-  connect(mFileManagerButton, &Button::clicked,
-          [this] { currentView()->openFileManager(); });
-
-  shortcut = new QShortcut(this);
-  fileManagerHotkey.use(shortcut);
-  connect(shortcut, &QShortcut::activated, mFileManagerButton, &Button::click);
-
-  addWidget(new Spacer(4, this));
-
-  SettingsButton *configButton = new SettingsButton(this);
-  configButton->setToolTip(tr("Configure Settings"));
-  addWidget(configButton);
-
-  configButton->setPopupMode(
-      QToolButton::InstantPopup); // Add pull button menu.
-  QMenu *configMenu = new QMenu(configButton);
-  configButton->setMenu(configMenu);
-
-  mRepoConfigAction = configMenu->addAction(tr("Repository settings"));
+  mSettingsMenu = new QMenu(parent);
+  mRepoConfigAction = mSettingsMenu->addAction(tr("Repository settings"));
   connect(mRepoConfigAction, &QAction::triggered,
           [this] { currentView()->configureSettings(); });
 
-  QAction *appConfigAction = configMenu->addAction(tr("Application settings"));
+  QAction *appConfigAction =
+      mSettingsMenu->addAction(tr("Application settings"));
   connect(appConfigAction, &QAction::triggered,
           [] { SettingsDialog::openSharedInstance(); });
 
-  addWidget(new Spacer(4, this));
-
-  mLogButton = new LogButton(this);
-  mLogButton->setToolTip(tr("Show Log"));
-  addWidget(mLogButton);
-  connect(mLogButton, &Button::clicked, [this] {
-    RepoView *view = this->currentView();
-    view->setLogVisible(!view->isLogVisible());
-  });
-
-  SegmentedButton *mode = new SegmentedButton(this);
-  mModeGroup = mode->buttonGroup();
-
-  //  ModeButton *diff = new ModeButton(RepoView::Diff, mode);
-  //  mode->addButton(diff, tr("Diff View"), true);
-  //  diff->setEnabled(false);
-  //  diff->setToolTip("Forever Disabled View");
-
-  // The order must match with the Index in RepoView::ViewMode!
-  // Index 0
-  ModeButton *alternativeTree = new ModeButton(RepoView::DoubleTree, mode);
-  mode->addButton(alternativeTree, tr("Double Tree View"), true);
-  alternativeTree->setChecked(true);
-
-  // Index 1
-  ModeButton *tree = new ModeButton(RepoView::Tree, mode);
-  mode->addButton(tree, tr("Tree View"), true);
-
-  addWidget(mode);
-
-  using Signal = void (QButtonGroup::*)(int);
-  auto signal = static_cast<Signal>(&QButtonGroup::idClicked);
-  connect(mModeGroup, signal, [this](int index) {
-    currentView()->setViewMode(static_cast<RepoView::ViewMode>(index));
-  });
-
-  addWidget(new Spacer(4, this));
-
-  mStarButton = new StarButton(this);
-  mStarButton->setToolTip(tr("Show Starred Commits"));
-  addWidget(mStarButton);
-
-  addWidget(new Spacer(4, this));
-
   mSearchField = new SearchField(this);
-  addWidget(mSearchField);
-
-#if 0
-  SidebarButton *searchButton = new SidebarButton(SidebarButton::Right, this);
-  addWidget(searchButton);
-  connect(searchButton, &SidebarButton::clicked, [] {
-    // ...
-  });
-#endif
-
-  addWidget(new Spacer(4, this));
-
-  // Hook up star button to search field.
-  connect(mStarButton, &QToolButton::toggled, [this](bool checked) {
-    QStringList terms = mSearchField->text().split(QRegularExpression("\\s+"));
-    if (checked) {
-      terms.append(kStarredQuery);
-    } else {
-      terms.removeAll(kStarredQuery);
-    }
-
-    mSearchField->setText(terms.join(' '));
-  });
 
   connect(mSearchField, &SearchField::textChanged, [this](const QString &text) {
-    QSignalBlocker blocker(mStarButton);
-    (void)blocker;
-
-    QStringList terms = mSearchField->text().split(QRegularExpression("\\s+"));
-    mStarButton->setChecked(terms.contains(kStarredQuery));
+    QStringList terms = text.split(QRegularExpression("\\s+"));
+    bool starred = terms.contains(kStarredQuery);
+    if (starred != mState.starred) {
+      mState.starred = starred;
+      emit stateChanged();
+    }
   });
+
+  QShortcut *shortcut = new QShortcut(parent);
+  terminalHotkey.use(shortcut);
+  connect(shortcut, &QShortcut::activated, this, &ToolBar::openTerminal);
+
+  shortcut = new QShortcut(parent);
+  fileManagerHotkey.use(shortcut);
+  connect(shortcut, &QShortcut::activated, this, &ToolBar::openFileManager);
+}
+
+ToolBar::~ToolBar() {}
+
+void ToolBar::toggleSideBar() {
+  MainWindow *window = static_cast<MainWindow *>(parent());
+  window->setSideBarVisible(!window->isSideBarVisible());
+}
+
+void ToolBar::prev() {
+  if (RepoView *view = currentView())
+    view->history()->prev();
+}
+
+void ToolBar::next() {
+  if (RepoView *view = currentView())
+    view->history()->next();
+}
+
+void ToolBar::showHistoryMenu(bool next, qreal x, qreal y) {
+  RepoView *view = currentView();
+  if (!view)
+    return;
+
+  QMenu *menu = next ? mNextMenu : mPrevMenu;
+  if (next) {
+    view->history()->updateNextMenu(menu);
+  } else {
+    view->history()->updatePrevMenu(menu);
+  }
+
+  if (!menu->isEmpty())
+    QmlSupport::host(mView)->popup(menu, x, y);
+}
+
+void ToolBar::undo() {
+  if (RepoView *view = currentView())
+    view->undoHistory()->undo();
+}
+
+void ToolBar::redo() {
+  if (RepoView *view = currentView())
+    view->undoHistory()->redo();
+}
+
+void ToolBar::fetch() {
+  if (RepoView *view = currentView())
+    view->fetch();
+}
+
+void ToolBar::pull() {
+  if (RepoView *view = currentView())
+    view->pull();
+}
+
+void ToolBar::showPullMenu(qreal x, qreal y) {
+  if (mState.canPull)
+    QmlSupport::host(mView)->popup(mPullMenu, x, y);
+}
+
+void ToolBar::push() {
+  if (RepoView *view = currentView())
+    view->push();
+}
+
+void ToolBar::checkout() {
+  if (RepoView *view = currentView())
+    view->promptToCheckout();
+}
+
+void ToolBar::stash() {
+  if (RepoView *view = currentView())
+    view->promptToStash();
+}
+
+void ToolBar::popStash() {
+  if (RepoView *view = currentView())
+    view->popStash();
+}
+
+void ToolBar::refresh() {
+  if (RepoView *view = currentView())
+    view->refresh();
+}
+
+void ToolBar::createPullRequest() {
+  if (RepoView *view = currentView()) {
+    PullRequestDialog *dialog = new PullRequestDialog(view);
+    dialog->open();
+  }
+}
+
+void ToolBar::openTerminal() {
+  if (RepoView *view = currentView())
+    view->openTerminal();
+}
+
+void ToolBar::openFileManager() {
+  if (RepoView *view = currentView())
+    view->openFileManager();
+}
+
+void ToolBar::toggleLog() {
+  if (RepoView *view = currentView())
+    view->setLogVisible(!view->isLogVisible());
+}
+
+void ToolBar::setViewMode(int mode) {
+  if (RepoView *view = currentView())
+    view->setViewMode(static_cast<RepoView::ViewMode>(mode));
+}
+
+void ToolBar::setStarred(bool starred) {
+  QStringList terms = mSearchField->text().split(QRegularExpression("\\s+"),
+                                                 Qt::SkipEmptyParts);
+  if (starred) {
+    if (!terms.contains(kStarredQuery))
+      terms.append(kStarredQuery);
+  } else {
+    terms.removeAll(kStarredQuery);
+  }
+
+  mSearchField->setText(terms.join(' '));
+}
+
+void ToolBar::showSettingsMenu(qreal x, qreal y) {
+  QmlSupport::host(mView)->popup(mSettingsMenu, x, y);
 }
 
 void ToolBar::updateButtons(int ahead, int behind) {
+  RepoView *view = currentView();
+  mState.hasView = view;
+  mState.canCheckout = view && !view->repo().isBare();
+
+  mState.repoName.clear();
+  mState.repoPath.clear();
+  mState.branchName.clear();
+  if (view) {
+    git::Repository repo = view->repo();
+    QDir dir = repo.dir(false);
+    mState.repoName = dir.dirName();
+    mState.repoPath = dir.path();
+
+    git::Reference head = repo.head();
+    mState.branchName = head.isValid() ? head.name() : repo.unbornHeadName();
+  }
+
+  // Each of these emits stateChanged.
   updateRemote(ahead, behind);
   updateHistory();
+  updateUndo();
   updateStash();
   updateView();
   updateSearch();
-
-  RepoView *view = currentView();
-  mRefreshButton->setEnabled(view);
-  if (mPullRequestButton)
-    mPullRequestButton->setEnabled(view);
-  mCheckoutButton->setEnabled(view && !view->repo().isBare());
 }
 
 void ToolBar::updateRemote(int ahead, int behind) {
-  static_cast<RemoteButton *>(mPushButton)->setBadge(ahead);
-  static_cast<RemoteButton *>(mPullButton)->setBadge(behind);
-
   RepoView *view = currentView();
-  mFetchButton->setEnabled(view);
-  mPullButton->setEnabled(view && !view->repo().isBare());
-  mPushButton->setEnabled(view);
+  mState.ahead = ahead;
+  mState.behind = behind;
+  mState.canPull = view && !view->repo().isBare();
+  emit stateChanged();
 }
 
 void ToolBar::updateHistory() {
   RepoView *view = currentView();
   History *history = view ? view->history() : nullptr;
-  mPrevButton->setEnabled(history && history->hasPrev());
-  mNextButton->setEnabled(history && history->hasNext());
+  mState.canPrev = history && history->hasPrev();
+  mState.canNext = history && history->hasNext();
+  emit stateChanged();
+}
 
-  if (history) {
-    history->updatePrevMenu(mPrevButton->menu());
-    history->updateNextMenu(mNextButton->menu());
-  }
+void ToolBar::updateUndo() {
+  RepoView *view = currentView();
+  UndoHistory *history = view ? view->undoHistory() : nullptr;
+  mState.canUndo = history && history->canUndo();
+  mState.canRedo = history && history->canRedo();
+  mState.undoText = history ? history->undoText() : QString();
+  mState.redoText = history ? history->redoText() : QString();
+  emit stateChanged();
 }
 
 void ToolBar::updateStash() {
   RepoView *view = currentView();
-  mStashButton->setEnabled(view && view->isWorkingDirectoryDirty());
-  mStashPopButton->setEnabled(view && view->repo().stashRef().isValid());
+  mState.canStash = view && view->isWorkingDirectoryDirty();
+  mState.canPop = view && view->repo().stashRef().isValid();
+  emit stateChanged();
 }
 
 void ToolBar::updateView() {
   RepoView *view = currentView();
-  mTerminalButton->setEnabled(view);
-  mFileManagerButton->setEnabled(view);
+  MainWindow *window = static_cast<MainWindow *>(parent());
+  mState.sidebarVisible = window->isSideBarVisible();
+  mState.logVisible = view && view->isLogVisible();
+  if (view)
+    mState.viewMode = view->viewMode();
   mRepoConfigAction->setEnabled(view);
-  mLogButton->setEnabled(view);
-  // mModeGroup->button(RepoView::Diff)->setEnabled(view);
-  mModeGroup->button(RepoView::Tree)->setEnabled(view);
-  mModeGroup->button(RepoView::DoubleTree)->setEnabled(view);
-
-  if (view) {
-    bool visible = view->isLogVisible();
-    mLogButton->setToolTip(visible ? tr("Hide Log") : tr("Show Log"));
-    mModeGroup->button(view->viewMode())->setChecked(true);
-  }
+  emit stateChanged();
 }
 
-void ToolBar::updateSearch() {
-  RepoView *view = currentView();
-  mStarButton->setEnabled(view);
-  mSearchField->setEnabled(view);
-}
+void ToolBar::updateSearch() { mSearchField->setEnabled(currentView()); }
 
 RepoView *ToolBar::currentView() const {
-  return static_cast<MainWindow *>(parent())->currentView();
+  return mWindow->currentView();
 }
-
-#include "ToolBar.moc"

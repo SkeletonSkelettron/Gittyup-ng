@@ -1,209 +1,128 @@
+//
+//          Copyright (c) 2022, Gittyup contributors
+//
+// This software is licensed under the MIT License. The LICENSE.md file
+// describes the conditions under which this software may be distributed.
+//
+
 #include "AmendDialog.h"
 
-#include <QGridLayout>
-#include <QLabel>
-#include <QLineEdit>
-#include <QTextEdit>
-#include <QPushButton>
-#include <QCheckBox>
-#include <QHBoxLayout>
-#include <QVBoxLayout>
-#include <QDateTimeEdit>
-#include <QRadioButton>
-#include <QGroupBox>
+namespace {
 
-enum Row { Author = 0, Committer, CommitMessageLabel, CommitMessage, Buttons };
+const QString kDateFormat = "yyyy-MM-dd HH:mm:ss";
 
-class DateSelectionGroupWidget : public QGroupBox {
-  Q_OBJECT
-public:
-  DateSelectionGroupWidget(QWidget *parent = nullptr)
-      : QGroupBox(tr("Datetime source"), parent) {
-    QHBoxLayout *l = new QHBoxLayout();
+} // namespace
 
-    current = new QRadioButton(tr("Current"), this);
-    current->setObjectName("Current");
-    manual = new QRadioButton(tr("Manual"), this);
-    manual->setObjectName("Manual");
-    original = new QRadioButton(tr("Original"), this);
-    original->setObjectName("Original");
+AmendContributor::AmendContributor(const QString &title,
+                                   const git::Signature &signature,
+                                   QObject *parent)
+    : QObject(parent), mTitle(title), mSignature(signature),
+      mName(signature.name()), mEmail(signature.email()),
+      mDateText(signature.date().toLocalTime().toString(kDateFormat)) {}
 
-    current->setChecked(true);
+void AmendContributor::setName(const QString &name) {
+  if (name == mName)
+    return;
 
-    connect(current, &QRadioButton::clicked,
-            [this]() { emit typeChanged(type()); });
-    connect(manual, &QRadioButton::clicked,
-            [this]() { emit typeChanged(type()); });
-    connect(original, &QRadioButton::clicked,
-            [this]() { emit typeChanged(type()); });
+  mName = name;
+  emit changed();
+}
 
-    l->addWidget(current);
-    l->addWidget(manual);
-    l->addWidget(original);
-    setLayout(l);
-  }
-  ContributorInfo::SelectedDateTimeType type() {
-    if (original->isChecked()) {
-      return ContributorInfo::SelectedDateTimeType::Original;
-    } else if (manual->isChecked()) {
-      return ContributorInfo::SelectedDateTimeType::Manual;
-    }
-    return ContributorInfo::SelectedDateTimeType::Current;
-  }
+void AmendContributor::setEmail(const QString &email) {
+  if (email == mEmail)
+    return;
 
-signals:
-  void typeChanged(ContributorInfo::SelectedDateTimeType);
+  mEmail = email;
+  emit changed();
+}
 
-private:
-  QRadioButton *current;
-  QRadioButton *manual;
-  QRadioButton *original;
-};
+void AmendContributor::setDateType(ContributorInfo::SelectedDateTimeType type) {
+  if (type == mDateType)
+    return;
 
-class InfoBox : public QGroupBox {
-  Q_OBJECT
-public:
-  enum LocalRow { Name = 0, Email, DateType, CommitDate };
+  mDateType = type;
+  emit changed();
+}
 
-  InfoBox(const QString &title, const git::Signature &signature,
-          QWidget *parent = nullptr)
-      : QGroupBox(title + ":", parent), m_signature(signature) {
+void AmendContributor::setDateTypeValue(int type) {
+  setDateType(static_cast<ContributorInfo::SelectedDateTimeType>(type));
+}
 
-    setObjectName(title);
+QDateTime AmendContributor::manualDate() const {
+  return QDateTime::fromString(mDateText.trimmed(), kDateFormat);
+}
 
-    auto *l = new QVBoxLayout();
+void AmendContributor::setManualDate(const QDateTime &date) {
+  setDateText(date.toString(kDateFormat));
+}
 
-    auto *lName = new QLabel(tr("Name:"), this);
-    m_name = new QLineEdit(signature.name(), this);
-    m_name->setObjectName("Name");
-    auto *hName = new QHBoxLayout();
-    hName->addWidget(lName);
-    hName->addWidget(m_name);
+void AmendContributor::setDateText(const QString &text) {
+  if (text == mDateText)
+    return;
 
-    auto *lEmail = new QLabel(tr("Email:"), this);
-    m_email = new QLineEdit(signature.email(), this);
-    m_email->setObjectName("Email");
-    auto *hEmail = new QHBoxLayout();
-    hEmail->addWidget(lEmail);
-    hEmail->addWidget(m_email);
+  mDateText = text;
+  emit changed();
+}
 
-    m_commitDateType = new DateSelectionGroupWidget(this);
-    m_commitDateType->setObjectName(title + "CommitDateType");
-    m_lCommitDate = new QLabel(tr("Commit date:"), this);
-    m_commitDate = new QDateTimeEdit(signature.date().toLocalTime(), this);
-    m_commitDate->setObjectName(title + "CommitDate");
-    QSizePolicy sp(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    m_commitDate->setSizePolicy(sp);
-    auto *hDate = new QHBoxLayout();
-    hDate->addWidget(m_lCommitDate);
-    hDate->addWidget(m_commitDate);
+bool AmendContributor::isDateValid() const {
+  return mDateType != ContributorInfo::SelectedDateTimeType::Manual ||
+         manualDate().isValid();
+}
 
-    l->addLayout(hName);
-    l->addLayout(hEmail);
-    l->addWidget(m_commitDateType);
-    l->addLayout(hDate);
+QString AmendContributor::originalDate() const {
+  return QLocale().toString(mSignature.date().toLocalTime(),
+                            QLocale::LongFormat);
+}
 
-    setLayout(l);
-
-    dateTimeTypeChanged(m_commitDateType->type());
-
-    connect(m_commitDateType, &DateSelectionGroupWidget::typeChanged, this,
-            &InfoBox::dateTimeTypeChanged);
-  }
-
-  ContributorInfo getInfo() const {
-    ContributorInfo ci;
-    ci.name = name();
-    ci.email = email();
-    ci.commitDate = commitDate();
-    ci.commitDateType = commitDateType();
-
-    return ci;
-  }
-
-private slots:
-  void dateTimeTypeChanged(const ContributorInfo::SelectedDateTimeType type) {
-    const auto enabled = type == ContributorInfo::SelectedDateTimeType::Manual;
-    m_lCommitDate->setVisible(enabled);
-    m_commitDate->setVisible(enabled);
-  }
-
-private:
-  QString name() const { return m_name->text(); }
-
-  QString email() const { return m_email->text(); }
-
-  QDateTime commitDate() const {
-    if (commitDateType() == ContributorInfo::SelectedDateTimeType::Original) {
-      return m_signature.date().toLocalTime();
-    } else {
-      return m_commitDate->dateTime();
-    }
-  }
-
-  ContributorInfo::SelectedDateTimeType commitDateType() const {
-    return m_commitDateType->type();
-  }
-
-  QLineEdit *m_name;
-  QLineEdit *m_email;
-  QDateTimeEdit *m_commitDate;
-  QLabel *m_lCommitDate;
-  DateSelectionGroupWidget *m_commitDateType;
-
-  git::Signature m_signature;
-};
+ContributorInfo AmendContributor::info() const {
+  ContributorInfo info;
+  info.name = mName;
+  info.email = mEmail;
+  info.commitDateType = mDateType;
+  info.commitDate = (mDateType == ContributorInfo::SelectedDateTimeType::Original)
+                        ? mSignature.date().toLocalTime()
+                        : manualDate();
+  return info;
+}
 
 AmendDialog::AmendDialog(const git::Signature &author,
                          const git::Signature &committer,
                          const QString &commitMessage, QWidget *parent)
-    : QDialog(parent) {
+    : QmlDialog(parent),
+      mAuthor(new AmendContributor(tr("Author"), author, this)),
+      mCommitter(new AmendContributor(tr("Committer"), committer, this)),
+      mMessage(commitMessage) {
+  setWindowTitle(tr("Amend Commit"));
 
-  auto *l = new QGridLayout();
+  connect(mAuthor, &AmendContributor::changed, this,
+          &AmendDialog::acceptableChanged);
+  connect(mCommitter, &AmendContributor::changed, this,
+          &AmendDialog::acceptableChanged);
 
-  // author
-  // committer
-  // message
-
-  m_authorInfo = new InfoBox(tr("Author"), author, this);
-  l->addWidget(m_authorInfo, Row::Author, 0, 1, 2);
-
-  m_committerInfo = new InfoBox(tr("Committer"), committer, this);
-  l->addWidget(m_committerInfo, Row::Committer, 0, 1, 2);
-
-  auto *lMessage = new QLabel(tr("Commit Message:"), this);
-  m_commitMessage = new QTextEdit(this);
-  m_commitMessage->setPlainText(commitMessage);
-  m_commitMessage->setObjectName("Textlabel Commit Message");
-  l->addWidget(lMessage, Row::CommitMessageLabel, 0);
-  l->addWidget(m_commitMessage, Row::CommitMessage, 0, 1, 2);
-
-  auto *ok = new QPushButton(tr("Amend"), this);
-  auto *cancel = new QPushButton(tr("Cancel"), this);
-
-  connect(ok, &QPushButton::clicked, this, &QDialog::accept);
-  connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
-
-  auto *hl = new QHBoxLayout();
-  hl->addWidget(cancel);
-  hl->addWidget(ok);
-
-  l->addLayout(hl, Buttons, 1);
-
-  setLayout(l);
+  setContent("AmendDialog");
 }
 
 AmendInfo AmendDialog::getInfo() const {
-  AmendInfo ai;
-  ai.authorInfo = m_authorInfo->getInfo();
-  ai.committerInfo = m_committerInfo->getInfo();
-  ai.commitMessage = commitMessage();
-
-  return ai;
+  AmendInfo info;
+  info.authorInfo = mAuthor->info();
+  info.committerInfo = mCommitter->info();
+  info.commitMessage = mMessage;
+  return info;
 }
 
-QString AmendDialog::commitMessage() const {
-  return m_commitMessage->toPlainText();
+void AmendDialog::setCommitMessage(const QString &message) {
+  if (message == mMessage)
+    return;
+
+  bool wasAcceptable = isAcceptable();
+  mMessage = message;
+  emit messageChanged();
+  if (wasAcceptable != isAcceptable())
+    emit acceptableChanged();
 }
 
-#include "AmendDialog.moc"
+bool AmendDialog::isAcceptable() const {
+  return !mMessage.trimmed().isEmpty() && !mAuthor->name().isEmpty() &&
+         !mCommitter->name().isEmpty() && mAuthor->isDateValid() &&
+         mCommitter->isDateValid();
+}

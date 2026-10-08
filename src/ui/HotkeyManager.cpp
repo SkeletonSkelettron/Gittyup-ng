@@ -80,6 +80,13 @@ QString Hotkey::defaultKeys() const {
   return QObject::tr(mHandle->defaultKeys);
 }
 
+QKeySequence Hotkey::defaultSequence() const {
+  if (!mHandle->defaultKeys)
+    return QKeySequence(mHandle->standardKey);
+
+  return QKeySequence(mHandle->defaultKeys);
+}
+
 void Hotkey::setKeys(const QKeySequence &keys, HotkeyManager *manager) {
   if (!manager)
     manager = HotkeyManager::instance();

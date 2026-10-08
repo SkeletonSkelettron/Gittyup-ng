@@ -90,8 +90,8 @@ RepositoryWatcher::RepositoryWatcher(const git::Repository &repo,
                                      QObject *parent)
     : QObject(parent), d(new RepositoryWatcherPrivate(repo, this)) {
   init(repo);
-  connect(d, &RepositoryWatcherPrivate::notificationReceived, &mTimer,
-          QOverload<>::of(&QTimer::start));
+  connect(d, &RepositoryWatcherPrivate::notificationReceived, this,
+          &RepositoryWatcher::notifyChanged);
 }
 
 RepositoryWatcher::~RepositoryWatcher() {}

@@ -1,0 +1,25 @@
+// Opens the QML forms of src/ui/qml in Qt Design Studio, through the link
+// 'ui'. The project is in this folder because Qt Design Studio looks at all
+// the files of the folder of the project, and the folder of the repository
+// has the build folders.
+//
+// The forms get their data from C++ objects that only exist in the
+// application, like 'dialog' and 'detailView', so the designer shows them
+// without it. 'imports' has stand-ins for the types of the "Gittyup" module.
+import QmlProject
+
+Project {
+    mainFile: "ui/AboutDialog.qml"
+
+    QmlFiles {
+        directory: "ui"
+    }
+
+    ImageFiles {
+        directory: "ui/icons"
+    }
+
+    importPaths: [ "imports" ]
+
+    qt6Project: true
+}

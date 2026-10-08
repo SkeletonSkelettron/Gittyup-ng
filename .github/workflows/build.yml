@@ -68,40 +68,40 @@ jobs:
     - name: Replace git tag by the commit id on which it runs
       if: github.ref_type != 'tag'
       run: >
-        sed -i 's@tag: .*@commit: "${{ (github.event.pull_request && github.event.pull_request.head.sha) || github.sha }}"@' com.github.Murmele.Gittyup.yml
+        sed -i 's@branch: .*@commit: "${{ (github.event.pull_request && github.event.pull_request.head.sha) || github.sha }}"@' io.github.SkeletonSkelettron.GittyupNg.yml
 
     - name: Use correct git tag
       if: github.ref_type == 'tag'
       run: >
-        sed -i 's@tag: .*$@tag: "${{ github.ref_name }}"@' com.github.Murmele.Gittyup.yml
+        sed -i 's@branch: .*$@tag: "${{ github.ref_name }}"@' io.github.SkeletonSkelettron.GittyupNg.yml
 
     - name: Replace source url
       run: >
-        sed -i "s@url: .*Gittyup.git@url: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY@" com.github.Murmele.Gittyup.yml
+        sed -i "s@url: .*Gittyup-ng.git@url: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY@" io.github.SkeletonSkelettron.GittyupNg.yml
 
     - name: Add dev build marker to cmake options
       if: github.ref_type != 'tag'
       run: >
-        sed -i 's@config-opts: \["\(.*\)"\]@config-opts: ["\1", "-DDEV_BUILD=${{ github.ref_name }}"]@' com.github.Murmele.Gittyup.yml
+        sed -i 's@config-opts: \["\(.*\)"\]@config-opts: ["\1", "-DDEV_BUILD=${{ github.ref_name }}"]@' io.github.SkeletonSkelettron.GittyupNg.yml
 
     - name: Replace desktop file name suffix
       if: github.ref_type != 'tag'
       run: >
-        sed -i 's@desktop-file-name-suffix: ""@desktop-file-name-suffix: " (Development)"@' com.github.Murmele.Gittyup.yml
+        sed -i 's@desktop-file-name-suffix: ""@desktop-file-name-suffix: " (Development)"@' io.github.SkeletonSkelettron.GittyupNg.yml
 
     - name: Enable automatic update
       if: github.ref_type != 'tag'
       run: >
-        sed -i 's@-DENABLE_UPDATE_OVER_GUI=OFF@-DENABLE_UPDATE_OVER_GUI=ON@' com.github.Murmele.Gittyup.yml
+        sed -i 's@-DENABLE_UPDATE_OVER_GUI=OFF@-DENABLE_UPDATE_OVER_GUI=ON@' io.github.SkeletonSkelettron.GittyupNg.yml
 
     - name: Show Flatpak manifest
-      run: cat com.github.Murmele.Gittyup.yml
+      run: cat io.github.SkeletonSkelettron.GittyupNg.yml
 
     - name: Build package
       uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v6
       with:
         bundle: Gittyup.flatpak
-        manifest-path: com.github.Murmele.Gittyup.yml
+        manifest-path: io.github.SkeletonSkelettron.GittyupNg.yml
         cache: false
         upload-artifact: true
         verbose: true
@@ -259,12 +259,12 @@ jobs:
         if: matrix.env.ninja_platform == 'linux'
         run: |
           echo "Show generated appdata file"
-          cat ./build/release/rsrc/linux/com.github.Murmele.Gittyup.appdata.xml
+          cat ./build/release/rsrc/linux/io.github.SkeletonSkelettron.GittyupNg.appdata.xml
           echo "Start validating appdata file"
           sudo apt install flatpak
           sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           sudo flatpak install -y flathub org.flatpak.Builder
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream ./build/release/rsrc/linux/com.github.Murmele.Gittyup.appdata.xml
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream ./build/release/rsrc/linux/io.github.SkeletonSkelettron.GittyupNg.appdata.xml
 
       - name: Publish build artifacts
         if: matrix.env.pack
@@ -327,7 +327,7 @@ jobs:
           export QT_ROOT_DIR=$QTDIR
 
           rm -rf ./AppDir/usr/include/
-          strip ./AppDir/usr/bin/cmark ./AppDir/usr/bin/gittyup ./AppDir/usr/bin/gittyup-indexer ./AppDir/usr/bin/gittyup-relauncher
+          strip ./AppDir/usr/bin/cmark ./AppDir/usr/bin/gittyup-ng ./AppDir/usr/bin/gittyup-indexer ./AppDir/usr/bin/gittyup-relauncher
 
           wget -c https://github.com/$(wget -q https://github.com/probonopd/go-appimage/releases/expanded_assets/continuous -O - | grep "appimagetool-.*-x86_64.AppImage" | head -n 1 | cut -d '"' -f 2)
           chmod +x appimagetool-*.AppImage
@@ -344,7 +344,7 @@ jobs:
           mv ./AppDir/lib64/ld-${{ matrix.env.ld_library_arch }}.so.2 ./AppDir/usr/bin/
           sed -i -e 's@^LD_LINUX.*@LD_LINUX=$(find "$HERE/usr/bin" -name "ld-*.so.*" | head -n 1)@g' ./AppDir/AppRun
 
-          rm ./AppDir/usr/share/metainfo/com.github.Murmele.Gittyup.appdata.xml
+          rm ./AppDir/usr/share/metainfo/io.github.SkeletonSkelettron.GittyupNg.appdata.xml
           VERSION=$(cat ./Version.txt)
           VERSION="$VERSION" ./appimagetool-*.AppImage ./AppDir # turn AppDir into AppImage
           #ls -lh Gittyup-*
@@ -402,7 +402,7 @@ jobs:
           export APPIMAGE_EXTRACT_AND_RUN=1
           output=$(xvfb-run -a "$appimage" --version)
           echo "$output"
-          grep -Fxq "Gittyup $(cat version/Version.txt)" <<< "$output"
+          grep -Fxq "Gittyup-ng $(cat version/Version.txt)" <<< "$output"
 
       - name: Install macOS app from dmg
         if: matrix.name == 'macos'
@@ -417,7 +417,7 @@ jobs:
       - name: Show macOS app dependencies
         if: matrix.name == 'macos'
         run: |
-          for binary in gittyup gittyup-indexer gittyup-relauncher; do
+          for binary in gittyup-ng gittyup-indexer gittyup-relauncher; do
             echo "::group::otool -L $binary"
             otool -L "./gittyup.app/Contents/MacOS/$binary"
             echo "::endgroup::"
@@ -429,11 +429,11 @@ jobs:
       - name: Run macOS app --version
         if: matrix.name == 'macos'
         run: |
-          output=$(./gittyup.app/Contents/MacOS/gittyup --version)
+          output=$(./gittyup.app/Contents/MacOS/gittyup-ng --version)
           echo "$output"
-          grep -Fxq "Gittyup $(cat version/Version.txt)" <<< "$output"
+          grep -Fxq "Gittyup-ng $(cat version/Version.txt)" <<< "$output"
 
-      # gittyup.exe is a GUI-subsystem executable, so Start-Process with
+      # gittyup-ng.exe is a GUI-subsystem executable, so Start-Process with
       # redirected output is needed to wait for it and capture what it prints.
       - name: Run Windows installer and app --version
         if: matrix.name == 'win64'
@@ -447,12 +447,12 @@ jobs:
 
           $stdout = Join-Path $env:RUNNER_TEMP 'version.out'
           $stderr = Join-Path $env:RUNNER_TEMP 'version.err'
-          $run = Start-Process -FilePath (Join-Path $installDir 'bin\gittyup.exe') -ArgumentList '--version' `
+          $run = Start-Process -FilePath (Join-Path $installDir 'bin\gittyup-ng.exe') -ArgumentList '--version' `
             -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           Get-Content $stdout, $stderr
-          if ($run.ExitCode -ne 0) { throw "gittyup --version exited with code $($run.ExitCode)" }
+          if ($run.ExitCode -ne 0) { throw "gittyup-ng --version exited with code $($run.ExitCode)" }
 
-          $expected = "Gittyup $((Get-Content version/Version.txt -Raw).Trim())"
+          $expected = "Gittyup-ng $((Get-Content version/Version.txt -Raw).Trim())"
           if (-not ((Get-Content $stdout) -contains $expected)) { throw "Expected '$expected' in the output" }
 
   publish:

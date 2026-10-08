@@ -8,16 +8,14 @@
 //
 
 #include "Test.h"
-#include "editor/TextEditor.h"
-#include "ui/BlameEditor.h"
+#include "conf/Settings.h"
+#include "dialogs/ConfirmDialog.h"
 #include "ui/EditorWindow.h"
-#include "ui/FindWidget.h"
+#include "ui/FileEditor.h"
+#include "ui/FindController.h"
 #include "ui/MenuBar.h"
-#include <QDialogButtonBox>
-#include <QLabel>
-#include <QLineEdit>
-#include <QMessageBox>
-#include <QPushButton>
+#include <QQuickItem>
+#include <QQuickWidget>
 
 using namespace QTest;
 
@@ -28,33 +26,65 @@ private slots:
   void initTestCase();
   void insertText();
   void copyPaste();
+  void indent();
   void find();
   void cleanupTestCase();
 
 private:
+  QString text() const;
+
   EditorWindow *mWindow = nullptr;
-  BlameEditor *mBlameEditor = nullptr;
-  TextEditor *mEditor = nullptr;
+  QQuickWidget *mView = nullptr;
+  QQuickItem *mTextArea = nullptr;
 };
 
 void TestEditor::initTestCase() {
   mWindow = new EditorWindow;
-  mBlameEditor = mWindow->widget();
-  mEditor = mBlameEditor->editor();
   mWindow->show();
   QVERIFY(qWaitForWindowActive(mWindow));
+
+  mView = mWindow->findChild<QQuickWidget *>();
+  QVERIFY(mView);
+  for (QQuickItem *item : mView->rootObject()->findChildren<QQuickItem *>()) {
+    if (item->inherits("QQuickTextEdit"))
+      mTextArea = item;
+  }
+  QVERIFY(mTextArea);
+  QTRY_VERIFY(mTextArea->hasActiveFocus());
 }
 
 void TestEditor::insertText() {
-  keyClicks(mEditor, "This is a test.");
-  keyClick(mEditor, Qt::Key_Return);
+  keyClicks(mView, "This is a test.");
+  keyClick(mView, Qt::Key_Return);
+  QCOMPARE(text(), QString("This is a test.\n"));
+  QVERIFY(mWindow->editor()->isModified());
 }
 
 void TestEditor::copyPaste() {
-  keyClick(mEditor, 'A', Qt::ControlModifier);
-  keyClick(mEditor, 'C', Qt::ControlModifier);
-  keyClick(mEditor, Qt::Key_Down);
-  keyClick(mEditor, 'V', Qt::ControlModifier);
+  keyClick(mView, 'A', Qt::ControlModifier);
+  keyClick(mView, 'C', Qt::ControlModifier);
+  keyClick(mView, Qt::Key_Right);
+  keyClick(mView, 'V', Qt::ControlModifier);
+  QCOMPARE(text(), QString("This is a test.\nThis is a test.\n"));
+}
+
+void TestEditor::indent() {
+  // The tab key indents with spaces or a tab, like the settings say.
+  Settings *settings = Settings::instance();
+  bool tabs = settings->value(Setting::Id::UseTabsForIndent).toBool();
+  int width = settings->value(Setting::Id::IndentWidth).toInt();
+
+  keyClick(mView, Qt::Key_End, Qt::ControlModifier);
+  keyClick(mView, Qt::Key_Tab);
+  QString indent = tabs ? QString("\t") : QString(width, ' ');
+  QVERIFY(text().endsWith("\n" + indent));
+
+  keyClick(mView, 'A', Qt::ControlModifier);
+  keyClick(mView, Qt::Key_Right);
+  keyClick(mView, Qt::Key_Backspace);
+  for (int i = 1; i < indent.length(); ++i)
+    keyClick(mView, Qt::Key_Backspace);
+  QCOMPARE(text(), QString("This is a test.\nThis is a test.\n"));
 }
 
 void TestEditor::find() {
@@ -64,35 +94,35 @@ void TestEditor::find() {
   QVERIFY(findAction);
   findAction->trigger();
 
-  FindWidget *find = mBlameEditor->findChild<FindWidget *>();
-  QVERIFY(find);
+  FindController *finder =
+      qobject_cast<FindController *>(mWindow->editor()->finder());
+  QVERIFY(finder && finder->isVisible());
 
-  QLineEdit *field = find->findChild<QLineEdit *>();
-  QVERIFY(field && field->hasFocus());
+  keyClicks(mView, "test");
+  QCOMPARE(finder->hitsText(), QString("1 of 2"));
 
-  keyClicks(field, "test");
-  QLabel *label = find->findChild<QLabel *>();
-  QCOMPARE(label->text(), QString("2 matches"));
+  // The first match is selected.
+  QCOMPARE(mTextArea->property("selectedText").toString(), QString("test"));
 }
 
 void TestEditor::cleanupTestCase() {
   // Set up timer to dismiss the dialog.
   QTimer::singleShot(0, [] {
-    QMessageBox *dialog =
-        qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+    ConfirmDialog *dialog =
+        qobject_cast<ConfirmDialog *>(QApplication::activeModalWidget());
     QVERIFY(dialog && qWaitForWindowActive(dialog));
 
-    QDialogButtonBox *buttons = dialog->findChild<QDialogButtonBox *>();
-    QVERIFY(buttons);
-
-    QPushButton *discard = buttons->button(QDialogButtonBox::Discard);
-    QVERIFY(discard);
-
-    mouseClick(discard, Qt::LeftButton);
+    // Don't save.
+    QCOMPARE(dialog->buttons().size(), 1);
+    dialog->clickButton(0);
     QVERIFY(!dialog->isVisible());
   });
 
   mWindow->close();
+}
+
+QString TestEditor::text() const {
+  return mTextArea->property("text").toString();
 }
 
 TEST_MAIN(TestEditor)

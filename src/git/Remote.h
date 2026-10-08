@@ -15,6 +15,7 @@
 #include "git2/net.h"
 #include "git2/proxy.h"
 #include <QSet>
+#include <QStringList>
 #include <QString>
 #include <QSharedPointer>
 
@@ -60,6 +61,13 @@ public:
     virtual bool credentials(const QString &url, QString &username,
                              QString &password) {
       return true;
+    }
+
+    // Ask for the passphrase of the encrypted SSH identity file 'keyFile'.
+    virtual bool passphrase(const QString &url, const QString &keyFile,
+                            QString &passphrase) {
+      QString username;
+      return credentials(url, username, passphrase);
     }
 
     virtual void interactiveAuth(const QString &name,
@@ -125,7 +133,8 @@ public:
 #ifndef USE_SYSTEM_LIBGIT2
     git_remote *mRemote = nullptr;
 #endif
-    QSet<QString> mKeyFiles;
+    // The SSH identity files that were tried, in order.
+    QStringList mKeyFiles;
   };
 
   Remote();

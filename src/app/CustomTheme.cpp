@@ -113,6 +113,8 @@ QString CustomTheme::name() const { return mName; }
 QStyle *CustomTheme::style() const { return new CustomStyle(this); }
 
 QString CustomTheme::styleSheet() const {
+  // The views are drawn by QML. These rules style the widgets that are left,
+  // like the menu bar, tool tips and file dialogs.
   QString text = "QLineEdit {"
                  "  border: 1px solid palette(shadow)"
                  "}"
@@ -122,60 +124,6 @@ QString CustomTheme::styleSheet() const {
                  "}"
                  "QToolButton:pressed {"
                  "  background: %1"
-                 "}"
-
-                 "DetailView QTextEdit {"
-                 "  border: 1px solid palette(shadow)"
-                 "}"
-                 "DetailView QTextEdit#MessageLabel {"
-                 "  background: palette(window);"
-                 "  border: 1px solid palette(window);"
-                 "  color: palette(window-text)"
-                 "}"
-                 "DetailView .QFrame {"
-                 "  border-top: 1px solid palette(dark)"
-                 "}"
-
-                 "DiffView {"
-                 "  background: palette(light)"
-                 "}"
-                 "DiffView FileWidget {"
-                 "  background: palette(mid)"
-                 "}"
-                 "DiffView HunkWidget {"
-                 "  border-top: 1px solid palette(light)"
-                 "}"
-                 "DiffView HunkWidget QLabel {"
-                 "  color: palette(bright-text)"
-                 "}"
-
-                 "FindWidget {"
-                 "  background: palette(highlight)"
-                 "}"
-                 "FindWidget QToolButton {"
-                 "  border: none;"
-                 "  border-radius: 4px"
-                 "}"
-                 "FindWidget QToolButton:pressed {"
-                 "  background: rgba(0, 0, 0, 20%)"
-                 "}"
-                 "FindWidget QLineEdit {"
-                 "  border: none"
-                 "}"
-
-                 "Footer {"
-                 "  background: palette(button);"
-                 "  border: 1px solid palette(shadow);"
-                 "  border-top: none"
-                 "}"
-                 "Footer QToolButton {"
-                 "  border: 1px solid palette(shadow);"
-                 "  border-top: none;"
-                 "  border-left: none"
-                 "}"
-
-                 "LogView {"
-                 "  selection-background-color: palette(mid)"
                  "}"
 
                  "MenuBar {"
@@ -193,67 +141,12 @@ QString CustomTheme::styleSheet() const {
                  "  border: 1px solid palette(highlight)"
                  "}"
 
-                 "TabBar::tab {"
-                 "  border: none;"
-                 "  border-right: 1px solid %5;"
-                 "  background: %5;"
-                 "  color: %6;"
-                 "}"
-                 "TabBar::tab:selected {"
-                 "  background: %7;"
-                 "}"
-
-                 "ToolBar {"
-                 "  border-top: none;"
-                 "  border-bottom: 1px solid palette(dark)"
-                 "}"
-                 "ToolBar QToolButton {"
-                 "  border: 1px solid palette(shadow)"
-                 "}"
-                 "ToolBar QToolButton:enabled:active:checked {"
-                 "  background: %4"
-                 "}"
-
-                 "TreeWidget QColumnView {"
-                 "  border-top: 1px solid palette(window);"
-                 "  border-right: 1px solid palette(base);"
-                 "  border-bottom: 1px solid palette(window)"
-                 "}"
-
-                 "CommitDetail QToolButton,"
-                 "HunkWidget QToolButton {"
-                 "  border: 1px solid palette(shadow);"
-                 "  border-radius: 4px"
-                 "}"
-
-                 "CommitToolBar QToolButton {"
-                 "  background: none"
-                 "}"
-
-                 "QTableView QPushButton {"
-                 "  margin: 2px;"
-                 "  padding: 6px"
-                 "}"
-
                  "QWidget {"
-                 "  %8"
+                 "  %4"
                  "}";
 
   QVariantMap button = mMap.value("button").toMap();
   QVariantMap menubar = mMap.value("menubar").toMap();
-  QVariantMap tabbar = mMap.value("tabbar").toMap();
-
-  QString tabbarBase = tabbar.value("base").toString();
-  if (tabbarBase.isEmpty())
-    tabbarBase = "palette(dark)";
-
-  QString tabbarText = tabbar.value("text").toString();
-  if (tabbarText.isEmpty())
-    tabbarText = "palette(text)";
-
-  QString tabbarSelected = tabbar.value("selected").toString();
-  if (tabbarSelected.isEmpty())
-    tabbarSelected = "palette(window)";
 
   QString font;
   QVariantMap fontMap = mMap.value("font").toMap();
@@ -281,11 +174,13 @@ QString CustomTheme::styleSheet() const {
   if (!fontValue.isEmpty())
     font += QString("font-style: %1;").arg(fontValue);
 
-  return text.arg(
+  text = text.arg(
       button.value("background").toMap().value("pressed").toString(),
       menubar.value("background").toString(), menubar.value("text").toString(),
-      button.value("background").toMap().value("checked").toString(),
-      tabbarBase, tabbarText, tabbarSelected, font);
+      font);
+
+  // Themes can append their own rules with theme['stylesheet'].
+  return text + mMap.value("stylesheet").toString();
 }
 
 void CustomTheme::polish(QPalette &palette) const {
@@ -522,6 +417,8 @@ QColor CustomTheme::star() {
 QVariantMap CustomTheme::editorStyleProperties() const {
   return mMap.value("property").toMap();
 }
+
+QVariantMap CustomTheme::ui() const { return mMap.value("ui").toMap(); }
 
 #ifndef Q_OS_MAC
 void CustomTheme::polishWindow(QWindow *window) const {

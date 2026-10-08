@@ -10,19 +10,22 @@
 #ifndef CHECKOUTDIALOG_H
 #define CHECKOUTDIALOG_H
 
-#include <QDialog>
-
-class ReferenceList;
-class QCheckBox;
-class QPushButton;
+#include "QmlDialog.h"
+#include "ReferenceItems.h"
 
 namespace git {
-class Reference;
 class Repository;
 } // namespace git
 
-class CheckoutDialog : public QDialog {
+// Check out a reference. qrc:/qml/CheckoutDialog.qml draws it.
+class CheckoutDialog : public QmlDialog {
   Q_OBJECT
+
+  Q_PROPERTY(QVariantList refs READ refs CONSTANT)
+  Q_PROPERTY(int refIndex READ refIndex WRITE setRefIndex NOTIFY changed)
+  Q_PROPERTY(bool detachEnabled READ isDetachEnabled NOTIFY changed)
+  Q_PROPERTY(bool detachChecked READ isDetachChecked NOTIFY changed)
+  Q_PROPERTY(bool acceptable READ isAcceptable NOTIFY changed)
 
 public:
   CheckoutDialog(const git::Repository &repo, const git::Reference &ref,
@@ -30,15 +33,24 @@ public:
 
   git::Reference reference() const;
   bool detach() const { return mDetach; }
+  Q_INVOKABLE void setDetach(bool detach);
+
+  QVariantList refs() const { return mRefs.items(); }
+  int refIndex() const { return mIndex; }
+  void setRefIndex(int index);
+
+  // Only local branches can be checked out without detaching HEAD.
+  bool isDetachEnabled() const;
+  bool isDetachChecked() const;
+  bool isAcceptable() const;
+
+signals:
+  void changed();
 
 private:
-  void update(const git::Reference &ref);
-
+  ReferenceItems mRefs;
+  int mIndex = -1;
   bool mDetach = false;
-
-  ReferenceList *mRefs;
-  QCheckBox *mDetachBox;
-  QPushButton *mCheckout;
 };
 
 #endif

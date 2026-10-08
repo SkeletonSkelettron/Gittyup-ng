@@ -1,13 +1,11 @@
 #include "Test.h"
-#include "ui/DiffView/DiffView.h"
+#include "ui/ChangedFilesModel.h"
+#include "ui/DetailView.h"
+#include "ui/DiffModel.h"
 #include "ui/MainWindow.h"
-#include "ui/DoubleTreeWidget.h"
-#include "ui/TreeView.h"
-#include "ui/TreeProxy.h"
-#include "ui/FileContextMenu.h"
+#include "ui/RepoView.h"
 #include "conf/Settings.h"
-
-#include <QTextEdit>
+#include "git/Patch.h"
 
 using namespace Test;
 using namespace QTest;
@@ -22,19 +20,45 @@ using namespace QTest;
   window.show();                                                               \
   QVERIFY(QTest::qWaitForWindowExposed(&window));                              \
                                                                                \
-  RepoView *repoView = window.currentView();
+  RepoView *repoView = window.currentView();                                   \
+  DetailView *details = repoView->findChild<DetailView *>();                   \
+  QVERIFY(details);                                                            \
+  details->setListMode(false);
 
-static void disableListView(TreeView &treeView, RepoView &repoView) {
-  auto treeProxy = dynamic_cast<TreeProxy *>(treeView.model());
-  QVERIFY(treeProxy);
+namespace {
 
-  auto diffTreeModel = dynamic_cast<DiffTreeModel *>(treeProxy->sourceModel());
-  QVERIFY(diffTreeModel);
-
-  diffTreeModel->enableListView(false);
-  Settings::instance()->setValue(Setting::Id::ShowChangedFilesAsList, false);
-  repoView.refresh();
+// The rows of a file model as paths, with a trailing slash for directories.
+QStringList rows(QAbstractItemModel *model) {
+  QStringList result;
+  for (int i = 0; i < model->rowCount(); ++i) {
+    QModelIndex index = model->index(i, 0);
+    QString path = index.data(ChangedFilesModel::PathRole).toString();
+    if (index.data(ChangedFilesModel::IsDirRole).toBool())
+      path += '/';
+    result.append(path);
+  }
+  return result;
 }
+
+ChangedFilesModel *model(DetailView *details, DetailView::List list) {
+  QAbstractItemModel *model = list == DetailView::StagedFiles
+                                  ? details->stagedFiles()
+                                  : details->unstagedFiles();
+  return static_cast<ChangedFilesModel *>(model);
+}
+
+// The row of the first file called 'name'.
+int fileRow(ChangedFilesModel *model, const QString &name) {
+  for (int i = 0; i < model->rowCount(); ++i) {
+    QModelIndex index = model->index(i, 0);
+    if (!index.data(ChangedFilesModel::IsDirRole).toBool() &&
+        index.data(ChangedFilesModel::NameRole).toString() == name)
+      return i;
+  }
+  return -1;
+}
+
+} // namespace
 
 class TestTreeView : public QObject {
   Q_OBJECT
@@ -53,58 +77,33 @@ private:
 void TestTreeView::restoreStagedFileAfterCommit() {
   INIT_REPO("TreeViewCollapseCount.zip");
 
-  // Check for a single file called "test".
-  RepoView *view = window.currentView();
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
-
+  ChangedFilesModel *unstagedModel = model(details, DetailView::UnstagedFiles);
   {
-    auto unstagedTree = doubleTree->findChild<TreeView *>("Unstaged");
-    QVERIFY(unstagedTree);
-    disableListView(*unstagedTree, *view);
-    QAbstractItemModel *unstagedModel = unstagedTree->model();
     // Wait for refresh
     auto timeout = Timeout(10000, "Repository didn't refresh in time");
     while (unstagedModel->rowCount() < 1)
       qWait(10);
-
-    QCOMPARE(unstagedModel->rowCount(), 2);
-    auto folder = unstagedModel->index(0, 0);
-    auto subfolder = unstagedModel->index(0, 0, folder);
-    auto file_txt = unstagedModel->index(0, 0, subfolder);
-    QCOMPARE(unstagedModel->data(file_txt).toString(), QString("file.txt"));
-    unstagedTree->selectionModel()->select(file_txt,
-                                           QItemSelectionModel::Select);
-
-    // Click on the check box. --> Stage file.txt
-    mouseClick(unstagedTree->viewport(), Qt::LeftButton,
-               Qt::KeyboardModifiers(),
-               unstagedTree->checkRect(file_txt).center());
   }
 
-  refresh(view, true);
+  QCOMPARE(unstagedModel->fileCount(), 2);
 
-  auto stagedTree = doubleTree->findChild<TreeView *>("Staged");
-  stagedTree->expandAll();
+  // Stage file.txt.
+  int row = fileRow(unstagedModel, "file.txt");
+  QVERIFY(row >= 0);
+  details->selectFile(DetailView::UnstagedFiles, row);
+  details->stageFiles(DetailView::UnstagedFiles, row, true);
 
-  QAbstractItemModel *stagedModel = stagedTree->model();
-  QVERIFY(stagedTree);
-  {
-    QCOMPARE(stagedModel->rowCount(), 1);
-    auto folder = stagedModel->index(0, 0);
-    auto subfolder = stagedModel->index(0, 0, folder);
-    auto file_txt = stagedModel->index(0, 0, subfolder);
-    QCOMPARE(stagedModel->data(file_txt).toString(), QString("file.txt"));
+  refresh(repoView, true);
 
-    // Select file
-    stagedTree->selectionModel()->clearSelection();
-    stagedTree->selectionModel()->select(file_txt, QItemSelectionModel::Select);
-  }
+  // Select it in the staged files.
+  ChangedFilesModel *stagedModel = model(details, DetailView::StagedFiles);
+  QCOMPARE(stagedModel->fileCount(), 1);
+  row = fileRow(stagedModel, "file.txt");
+  QVERIFY(row >= 0);
+  details->selectFile(DetailView::StagedFiles, row);
 
-  QTextEdit *editor = view->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-  editor->setText("conflicting commit b");
-  view->commit();
+  details->setCommitMessage("conflicting commit b");
+  repoView->commit();
 
   // The application should not crash!
 }
@@ -145,60 +144,30 @@ void TestTreeView::discardFiles() {
   // let the changes settle
   QApplication::processEvents();
 
-  // Check for a single file called "test".
-  RepoView *view = window.currentView();
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
-
   // stage folder1/file.txt
+  ChangedFilesModel *unstagedModel = model(details, DetailView::UnstagedFiles);
   {
-    auto unstagedTree = doubleTree->findChild<TreeView *>("Unstaged");
-    QVERIFY(unstagedTree);
-    QAbstractItemModel *unstagedModel = unstagedTree->model();
     // Wait for refresh
     auto timeout = Timeout(10000, "Repository didn't refresh in time");
     while (unstagedModel->rowCount() < 1)
       qWait(10);
-
-    QCOMPARE(unstagedModel->rowCount(), 4);
-    auto folder1 = unstagedModel->index(3, 0);
-    auto file_txt = unstagedModel->index(0, 0, folder1);
-    QCOMPARE(unstagedModel->data(file_txt).toString(), QString("file.txt"));
-    unstagedTree->selectionModel()->select(file_txt,
-                                           QItemSelectionModel::Select);
-
-    // Click on the check box. --> Stage file.txt
-    mouseClick(unstagedTree->viewport(), Qt::LeftButton,
-               Qt::KeyboardModifiers(),
-               unstagedTree->checkRect(file_txt).center());
   }
 
-  refresh(view, true);
+  QCOMPARE(unstagedModel->fileCount(), 5);
+  int row = unstagedModel->rowOf("folder1/file.txt");
+  QVERIFY(row >= 0);
+  details->stageFiles(DetailView::UnstagedFiles, row, true);
 
-  auto stagedTree = doubleTree->findChild<TreeView *>("Staged");
-  stagedTree->expandAll();
+  refresh(repoView, true);
 
-  // discard staged folder1
-  QAbstractItemModel *stagedModel = stagedTree->model();
-  QVERIFY(stagedTree);
-  {
-    QCOMPARE(stagedModel->rowCount(), 1);
-    auto folder1 = stagedModel->index(0, 0);
-    QCOMPARE(stagedModel->data(folder1).toString(), QString("folder1"));
+  // Only folder1/file.txt is staged.
+  ChangedFilesModel *stagedModel = model(details, DetailView::StagedFiles);
+  QCOMPARE(rows(stagedModel),
+           QStringList({"folder1/", "folder1/file.txt"}));
 
-    // Select file
-    stagedTree->selectionModel()->clearSelection();
-    stagedTree->selectionModel()->select(folder1, QItemSelectionModel::Select);
-  }
-
-  DoubleTreeWidget::showFileContextMenu(QPoint(), repoView, stagedTree, true);
-
-  auto *menu = doubleTree->findChild<FileContextMenu *>();
-  QVERIFY(menu);
-  QCOMPARE(menu->mFiles.count(), 1);
-  // only folder1/file.txt shall get discarded.
-  // folder1/file2.txt shall not discarded!
-  QCOMPARE(menu->mFiles.at(0), "folder1/file.txt");
+  // Discarding the staged folder1 must only discard folder1/file.txt, not
+  // folder1/file2.txt.
+  QCOMPARE(stagedModel->files(0), QStringList({"folder1/file.txt"}));
 
   // From here on everything is tested in TestFileContextMenu
 }
@@ -221,61 +190,36 @@ void TestTreeView::fileMergeCrash() {
   git::Diff diff = repo.diffIndexToWorkdir();
   QVERIFY(diff.isConflicted());
 
-  auto doubleTree = repoView->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
-  doubleTree->fileCountExpansionThreshold = 5;
-  auto stagedTree = doubleTree->findChild<TreeView *>("Staged");
-  QVERIFY(stagedTree);
-  auto unstagedTree = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(unstagedTree);
+  ChangedFilesModel *stagedModel = model(details, DetailView::StagedFiles);
+  {
+    // Wait for refresh
+    auto timeout = Timeout(10000, "Repository didn't refresh in time");
+    while (stagedModel->fileCount() < 1)
+      qWait(10);
+  }
 
-  QAbstractItemModel *stagedModel = stagedTree->model();
+  // The conflicted file.
+  ChangedFilesModel *unstagedModel = model(details, DetailView::UnstagedFiles);
+  int row = -1;
+  for (int i = 0; row < 0 && i < unstagedModel->rowCount(); ++i) {
+    QModelIndex index = unstagedModel->index(i, 0);
+    if (index.data(ChangedFilesModel::StatusRole).toString() == "!")
+      row = i;
+  }
+  QVERIFY(row >= 0);
+  QCOMPARE(unstagedModel->index(row, 0)
+               .data(ChangedFilesModel::NameRole)
+               .toString(),
+           QString("File_security_configs"));
+  details->selectFile(DetailView::UnstagedFiles, row);
 
-  // Wait for refresh
-  auto timeout = Timeout(10000, "Repository didn't refresh in time");
-  while (stagedModel->rowCount() < 3)
-    qWait(10);
+  auto diffModel = qobject_cast<DiffModel *>(details->diffModel());
+  QVERIFY(diffModel);
+  QVERIFY(diffModel->isConflicted());
+  QVERIFY(diffModel->hunkCount() > 0);
 
-  QAbstractItemModel *unstagedModel = unstagedTree->model();
-  QCOMPARE(unstagedModel->rowCount(), 1);
-
-  unstagedTree->expandAll();
-
-  QModelIndex index = unstagedModel->index(0, 0); // common
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // src
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // main
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // java
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // com
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // something
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // common
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // configs
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // security_config
-  QVERIFY(index.isValid());
-  index = unstagedModel->index(0, 0, index); // File_security_config
-  QVERIFY(index.isValid());
-
-  unstagedTree->selectionModel()->select(
-      index, QItemSelectionModel::SelectionFlag::Select);
-
-  auto diffView = doubleTree->findChild<DiffView *>();
-  QVERIFY(diffView);
-
-  QToolButton *theirs = diffView->findChild<QToolButton *>("ConflictTheirs");
-  QVERIFY(theirs);
-  mouseClick(theirs, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(), 0);
-
-  QToolButton *save =
-      diffView->widget()->findChild<QToolButton *>("ConflictSave");
-  QVERIFY(save);
-  mouseClick(save, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(), 0);
+  diffModel->chooseConflict(0, git::Patch::Theirs);
+  diffModel->saveConflict(0);
 
   // should not crash
 }
@@ -338,16 +282,8 @@ void TestTreeView::selectionSurvivesPush() {
 void TestTreeView::dirtySubmoduleAndStagedSubmodule() {
   INIT_REPO("DirtySubmoduleUnstagedTree.zip");
 
-  auto doubleTree = repoView->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
-  auto stagedTree = doubleTree->findChild<TreeView *>("Staged");
-  QVERIFY(stagedTree);
-  auto unstagedTree = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(unstagedTree);
-
   {
-    QAbstractItemModel *stagedModel = stagedTree->model();
-
+    ChangedFilesModel *stagedModel = model(details, DetailView::StagedFiles);
     {
       // Wait for refresh
       auto timeout = Timeout(10000, "Repository didn't refresh in time");
@@ -355,19 +291,13 @@ void TestTreeView::dirtySubmoduleAndStagedSubmodule() {
         qWait(10);
     }
 
-    QCOMPARE(stagedModel->rowCount(), 1);
-    QModelIndex index = stagedModel->index(0, 0); // submodules folder
-    QVERIFY(index.isValid());
-    QCOMPARE(index.data(), "submodules");
-
-    QCOMPARE(stagedModel->rowCount(index), 1);
-    index = stagedModel->index(0, 0, index); // submodule1
-    QVERIFY(index.isValid());
-    QCOMPARE(index.data(), "submodule1");
+    QCOMPARE(rows(stagedModel),
+             QStringList({"submodules/", "submodules/submodule1"}));
   }
 
   {
-    QAbstractItemModel *unstagedModel = unstagedTree->model();
+    ChangedFilesModel *unstagedModel =
+        model(details, DetailView::UnstagedFiles);
     {
       // Wait for refresh
       auto timeout = Timeout(10000, "Repository didn't refresh in time");
@@ -375,31 +305,16 @@ void TestTreeView::dirtySubmoduleAndStagedSubmodule() {
         qWait(300);
     }
 
-    QCOMPARE(unstagedModel->rowCount(), 1);
-    QModelIndex index = unstagedModel->index(0, 0); // submodules folder
-    QVERIFY(index.isValid());
-    QCOMPARE(index.data(), "submodules");
-
-    QCOMPARE(unstagedModel->rowCount(index), 1);
-    index = unstagedModel->index(0, 0, index); // submodule2
-    QVERIFY(index.isValid());
-    QCOMPARE(index.data(), "submodule2");
+    QCOMPARE(rows(unstagedModel),
+             QStringList({"submodules/", "submodules/submodule2"}));
   }
 }
 
 void TestTreeView::conflictedAndStagedFile() {
   INIT_REPO("ConflictedAndStagedFile.zip");
 
-  auto doubleTree = repoView->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
-  auto stagedTree = doubleTree->findChild<TreeView *>("Staged");
-  QVERIFY(stagedTree);
-  auto unstagedTree = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(unstagedTree);
-
   {
-    QAbstractItemModel *stagedModel = stagedTree->model();
-
+    ChangedFilesModel *stagedModel = model(details, DetailView::StagedFiles);
     {
       // Wait for refresh
       auto timeout = Timeout(10000, "Repository didn't refresh in time");
@@ -407,19 +322,13 @@ void TestTreeView::conflictedAndStagedFile() {
         qWait(10);
     }
 
-    QCOMPARE(stagedModel->rowCount(), 1);
-    QModelIndex index = stagedModel->index(0, 0); // "folder" folder
-    QVERIFY(index.isValid());
-    QCOMPARE(index.data(), "folder");
-
-    QCOMPARE(stagedModel->rowCount(index), 1);
-    index = stagedModel->index(0, 0, index);
-    QVERIFY(index.isValid());
-    QCOMPARE(index.data(), "NotConflictedFile.txt");
+    QCOMPARE(rows(stagedModel),
+             QStringList({"folder/", "folder/NotConflictedFile.txt"}));
   }
 
   {
-    QAbstractItemModel *unstagedModel = unstagedTree->model();
+    ChangedFilesModel *unstagedModel =
+        model(details, DetailView::UnstagedFiles);
     {
       // Wait for refresh
       auto timeout = Timeout(10000, "Repository didn't refresh in time");
@@ -427,15 +336,8 @@ void TestTreeView::conflictedAndStagedFile() {
         qWait(300);
     }
 
-    QCOMPARE(unstagedModel->rowCount(), 1);
-    QModelIndex index = unstagedModel->index(0, 0); // "folder" folder
-    QVERIFY(index.isValid());
-    QCOMPARE(index.data(), "folder");
-
-    QCOMPARE(unstagedModel->rowCount(index), 1);
-    index = unstagedModel->index(0, 0, index);
-    QVERIFY(index.isValid());
-    QCOMPARE(index.data(), "conflictedFile.txt");
+    QCOMPARE(rows(unstagedModel),
+             QStringList({"folder/", "folder/conflictedFile.txt"}));
   }
 }
 

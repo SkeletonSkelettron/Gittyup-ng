@@ -8,14 +8,17 @@
 //
 
 #include "MainWindow.h"
-#include "AdvancedSearchWidget.h"
-#include "IndexCompleter.h"
+#include "CommandPalette.h"
+#include "dialogs/ConfirmDialog.h"
 #include "MenuBar.h"
 #include "RepoView.h"
-#include "SearchField.h"
 #include "SideBar.h"
+#include "WelcomePage.h"
+#include "SearchField.h"
+#include "TabStrip.h"
 #include "TabWidget.h"
 #include "ToolBar.h"
+#include "qml/QmlSupport.h"
 #include "conf/RecentRepositories.h"
 #include "conf/Settings.h"
 #include "git/Repository.h"
@@ -27,17 +30,22 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QCryptographicHash>
-#include <QMessageBox>
+#include <QMenu>
 #include <QMimeData>
 #include <QSettings>
-#include <QTimeLine>
-#include <QToolButton>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlProperty>
+#include <QQuickItem>
+#include <QQuickWidget>
 #include "util/Debug.h"
 
 namespace {
 
 const int kDefaultWidth = 1200;
 const int kDefaultHeight = 800;
+const int kMinimumWidth = 720;
+const int kMinimumHeight = 480;
 
 const QString kPathKey = "path";
 const QString kIndexKey = "index";
@@ -78,26 +86,6 @@ MainWindow::MainWindow(const git::Repository &repo, QWidget *parent,
   mMenuBar = MenuBar::instance(this);
   mMenuBar->registerActions(this);
 
-  // Create tool bar.
-  mToolBar = new ToolBar(this);
-  addToolBar(Qt::TopToolBarArea, mToolBar);
-
-  // Initialize search.
-  SearchField *searchField = mToolBar->searchField();
-  connect(searchField, &QLineEdit::textEdited, mMenuBar,
-          &MenuBar::updateUndoRedo);
-  connect(searchField, &QLineEdit::selectionChanged, mMenuBar,
-          &MenuBar::updateCutCopyPaste);
-
-  // Hook up advanced search.
-  AdvancedSearchWidget *advancedSearch = new AdvancedSearchWidget(this);
-  connect(advancedSearch, &AdvancedSearchWidget::accepted, searchField,
-          &QLineEdit::setText);
-  connect(searchField->advancedButton(), &QToolButton::clicked, this,
-          [this, searchField, advancedSearch] {
-            advancedSearch->exec(searchField, currentView()->index());
-          });
-
   // Update title and refresh when settings change.
   mFullPath =
       Settings::instance()->value(Setting::Id::ShowFullRepoPath).toBool();
@@ -105,10 +93,15 @@ MainWindow::MainWindow(const git::Repository &repo, QWidget *parent,
           [this](bool refresh) {
             Settings *settings = Settings::instance();
 
+            // The view draws the menu bar unless it's native.
             bool menuBarHidden =
                 settings->value(Setting::Id::HideMenuBar).toBool();
-            if (mMenuBar->isHidden() != menuBarHidden)
-              mMenuBar->setHidden(menuBarHidden);
+            if (mMenuBar->isNativeMenuBar()) {
+              if (mMenuBar->isHidden() != menuBarHidden)
+                mMenuBar->setHidden(menuBarHidden);
+            } else {
+              emit menuBarVisibleChanged();
+            }
 
             bool fullPath =
                 settings->value(Setting::Id::ShowFullRepoPath).toBool();
@@ -123,38 +116,53 @@ MainWindow::MainWindow(const git::Repository &repo, QWidget *parent,
             }
           });
 
-  // Create splitter.
-  QSplitter *splitter = new QSplitter(this);
-  splitter->setHandleWidth(0);
-  connect(splitter, &QSplitter::splitterMoved, [this] {
-    QSplitter *splitter = static_cast<QSplitter *>(centralWidget());
-    mIsSideBarVisible = (splitter->sizes().first() > 0);
-  });
-
-  // Create tab container.
-  TabWidget *tabs = new TabWidget(splitter);
-  connect(tabs, &TabWidget::currentChanged, [this](int index) {
+  // The tabs keep the repositories. The view draws them.
+  mTabs = new TabWidget(this);
+  mTabs->hide();
+  connect(mTabs, &TabWidget::currentChanged, [this](int index) {
+    updatePages();
     updateInterface();
     MenuBar::instance(this)->update();
   });
+  connect(mTabs, &TabWidget::welcomeChanged, this, &MainWindow::updatePages);
 
-  connect(tabs, QOverload<>::of(&TabWidget::tabInserted), this,
+  connect(mTabs, QOverload<>::of(&TabWidget::tabInserted), this,
           &MainWindow::updateTabNames);
-  connect(tabs, QOverload<>::of(&TabWidget::tabRemoved), this,
+  connect(mTabs, QOverload<>::of(&TabWidget::tabRemoved), this,
           &MainWindow::updateTabNames);
 
-  splitter->addWidget(new SideBar(tabs, this, splitter));
-  splitter->addWidget(tabs);
-  splitter->setCollapsible(1, false);
-  splitter->setStretchFactor(1, 1);
+  mTabStrip = new TabStrip(this);
+  mTabStrip->setTabWidget(mTabs);
+  mToolBar = new ToolBar(this);
+  mSideBar = new SideBar(mTabs, this);
+  mPalette = new CommandPalette(this);
 
-  setCentralWidget(splitter);
+  // The actions of the menu bar are also added to the window, so their
+  // shortcuts work while the view draws the menu bar.
+  if (!mMenuBar->isNativeMenuBar())
+    mMenuBar->hide();
+
+  // Draw everything in one view, with the sidebar as it was.
+  mIsSideBarVisible = QSettings().value(kSidebarKey, true).toBool();
+  mView = QmlSupport::createView(
+      "MainPage",
+      {{"mainWindow", QVariant::fromValue<QObject *>(this)},
+       {"tabStrip", QVariant::fromValue<QObject *>(mTabStrip)},
+       {"toolbar", QVariant::fromValue<QObject *>(mToolBar)},
+       {"search", QVariant::fromValue<QObject *>(mToolBar->searchField())},
+       {"sidebar", QVariant::fromValue<QObject *>(mSideBar)},
+       {"welcome", QVariant::fromValue<QObject *>(mTabs->welcomePage())},
+       {"commandPalette", QVariant::fromValue<QObject *>(mPalette)}},
+      this);
+  mView->setMinimumSize(kMinimumWidth, kMinimumHeight);
+  QmlSupport::setDrawsPopups(mView, true);
+  setCentralWidget(mView);
+  mTabStrip->setView(mView);
+  mToolBar->setView(mView);
+  mSideBar->setView(mView);
 
   if (repo)
     addTab(repo);
-
-  // Set search completer.
-  searchField->setCompleter(new IndexCompleter(this, searchField));
 
   // Restore the last known size and position, falling back to a default.
   QByteArray lastGeometry = QSettings().value(kLastGeometryKey).toByteArray();
@@ -173,11 +181,17 @@ MainWindow::MainWindow(const git::Repository &repo, QWidget *parent,
       move(win->x() + 24, win->y() + 24);
   }
 
-  // Restore sidebar.
-  setSideBarVisible(QSettings().value(kSidebarKey, true).toBool());
-
   // Set initial state of interface.
   updateInterface();
+}
+
+MainWindow::~MainWindow() {
+  // The pages of the repositories are in the view, which references the
+  // objects of the window, so they go first and the view next.
+  delete mTabs;
+  mTabs = nullptr;
+  delete mView;
+  mView = nullptr;
 }
 
 bool MainWindow::isSideBarVisible() const { return mIsSideBarVisible; }
@@ -186,35 +200,82 @@ void MainWindow::setSideBarVisible(bool visible) {
   if (visible == mIsSideBarVisible)
     return;
 
+  // The sidebar slides in or out.
   mIsSideBarVisible = visible;
+  emit sideBarVisibleChanged();
+  mToolBar->updateView();
 
   // Remember in settings.
   QSettings().setValue(kSidebarKey, visible);
-
-  // Animate sidebar sliding in or out.
-  QSplitter *splitter = static_cast<QSplitter *>(centralWidget());
-  QWidget *sidebar = splitter->widget(0);
-  int pos = visible ? sidebar->sizeHint().width() : splitter->sizes().first();
-
-  QTimeLine *timeline = new QTimeLine(250, this);
-  timeline->setDirection(visible ? QTimeLine::Forward : QTimeLine::Backward);
-  timeline->setEasingCurve(QEasingCurve(QEasingCurve::Linear));
-  timeline->setUpdateInterval(20);
-
-  connect(timeline, &QTimeLine::valueChanged, [this, pos](qreal value) {
-    QSplitter *splitter = static_cast<QSplitter *>(centralWidget());
-    splitter->setSizes({static_cast<int>(pos * value), 1});
-  });
-
-  connect(timeline, &QTimeLine::finished,
-          [timeline] { timeline->deleteLater(); });
-
-  timeline->start();
 }
 
-TabWidget *MainWindow::tabWidget() const {
-  QSplitter *splitter = static_cast<QSplitter *>(centralWidget());
-  return static_cast<TabWidget *>(splitter->widget(1));
+TabWidget *MainWindow::tabWidget() const { return mTabs; }
+
+bool MainWindow::isWelcomeVisible() const {
+  return mTabs && mTabs->isWelcomeVisible();
+}
+
+bool MainWindow::isMenuBarVisible() const {
+  return !mMenuBar->isNativeMenuBar() &&
+         !Settings::instance()->value(Setting::Id::HideMenuBar).toBool();
+}
+
+QStringList MainWindow::menuTitles() const {
+  QStringList titles;
+  for (QMenu *menu : mMenuBar->menus())
+    titles.append(menu->title());
+  return titles;
+}
+
+void MainWindow::showMenu(int index, qreal x, qreal y) {
+  QList<QMenu *> menus = mMenuBar->menus();
+  if (index >= 0 && index < menus.size())
+    QmlSupport::execMenu(menus.at(index), mapFromScene(x, y));
+}
+
+QPoint MainWindow::mapFromScene(qreal x, qreal y) const {
+  return QmlSupport::host(mView)->mapToGlobal(x, y);
+}
+
+QQuickItem *MainWindow::createPage(const QString &name,
+                                   const QVariantMap &objects, QObject *owner,
+                                   QQmlContext **context) {
+  QQuickItem *pages = mView->rootObject()->findChild<QQuickItem *>("pages");
+  Q_ASSERT(pages);
+
+  QQmlComponent component(mView->engine(),
+                          QUrl(QString("qrc:/qml/%1.qml").arg(name)));
+  QQmlContext *pageContext = new QQmlContext(mView->rootContext(), owner);
+  for (auto it = objects.cbegin(); it != objects.cend(); ++it)
+    pageContext->setContextProperty(it.key(), it.value());
+
+  QQuickItem *page = qobject_cast<QQuickItem *>(component.beginCreate(pageContext));
+  if (!page) {
+    for (const QQmlError &error : component.errors())
+      qWarning("%s", qPrintable(error.toString()));
+    delete pageContext;
+    *context = nullptr;
+    return nullptr;
+  }
+
+  page->setParent(owner);
+  page->setParentItem(pages);
+  page->setVisible(false);
+  QQmlProperty(page, "anchors.fill").write(QVariant::fromValue(pages));
+  component.completeCreate();
+
+  *context = pageContext;
+  return page;
+}
+
+void MainWindow::updatePages() {
+  // Only the page of the current tab is shown, unless the welcome page is.
+  int current = mTabs->currentIndex();
+  bool welcome = mTabs->isWelcomeVisible();
+  for (int i = 0; i < count(); ++i)
+    view(i)->setPageVisible(!welcome && i == current);
+
+  emit welcomeVisibleChanged();
 }
 
 RepoView *MainWindow::addTab(const QString &path) {
@@ -277,14 +338,15 @@ RepoView *MainWindow::addTab(const git::Repository &repo) {
   return view;
 }
 
-int MainWindow::count() const { return tabWidget()->count(); }
+// The tabs are gone while the window is destroyed.
+int MainWindow::count() const { return mTabs ? mTabs->count() : 0; }
 
 RepoView *MainWindow::currentView() const {
-  return static_cast<RepoView *>(tabWidget()->currentWidget());
+  return mTabs ? static_cast<RepoView *>(mTabs->currentWidget()) : nullptr;
 }
 
 RepoView *MainWindow::view(int index) const {
-  return static_cast<RepoView *>(tabWidget()->widget(index));
+  return mTabs ? static_cast<RepoView *>(mTabs->widget(index)) : nullptr;
 }
 
 MainWindow *MainWindow::activeWindow() {
@@ -477,9 +539,21 @@ void MainWindow::dropEvent(QDropEvent *event) {
 }
 
 void MainWindow::warnInvalidRepo(const QString &path) {
+  // Say why, like that the repository belongs to another user.
+  QString reason;
+  if (git::Repository::lastErrorKind() != 0)
+    reason = git::Repository::lastError();
+
   QString title = tr("Invalid Git Repository");
-  QString text = tr("%1 does not contain a valid git repository.");
-  QMessageBox::warning(nullptr, title, text.arg(path));
+  QString text = tr("%1 does not contain a valid git repository.").arg(path);
+  if (!reason.isEmpty())
+    text += "\n\n" + reason;
+  if (reason.contains("not owned by current user"))
+    text += "\n\n" + tr("Start %1 as the user that owns the repository, "
+                        "or trust it with 'git config --global --add "
+                        "safe.directory <path>'.")
+                         .arg(QCoreApplication::applicationName());
+  ConfirmDialog::warning(activeWindow(), title, text);
 }
 
 void MainWindow::updateTabNames() {

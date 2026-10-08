@@ -60,9 +60,14 @@ public:
   bool isValid() const { return d ? true : false; }
   explicit operator bool() const { return isValid(); }
 
+  // Whether both are the same diff.
+  bool operator==(const Diff &rhs) const { return d == rhs.d; }
+
   bool isConflicted() const;
   bool isStatusDiff() const;
   Index index() const { return d->index; }
+  // The index that staging the files of a status changes.
+  void setIndex(const Index &index);
 
   int count() const;
   Patch patch(int index) const;
@@ -96,7 +101,6 @@ private:
 
   Diff(git_diff *diff);
   operator git_diff *() const;
-  void setIndex(const Index &index);
 
   QSharedPointer<Data> d;
 

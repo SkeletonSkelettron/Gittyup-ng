@@ -10,16 +10,12 @@
 #include "Test.h"
 #include "dialogs/AmendDialog.h"
 #include "dialogs/CloneDialog.h"
-#include "dialogs/StartDialog.h"
 #include "qnamespace.h"
 #include "ui/CommitList.h"
 #include "ui/DetailView.h"
-#include "ui/DiffView/DiffView.h"
-#include "ui/DoubleTreeWidget.h"
-#include "ui/Footer.h"
+#include "ui/DiffModel.h"
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
-#include "ui/TreeView.h"
 #include <QFile>
 #include <QLineEdit>
 #include <QMenu>
@@ -52,41 +48,21 @@ void TestInitRepo::initTestCase() {
   if (dir.cd("test_init_repo"))
     QVERIFY(dir.removeRecursively());
 
-  StartDialog *dialog = StartDialog::openSharedInstance();
-  QVERIFY(qWaitForWindowActive(dialog));
-
-  // Find the first button in the first footer.
-  Footer *footer = dialog->findChild<Footer *>();
-  QToolButton *plus = footer->findChild<QToolButton *>();
-
-  // Set up timer to dismiss the popup.
-  QTimer::singleShot(500, [] {
-    QMenu *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
-    QVERIFY(menu);
-
-    keyClick(menu, Qt::Key_Down);
-    keyClick(menu, Qt::Key_Down);
-    keyClick(menu, Qt::Key_Down);
-    keyClick(menu, Qt::Key_Return);
+  // Initialize a repository like the welcome page does.
+  CloneDialog *cloneDialog = new CloneDialog(CloneDialog::Init);
+  QObject::connect(cloneDialog, &CloneDialog::accepted, [cloneDialog] {
+    MainWindow::open(cloneDialog->path());
   });
-
-  {
-    auto timeout = Timeout(1000, "Start dialog didn't close in time");
-
-    // Show popup menu.
-    mouseClick(plus, Qt::LeftButton);
-  }
-
-  CloneDialog *cloneDialog =
-      qobject_cast<CloneDialog *>(QApplication::activeModalWidget());
-  QVERIFY(cloneDialog);
+  cloneDialog->open();
+  QVERIFY(qWaitForWindowExposed(cloneDialog));
 
   // Set fields.
   cloneDialog->setField("name", "test_init_repo");
   cloneDialog->setField("path", QDir::tempPath());
 
-  // Click return.
-  keyClick(cloneDialog, Qt::Key_Return);
+  // Initialize.
+  QVERIFY(cloneDialog->canContinue());
+  cloneDialog->next();
 
   // Wait on the new window.
   mWindow = MainWindow::activeWindow();
@@ -111,13 +87,10 @@ void TestInitRepo::addFile() {
 
   // Check for a single file called "test".
   RepoView *view = mWindow->currentView();
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
+  DetailView *detailView = view->findChild<DetailView *>();
+  QVERIFY(detailView);
 
-  auto files = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(files);
-
-  QAbstractItemModel *model = files->model();
+  QAbstractItemModel *model = detailView->unstagedFiles();
 
   {
     // Wait for refresh
@@ -135,10 +108,8 @@ void TestInitRepo::commitFile() {
   DetailView *detailView = view->findChild<DetailView *>();
   QVERIFY(detailView);
 
-  QPushButton *stageAll = detailView->findChild<QPushButton *>("StageAll");
-  QVERIFY(stageAll);
-
-  mouseClick(stageAll, Qt::LeftButton);
+  QVERIFY(detailView->isStageEnabled());
+  detailView->stage();
   view->commit();
 }
 
@@ -153,7 +124,7 @@ void TestInitRepo::amendCommit() {
 
   auto dialog = view->findChild<AmendDialog *>();
   QVERIFY(dialog);
-  dialog->findChild<QTextEdit *>()->setText("Some other commit message");
+  dialog->setCommitMessage("Some other commit message");
   dialog->accept();
 
   qWait(300);
@@ -178,44 +149,27 @@ void TestInitRepo::amendCommit() {
 
 void TestInitRepo::editFile() {
   RepoView *view = mWindow->currentView();
+  DetailView *detailView = view->findChild<DetailView *>();
+  QVERIFY(detailView);
 
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
-
-  auto files = doubleTree->findChild<TreeView *>("Staged");
-  QVERIFY(files);
-
-  files->selectionModel()->select(files->model()->index(0, 0),
-                                  QItemSelectionModel::Select);
-
-  DiffView *diff = view->findChild<DiffView *>();
-  QVERIFY(diff);
-
-  // The file's diff (and the FileWidget/EditButton it builds) loads
-  // asynchronously, so it may not exist yet right after selecting the
-  // file.
-  QToolButton *edit = nullptr;
+  // Select the file of the commit.
+  view->selectFirstCommit();
+  QAbstractItemModel *files = detailView->files();
   {
     auto timeout = Timeout(10000, "Diff didn't finish loading in time");
-    while (!(edit = diff->findChild<QToolButton *>("EditButton")))
+    while (files->rowCount() < 1)
       qWait(300);
   }
-  QVERIFY(edit);
 
-  // Set up timer to dismiss the popup.
-  QTimer::singleShot(500, [] {
-    QMenu *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
-    QVERIFY(menu);
+  detailView->selectFile(DetailView::AllFiles, 0);
+  QCOMPARE(detailView->file(), QString("test"));
 
-    keyClick(menu, Qt::Key_Down);
-    keyClick(menu, Qt::Key_Return);
-  });
+  auto diff = qobject_cast<DiffModel *>(detailView->diffModel());
+  QVERIFY(diff);
+  QCOMPARE(diff->path(), QString("test"));
 
-  {
-    auto timeout = Timeout(1000, "Popup didn't close in time");
-    // mouseClick(edit, Qt::LeftButton);
-    edit->click();
-  }
+  // Open the editor.
+  detailView->editFile(detailView->file());
 }
 
 void TestInitRepo::cleanupTestCase() {

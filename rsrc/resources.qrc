@@ -69,5 +69,9 @@
         <file>logo-type_light@2x.png</file>
         <file>liberapay_icon_130890.png</file>
         <file alias="mocha.png">screenshots/catppuccin_mocha.png</file>
+        <file alias="kraken_dark.png">screenshots/kraken_dark.png</file>
+        <file alias="kraken_dark@2x.png">screenshots/kraken_dark@2x.png</file>
+        <file alias="kraken_light.png">screenshots/kraken_light.png</file>
+        <file alias="kraken_light@2x.png">screenshots/kraken_light@2x.png</file>
     </qresource>
 </RCC>

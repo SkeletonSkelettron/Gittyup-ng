@@ -37,30 +37,16 @@ namespace git {
 namespace {
 
 const QString kLogKey = "remote/log";
-const QStringList kKeyKinds = {"ed25519", "rsa", "dsa"};
 
-QString keyFile(const QString &path = QString()) {
-  QDir dir = QDir::home();
-  if (!path.isEmpty()) {
-    QFileInfo file(path);
+// The default SSH identity files of OpenSSH, newer kinds first.
+const QStringList kKeyKinds = {"ed25519", "ecdsa", "rsa", "dsa"};
 
-    if (!file.isAbsolute())
-      file.setFile(dir.absolutePath() + '/' + file.filePath());
-
-    if (file.exists())
-      return file.absoluteFilePath();
-  }
-
-  if (!dir.cd(".ssh"))
-    return QString();
-
-  for (const QString &kind : kKeyKinds) {
-    QString name = QString("id_%1").arg(kind);
-    if (dir.exists(name))
-      return dir.absoluteFilePath(name);
-  }
-
-  return QString();
+// Paths that start with '~' or are relative are in the home directory.
+QString homeFilePath(const QString &path) {
+  QString result = path;
+  if (result == "~" || result.startsWith("~/") || result.startsWith("~\\"))
+    result = QDir::homePath() + result.mid(1);
+  return QFileInfo(QDir::home(), result).absoluteFilePath();
 }
 
 static QRegularExpression urlRegex{"^[0-9a-zA-Z+-]+://"};
@@ -224,10 +210,8 @@ private:
         if (!hosts.isEmpty() && !words.isEmpty())
           hosts.last().user = words.first();
       } else if (keyword == "identityfile") {
-        if (!hosts.isEmpty() && !words.isEmpty()) {
-          QString file = words.first();
-          hosts.last().file = file.replace('~', QDir::homePath());
-        }
+        if (!hosts.isEmpty() && !words.isEmpty())
+          hosts.last().file = homeFilePath(words.first());
       } else if (keyword == "port") {
         if (!hosts.isEmpty() && !words.isEmpty() && hosts.last().port == 0) {
           bool ok;
@@ -242,6 +226,37 @@ private:
     return hosts;
   }
 };
+
+// The SSH identity files to try for the host of 'url', like OpenSSH: the
+// files of the SSH config file, the file of the settings and the default
+// files, of those that exist.
+QStringList identityFiles(const QString &url, const QString &configFilePath,
+                          const QString &keyFilePath) {
+  QStringList files;
+  ConfigFile configFile(configFilePath);
+  if (configFile.isValid()) {
+    // Extract hostname from the unresolved URL.
+    configFile.apply(parseUrl(url).host(),
+                     [&files](const ConfigFile::Host &host) {
+                       if (!host.file.isEmpty())
+                         files.append(host.file);
+                     });
+  }
+
+  if (!keyFilePath.isEmpty())
+    files.append(homeFilePath(keyFilePath));
+
+  for (const QString &kind : kKeyKinds)
+    files.append(homeFilePath(QString("~/.ssh/id_%1").arg(kind)));
+
+  QStringList result;
+  for (const QString &file : files) {
+    if (QFileInfo(file).isFile() && !result.contains(file))
+      result.append(file);
+  }
+
+  return result;
+}
 
 } // namespace
 
@@ -330,35 +345,15 @@ int Remote::Callbacks::credentials(git_credential **out, const char *url,
       log(error->message);
     }
 
-    // Read SSH config file.
-    QString key;
-    ConfigFile configFile(cbs->configFilePath());
-    if (configFile.isValid()) {
-      // Extract hostname from the unresolved URL.
-      configFile.apply(parseUrl(cbs->url()).host(),
-                       [&key, cbs](const ConfigFile::Host &host) {
-                         if (!host.file.isEmpty() &&
-                             !cbs->mKeyFiles.contains(host.file)) {
-                           key = host.file;
-                         }
-                       });
-    }
-
-    if (key.isEmpty()) {
-      key = keyFile(cbs->keyFilePath());
+    // Then try the identity files one after another, like OpenSSH.
+    QStringList keys =
+        identityFiles(cbs->url(), cbs->configFilePath(), cbs->keyFilePath());
+    for (const QString &key : keys) {
       if (cbs->mKeyFiles.contains(key))
-        key = "";
-    }
+        continue;
 
-    // Search for default keys.
-    if (!key.isEmpty()) {
-      cbs->mKeyFiles.insert(key);
-
-      if (!QFile::exists(key)) {
-        QString err = QString("identity file not found: %1").arg(key);
-        git_error_set_str(GIT_ERROR_NET, err.toUtf8());
-        return -GIT_ERROR_NET;
-      }
+      cbs->mKeyFiles.append(key);
+      log(QString("identity file: %1").arg(key));
 
       QString pub = QString("%1.pub").arg(key);
       if (!QFile::exists(pub))
@@ -366,10 +361,8 @@ int Remote::Callbacks::credentials(git_credential **out, const char *url,
 
       // Check if the private key is encrypted.
       QFile file(key);
-      if (!file.open(QFile::ReadOnly)) {
-        git_error_set_str(GIT_ERROR_NET, "failed to open SSH identity file");
-        return -GIT_ERROR_NET;
-      }
+      if (!file.open(QFile::ReadOnly))
+        continue;
 
       QTextStream in(&file);
       in.readLine(); // -----BEGIN PRIVATE KEY-----
@@ -385,15 +378,29 @@ int Remote::Callbacks::credentials(git_credential **out, const char *url,
 
       // Prompt for passphrase to decrypt key.
       QString passphrase;
-      QString username = name;
-      if (!cbs->credentials(url, username, passphrase))
+      if (!cbs->passphrase(url, key, passphrase))
         return -1;
 
       return git_credential_ssh_key_new(
-          out, username.toUtf8(),
-          !pub.isEmpty() ? pub.toLocal8Bit().constData() : nullptr,
+          out, name, !pub.isEmpty() ? pub.toLocal8Bit().constData() : nullptr,
           key.toLocal8Bit(), passphrase.toUtf8());
     }
+  }
+
+  // Say which keys the server didn't accept, rather than only that the
+  // password or the keyboard-interactive login failed.
+  QString keysError;
+  if (types & GIT_CREDENTIAL_SSH_KEY) {
+    QStringList keys;
+    for (const QString &key : cbs->mKeyFiles)
+      keys.append(QDir::toNativeSeparators(key));
+
+    keysError = keys.isEmpty()
+                    ? QString("no SSH key was found in %1")
+                          .arg(QDir::toNativeSeparators(homeFilePath("~/.ssh")))
+                    : QString("the server didn't accept the SSH key %1")
+                          .arg(keys.join(", "));
+    log(keysError);
   }
 
   if (types & GIT_CREDENTIAL_USERPASS_PLAINTEXT) {
@@ -403,6 +410,10 @@ int Remote::Callbacks::credentials(git_credential **out, const char *url,
       return git_credential_userpass_plaintext_new(out, username.toUtf8(),
                                                    password.toUtf8());
     }
+
+    if (!keysError.isEmpty())
+      git_error_set_str(GIT_ERROR_SSH, keysError.toUtf8());
+    return -1;
   }
 
   if (types & GIT_CREDENTIAL_SSH_INTERACTIVE) {
@@ -410,6 +421,8 @@ int Remote::Callbacks::credentials(git_credential **out, const char *url,
                                               cbs);
   }
 
+  if (!keysError.isEmpty())
+    git_error_set_str(GIT_ERROR_SSH, keysError.toUtf8());
   return -1;
 }
 

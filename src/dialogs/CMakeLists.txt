@@ -4,30 +4,25 @@ add_library(
   AccountDialog.cpp
   AddRemoteDialog.cpp
   AmendDialog.cpp
-  BranchDelegate.cpp
-  BranchTableModel.cpp
   CheckoutDialog.cpp
   CloneDialog.cpp
   CommitDialog.cpp
+  ConfirmDialog.cpp
   ConfigDialog.cpp
   DeleteBranchDialog.cpp
   DeleteTagDialog.cpp
-  DiffPanel.cpp
   ExternalToolsDialog.cpp
   ExternalToolsModel.cpp
-  HotkeysPanel.cpp
-  IconLabel.cpp
+  InputDialog.cpp
   MergeDialog.cpp
   NewBranchDialog.cpp
-  PluginsPanel.cpp
+  PluginsDialog.cpp
   PullRequestDialog.cpp
+  QmlDialog.cpp
+  ReferenceItems.cpp
   RemoteDialog.cpp
-  RemoteTableModel.cpp
   RenameBranchDialog.cpp
   SettingsDialog.cpp
-  StartDialog.cpp
-  SubmoduleDelegate.cpp
-  SubmoduleTableModel.cpp
   TagDialog.cpp
   ThemeDialog.cpp
   UpdateSubmodulesDialog.cpp)
@@ -45,6 +40,8 @@ target_link_libraries(
   cred
   host
   index
+  plugins
+  Qt6::QuickWidgets
   Qt6::Widgets)
 
 set_target_properties(dialogs PROPERTIES AUTOMOC ON)

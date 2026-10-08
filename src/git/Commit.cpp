@@ -8,6 +8,7 @@
 //
 
 #include "Commit.h"
+#include "Signing.h"
 #include "Diff.h"
 #include "Patch.h"
 #include "Reference.h"
@@ -261,12 +262,47 @@ bool Commit::revert() const {
   return !error;
 }
 
+QString Commit::signatureKind() const {
+  return Signing::signatureKind(repo(), git_commit_id(*this));
+}
+
 bool Commit::amend(const Signature &author, const Signature &committer,
                    const QString &commitMessage, const Tree &tree) const {
   Repository repo = this->repo();
+
+  // Replace this commit with one that has the same parents, signed when the
+  // configuration asks for it.
+  QVector<git_commit *> parents;
+  for (unsigned int i = 0; i < git_commit_parentcount(*this); ++i) {
+    git_commit *parent = nullptr;
+    if (!git_commit_parent(&parent, *this, i))
+      parents.append(parent);
+  }
+
+  // Keep what isn't given.
+  const git_signature *authorSig =
+      author.isValid() ? &*author : git_commit_author(*this);
+  const git_signature *committerSig =
+      committer.isValid() ? &*committer : git_commit_committer(*this);
+  git_tree *oldTree = nullptr;
+  if (!tree.isValid())
+    git_commit_tree(&oldTree, *this);
+  const git_tree *newTree = tree.isValid() ? (const git_tree *)tree : oldTree;
+
   git_oid oid;
-  int error = git_commit_amend(&oid, *this, "HEAD", &*author, &*committer, NULL,
-                               commitMessage.toUtf8(), tree);
+  QByteArray message = commitMessage.toUtf8();
+  int error = Signing::createCommit(
+      &oid, repo, nullptr, authorSig, committerSig, message.constData(),
+      newTree, parents.size(), (const git_commit **)parents.data());
+  if (!error) {
+    QByteArray log = "commit (amend): " + message.split('\n').value(0);
+    error = Signing::updateReference(repo, "HEAD", &oid, log.constData());
+  }
+
+  git_tree_free(oldTree);
+  for (git_commit *parent : parents)
+    git_commit_free(parent);
+
   emit repo.notifier()->referenceUpdated(repo.head());
   return !error;
 }

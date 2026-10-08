@@ -35,7 +35,7 @@ LogModel::LogModel(LogEntry *root, QStyle *style, QObject *parent)
 
   connect(root, &LogEntry::dataChanged, [this](LogEntry *entry) {
     QModelIndex index = this->index(entry);
-    emit dataChanged(index, index, {Qt::DisplayRole});
+    emit dataChanged(index, index);
   });
 }
 
@@ -114,9 +114,25 @@ QVariant LogModel::data(const QModelIndex &index, int role) const {
 
     case EntryRole:
       return QVariant::fromValue<LogEntry *>(entry);
+
+    case KindRole:
+      return entry->kind();
+
+    case ProgressRole:
+      return entry->progress();
+
+    case StatusRole:
+      return entry->status() ? QString(QChar(entry->status())) : QString();
   }
 
   return QVariant();
+}
+
+QHash<int, QByteArray> LogModel::roleNames() const {
+  return {{Qt::DisplayRole, "display"},
+          {KindRole, "kind"},
+          {ProgressRole, "progress"},
+          {StatusRole, "status"}};
 }
 
 QModelIndex LogModel::index(LogEntry *entry) const {

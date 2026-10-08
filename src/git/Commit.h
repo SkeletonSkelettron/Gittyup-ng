@@ -66,6 +66,10 @@ public:
   // Revert this commit in the index and workdir.
   bool revert() const;
 
+  // The kind of the signature of this commit, "GPG", "SSH" or "X.509", or an
+  // empty string when it isn't signed. The signature isn't verified.
+  QString signatureKind() const;
+
   bool amend(const Signature &author, const Signature &committer,
              const QString &commitMessage, const Tree &tree) const;
 
@@ -100,6 +104,7 @@ private:
   friend class Reference;
   friend class Repository;
   friend class RevWalk;
+  friend class Rewrite;
 };
 
 } // namespace git

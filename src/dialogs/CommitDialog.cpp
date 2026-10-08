@@ -9,36 +9,32 @@
 
 #include "CommitDialog.h"
 
-#include "conf/Settings.h"
-
-#include <QCheckBox>
-#include <QDialogButtonBox>
-#include <QLabel>
-#include <QPushButton>
-#include <QTextEdit>
-#include <QVBoxLayout>
-
 CommitDialog::CommitDialog(const QString &message, Prompt::Kind kind,
                            QWidget *parent)
-    : QDialog(parent) {
+    : QmlDialog(parent), mKind(kind), mMessage(message),
+      mRejectText(tr("Abort")) {
   setAttribute(Qt::WA_DeleteOnClose);
 
-  QString title;
   switch (kind) {
     case Prompt::Kind::Merge:
-      title = tr("Merge commit message");
+      mTitle = tr("Merge commit message");
+      mAcceptText = tr("Merge");
       break;
 
     case Prompt::Kind::Stash:
-      title = tr("Stash commit message");
+      mTitle = tr("Stash commit message");
+      mAcceptText = tr("Stash");
+      mRejectText = tr("Cancel");
       break;
 
     case Prompt::Kind::Revert:
-      title = tr("Revert commit message");
+      mTitle = tr("Revert commit message");
+      mAcceptText = tr("Revert");
       break;
 
     case Prompt::Kind::CherryPick:
-      title = tr("Cherry-pick commit message");
+      mTitle = tr("Cherry-pick commit message");
+      mAcceptText = tr("Cherry-pick");
       break;
 
     case Prompt::Kind::Directories:
@@ -47,65 +43,27 @@ CommitDialog::CommitDialog(const QString &message, Prompt::Kind kind,
       break;
   }
 
-  setWindowTitle(title);
-  QLabel *label = new QLabel(QString("<b>%1:</b>").arg(title), this);
-
-  mEditor = new QTextEdit(this);
-  mEditor->setFixedWidth(400);
-  mEditor->setFixedHeight(120);
-  mEditor->setText(message);
-
-  Settings *settings = Settings::instance();
-  QCheckBox *prompt = new QCheckBox(settings->promptDescription(kind), this);
-  prompt->setChecked(settings->prompt(kind));
-  connect(prompt, &QCheckBox::toggled, this, [kind](bool checked) {
-    Settings::instance()->setPrompt(kind, checked);
-  });
-
-  QDialogButtonBox *buttons = new QDialogButtonBox(this);
-  connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-
-  switch (kind) {
-    case Prompt::Kind::Merge:
-      buttons->addButton(tr("Merge"), QDialogButtonBox::AcceptRole);
-      buttons->addButton(tr("Abort"), QDialogButtonBox::RejectRole);
-      break;
-
-    case Prompt::Kind::Stash:
-      buttons->addButton(tr("Stash"), QDialogButtonBox::AcceptRole);
-      buttons->addButton(QDialogButtonBox::Cancel);
-      break;
-
-    case Prompt::Kind::Revert:
-      buttons->addButton(tr("Revert"), QDialogButtonBox::AcceptRole);
-      buttons->addButton(tr("Abort"), QDialogButtonBox::RejectRole);
-      break;
-
-    case Prompt::Kind::CherryPick:
-      buttons->addButton(tr("Cherry-pick"), QDialogButtonBox::AcceptRole);
-      buttons->addButton(tr("Abort"), QDialogButtonBox::RejectRole);
-      break;
-
-    case Prompt::Kind::Directories:
-    case Prompt::Kind::LargeFiles:
-      Q_ASSERT(false);
-      break;
-  }
-
-  QVBoxLayout *layout = new QVBoxLayout(this);
-  layout->addWidget(label);
-  layout->addWidget(mEditor);
-  layout->addWidget(prompt);
-  layout->addWidget(buttons);
-
-  // Start with focus on the accept button.
-  buttons->setFocus();
+  setWindowTitle(mTitle);
+  setContent("CommitDialog");
 }
 
-QString CommitDialog::message() const { return mEditor->toPlainText(); }
+void CommitDialog::setMessage(const QString &message) {
+  if (message == mMessage)
+    return;
 
-void CommitDialog::open() {
-  QDialog::open();
-  mEditor->clearFocus();
+  mMessage = message;
+  emit messageChanged();
+}
+
+QString CommitDialog::promptText() const {
+  return Settings::instance()->promptDescription(mKind);
+}
+
+bool CommitDialog::prompt() const {
+  return Settings::instance()->prompt(mKind);
+}
+
+void CommitDialog::setPrompt(bool prompt) {
+  Settings::instance()->setPrompt(mKind, prompt);
+  emit promptChanged();
 }

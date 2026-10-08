@@ -4,121 +4,43 @@
 // This software is licensed under the MIT License. The LICENSE.md file
 // describes the conditions under which this software may be distributed.
 //
-// Author: Shane Gramlich
-//
 
 #include "ThemeDialog.h"
 #include "conf/Settings.h"
-#include <QIcon>
-#include <QLabel>
-#include <QPushButton>
-#include <QVBoxLayout>
+#include <QCoreApplication>
 
-namespace {
-
-class ThemeButton : public QPushButton {
-  Q_OBJECT
-
-public:
-  enum class Theme { Default, Dark, System, Mocha };
-
-  ThemeButton(const QString &title, const QIcon &icon,
-              const QString &description, const Theme &theme,
-              QWidget *parent = nullptr)
-      : QPushButton(parent), mTheme(theme) {
-    setStyleSheet("ThemeButton #description {"
-                  "  font-size: 12px;"
-                  "  font-style: italics;"
-                  "  margin: 0px 0px 16px 0px"
-                  "}"
-
-                  "ThemeButton #title {"
-                  "  font-weight: bold;"
-                  "  font-size: 16px;"
-                  "  margin: 13px 0px 20px 8px"
-                  "}");
-
-    QSize iconSize = QSize(245, 196);
-    setFixedHeight(iconSize.height() + 80);
-    setFixedWidth(iconSize.width() + 35);
-    setFocusPolicy(Qt::StrongFocus);
-
-    mTitle = new QLabel(title, this);
-    mTitle->setObjectName("title");
-
-    setIcon(icon);
-    setIconSize(iconSize);
-
-    mDescription = new QLabel(description, this);
-    mDescription->setAlignment(Qt::AlignHCenter);
-    mDescription->setMinimumWidth(rect().width());
-    mDescription->setObjectName("description");
-
-    connect(this, &QPushButton::clicked, [this] {
-      switch (mTheme) {
-        case Theme::System:
-          Settings::instance()->setValue(Setting::Id::ColorTheme, "System");
-          break;
-        case Theme::Dark:
-          Settings::instance()->setValue(Setting::Id::ColorTheme, "Dark");
-          break;
-        case Theme::Default:
-          Settings::instance()->setValue(Setting::Id::ColorTheme, "Default");
-          break;
-        case Theme::Mocha:
-          Settings::instance()->setValue(Setting::Id::ColorTheme, "Mocha");
-          break;
-      }
-
-      window()->close();
-    });
-  }
-
-  void resizeEvent(QResizeEvent *event) override {
-    QSize size = mDescription->sizeHint();
-    mDescription->move(rect().left(), height() - (size.height() + 5));
-    mTitle->move(rect().left() + 5, rect().top());
-  }
-
-private:
-  QLabel *mTitle;
-  QLabel *mDescription;
-  Theme mTheme;
-};
-
-} // namespace
-
-ThemeDialog::ThemeDialog(QWidget *parent) : QDialog(parent) {
-  setWindowTitle(tr("Pick a theme for Gittyup"));
-
-  ThemeButton *native = new ThemeButton(
-      tr("Default Theme"), QIcon(":/native.png"),
-      tr("A consistent bright theme"), ThemeButton::Theme::Default);
-
-  ThemeButton *dark =
-      new ThemeButton(tr("Dark Theme"), QIcon(":/dark.png"),
-                      tr("A consistent look optimal for reducing eye strain"),
-                      ThemeButton::Theme::Dark);
-
-  ThemeButton *system = new ThemeButton(
-      tr("System Theme"), QIcon(":/system.png"),
-      tr("A flexible look matching system colors"), ThemeButton::Theme::System);
-
-  ThemeButton *mocha = new ThemeButton(
-      tr("Catppuccin Mocha Theme"), QIcon(":/mocha.png"),
-      tr("A more modern dark theme"), ThemeButton::Theme::Mocha);
-
-  QHBoxLayout *themeButtons1 = new QHBoxLayout; // 1th row
-  themeButtons1->addWidget(native);
-  themeButtons1->addWidget(dark);
-
-  QHBoxLayout *themeButtons2 = new QHBoxLayout; // 2nd row
-  themeButtons2->addWidget(system);
-  themeButtons2->addWidget(mocha);
-
-  QVBoxLayout *layout = new QVBoxLayout(this);
-  layout->addLayout(themeButtons1);
-  layout->addLayout(themeButtons2);
+ThemeDialog::ThemeDialog(QWidget *parent) : QmlDialog(parent) {
+  setWindowTitle(
+      tr("Pick a theme for %1").arg(QCoreApplication::applicationName()));
+  setContent("ThemeDialog");
 }
 
-#include "ThemeDialog.moc"
+QVariantList ThemeDialog::themes() const {
+  auto theme = [](const QString &name, const QString &title,
+                  const QString &description, const QString &image) {
+    return QVariantMap{{"name", name},
+                       {"title", title},
+                       {"description", description},
+                       {"image", QString("qrc:/%1").arg(image)}};
+  };
+
+  return {theme("Kraken Dark", tr("Kraken Dark"),
+                tr("A flat dark theme with a teal accent"), "kraken_dark.png"),
+          theme("Kraken Light", tr("Kraken Light"),
+                tr("A flat light theme with a teal accent"),
+                "kraken_light.png"),
+          theme("Mocha", tr("Catppuccin Mocha"),
+                tr("A more modern dark theme"), "mocha.png"),
+          theme("Dark", tr("Dark"),
+                tr("A consistent look optimal for reducing eye strain"),
+                "dark.png"),
+          theme("Default", tr("Default"), tr("A consistent bright theme"),
+                "native.png"),
+          theme("System", tr("System"),
+                tr("A flexible look matching system colors"), "system.png")};
+}
+
+void ThemeDialog::choose(const QString &name) {
+  Settings::instance()->setValue(Setting::Id::ColorTheme, name);
+  accept();
+}

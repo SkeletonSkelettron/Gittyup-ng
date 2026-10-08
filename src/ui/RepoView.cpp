@@ -8,20 +8,24 @@
 //
 
 #include "RepoView.h"
-#include "BlameEditor.h"
 #include "CommitList.h"
-#include "CommitToolBar.h"
 #include "DetailView.h"
 #include "EditorWindow.h"
+#include "FileEditor.h"
+#include "FileContextMenu.h"
 #include "History.h"
+#include "PullRequestList.h"
+#include "InteractiveRebase.h"
 #include "MainWindow.h"
 #include "MenuBar.h"
-#include "PathspecWidget.h"
 #include "qtsupport.h"
-#include "ReferenceWidget.h"
+#include "RefDrop.h"
+#include "RefsPanel.h"
+#include "TreeModel.h"
+#include "UndoHistory.h"
+#include "qml/QmlSupport.h"
 #include "RemoteCallbacks.h"
 #include "SearchField.h"
-#include "DoubleTreeWidget.h"
 #include "ToolBar.h"
 #include "Debug.h"
 #include "app/Application.h"
@@ -29,6 +33,7 @@
 #include "dialogs/AmendDialog.h"
 #include "dialogs/CheckoutDialog.h"
 #include "dialogs/CommitDialog.h"
+#include "dialogs/ConfirmDialog.h"
 #include "dialogs/DeleteBranchDialog.h"
 #include "dialogs/DeleteTagDialog.h"
 #include "dialogs/NewBranchDialog.h"
@@ -36,7 +41,6 @@
 #include "dialogs/RenameBranchDialog.h"
 #include "dialogs/SettingsDialog.h"
 #include "dialogs/TagDialog.h"
-#include "editor/TextEditor.h"
 #include "git/Config.h"
 #include "git/Index.h"
 #include "git/Rebase.h"
@@ -49,31 +53,30 @@
 #include "host/Accounts.h"
 #include "index/Index.h"
 #include "log/LogEntry.h"
-#include "log/LogView.h"
+#include "LogPanel.h"
 #include "tools/ShowTool.h"
 #include "watcher/RepositoryWatcher.h"
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QDesktopServices>
-#include <QMessageBox>
 #include <QtNetwork>
 #include <QPushButton>
+#include <QQmlContext>
+#include <QQuickItem>
 #include <QSettings>
 #include <QShortcut>
-#include <QTimeLine>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
 #if defined(Q_OS_WIN)
-#include <Windows.h>
+#include <windows.h>
 #include <memory>
 #endif
 
 namespace {
 
-const QString kSplitterKey = "reposplitter";
 const QString kMsgFmt = "%1 - <span style='color: gray'>%2</span>";
 
 QString msg(const git::Commit &commit) {
@@ -132,21 +135,22 @@ private:
 
 class ScopedCollapse {
 public:
-  ScopedCollapse(LogView *view) : mView(view) {
-    mView->setCollapseEnabled(false);
+  ScopedCollapse(LogPanel *panel) : mPanel(panel) {
+    mPanel->setCollapseEnabled(false);
   }
 
-  ~ScopedCollapse() { mView->setCollapseEnabled(true); }
+  ~ScopedCollapse() { mPanel->setCollapseEnabled(true); }
 
 private:
-  LogView *mView;
+  LogPanel *mPanel;
 };
 
 } // namespace
 
 RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
-    : QSplitter(Qt::Vertical, parent), mRepo(repo) {
-  setHandleWidth(0);
+    : QWidget(parent), mRepo(repo) {
+  // The page is drawn by the view of the main window. This widget is only
+  // the parent of the dialogs of the repository.
   setAttribute(Qt::WA_DeleteOnClose);
 
   // Start (or restart) indexing after any reference is updated.
@@ -212,37 +216,19 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
   mHistory = new History(this);
   connect(mHistory, &History::changed, toolBar, &ToolBar::updateHistory);
   connect(mHistory, &History::changed, menuBar, &MenuBar::updateHistory);
+
+  // Record the actions that can be undone.
+  mUndo = new UndoHistory(this);
+  connect(mUndo, &UndoHistory::changed, toolBar, &ToolBar::updateUndo);
+  connect(mUndo, &UndoHistory::changed, menuBar, &MenuBar::updateUndoRedo);
   connect(this, &RepoView::statusChanged, [this](bool dirty) {
     if (!dirty)
       mHistory->clean();
   });
 
-  mSideBar = new QWidget(this);
-  QVBoxLayout *sidebarLayout = new QVBoxLayout(mSideBar);
-  sidebarLayout->setContentsMargins(0, 0, 0, 0);
-  sidebarLayout->setSpacing(0);
-
-  QWidget *header = new QWidget(mSideBar);
-  QVBoxLayout *headerLayout = new QVBoxLayout(header);
-  headerLayout->setContentsMargins(4, 4, 4, 4);
-  headerLayout->setSpacing(4);
-  sidebarLayout->addWidget(header);
-
-  // Hide references when commit list is filtered.
-  connect(searchField, &QLineEdit::textChanged, header,
-          [header](const QString &text) {
-            header->setVisible(text.simplified().isEmpty());
-          });
-
-  // Create header tool bar.
-  CommitToolBar *commitToolBar = new CommitToolBar(header);
-  headerLayout->addWidget(commitToolBar);
-
-  // Create reference list.
-  mRefs = new ReferenceWidget(repo, ReferenceView::AllRefs, header);
-  headerLayout->addWidget(mRefs);
-
-  connect(mRefs, &ReferenceWidget::referenceChanged, menuBar,
+  // Create reference panel.
+  mRefs = new RefsPanel(repo, this);
+  connect(mRefs, &RefsPanel::referenceChanged, menuBar,
           &MenuBar::updateBranch);
 
   // Select HEAD branch when it changes.
@@ -257,31 +243,38 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
             }
           });
 
-  // Create pathspec chooser.
-  mPathspec = new PathspecWidget(repo, header);
-  headerLayout->addWidget(mPathspec);
+  // Create the model of the pathspec file tree.
+  mPathModel = new TreeModel(repo, this);
+  if (git::Reference head = repo.head())
+    mPathModel->setTree(head.target().tree());
+  connect(notifier, &git::RepositoryNotifier::referenceUpdated, this,
+          [this](const git::Reference &ref) {
+            if (ref.isValid() && ref.isHead())
+              mPathModel->setTree(ref.target().tree());
+          });
 
   // Create commit list.
-  mCommits = new CommitList(mIndex, mSideBar);
-  sidebarLayout->addWidget(mCommits);
+  mCommits = new CommitList(mIndex, this);
 
-  connect(commitToolBar, &CommitToolBar::settingsChanged, mCommits,
-          &CommitList::resetSettings);
-  connect(mRefs, &ReferenceWidget::referenceChanged, mCommits,
+  connect(mRefs, &RefsPanel::referenceChanged, mCommits,
           &CommitList::setReference);
-  connect(mRefs, &ReferenceWidget::referenceSelected, mCommits,
+  connect(mRefs, &RefsPanel::referenceSelected, mCommits,
           &CommitList::selectReference);
+  connect(mRefs, &RefsPanel::stashSelected, mCommits, &CommitList::selectRow);
+
+  // The references panel marks the soloed branches.
+  mRefs->setSolo(mCommits->solo());
+  connect(mCommits, &CommitList::soloChanged, mRefs,
+          [this] { mRefs->setSolo(mCommits->solo()); });
+
+  // And the hidden ones.
+  static_cast<RefsModel *>(mRefs->model())->setHidden(mCommits->hidden());
+  connect(mCommits, &CommitList::hiddenChanged, mRefs, [this] {
+    static_cast<RefsModel *>(mRefs->model())->setHidden(mCommits->hidden());
+  });
   connect(mCommits, &CommitList::statusChanged, this, &RepoView::statusChanged);
   connect(mCommits, &CommitList::loadingChanged, this,
           &RepoView::loadingChanged);
-
-  // Respond to pathspec change.
-  connect(mPathspec, &PathspecWidget::pathspecChanged, this,
-          [this](const QString &pathspec) {
-            git::Config config = mRepo.appConfig();
-            mCommits->setPathspec(pathspec,
-                                  config.value<bool>("index.enable", true));
-          });
 
   // Respond to search query change.
   connect(searchField, &SearchField::textChanged, mCommits,
@@ -289,7 +282,35 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
   connect(mIndex, &Index::indexReset, this,
           [this, searchField] { mCommits->setFilter(searchField->text()); });
 
+
   mDetails = new DetailView(repo, this);
+
+  // Drag and drop branches onto others, and rebase them interactively.
+  mRefDrop = new RefDrop(this);
+  mInteractiveRebase = new InteractiveRebase(this);
+
+  // List the open pull requests in the references panel.
+  mPullRequests = new PullRequestList(this);
+  static_cast<RefsModel *>(mRefs->model())->setPullRequests(mPullRequests);
+
+  // Create log.
+  mLogRoot = new LogEntry(this);
+  mLogPanel = new LogPanel(mLogRoot, this);
+
+  // Create the QML page with the reference panel, the commit graph, the
+  // diff and the details in the view of the window.
+  mPage = parent->createPage(
+      "RepoPage",
+      {{"repoView", QVariant::fromValue<QObject *>(this)},
+       {"refsPanel", QVariant::fromValue<QObject *>(mRefs)},
+       {"commitList", QVariant::fromValue<QObject *>(mCommits)},
+       {"detailView", QVariant::fromValue<QObject *>(mDetails)},
+       {"logPanel", QVariant::fromValue<QObject *>(mLogPanel)},
+       {"refDrop", QVariant::fromValue<QObject *>(mRefDrop)},
+       {"interactiveRebase",
+        QVariant::fromValue<QObject *>(mInteractiveRebase)},
+       {"pullRequests", QVariant::fromValue<QObject *>(mPullRequests)}},
+      this, &mPageContext);
 
   // Respond to diff/tree mode change.
   connect(mDetails, &DetailView::viewModeChanged, this,
@@ -324,19 +345,15 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
             QString info = tr("This will result in the addition of %1 files.");
             QString arg =
                 (count < 0) ? tr("more than 100") : QString::number(count);
-            QMessageBox dialog(QMessageBox::Question, title, text.arg(dir),
-                               QMessageBox::Cancel, this);
+            ConfirmDialog dialog(this);
+            dialog.setTitle(title);
+            dialog.setText(text.arg(dir));
             dialog.setInformativeText(info.arg(arg));
-            QPushButton *button = dialog.addButton(tr("Stage Directory"),
-                                                   QMessageBox::AcceptRole);
+            dialog.setAcceptText(tr("Stage Directory"));
+            dialog.setCheckText(tr("Stop prompting to stage directories"));
 
-            QString cbText = tr("Stop prompting to stage directories");
-            QCheckBox *cb = new QCheckBox(cbText, &dialog);
-            dialog.setCheckBox(cb);
-
-            dialog.exec();
-            allow = (dialog.clickedButton() == button);
-            if (cb->isChecked())
+            allow = (dialog.exec() == QDialog::Accepted);
+            if (dialog.isChecked())
               Settings::instance()->setPrompt(Prompt::Kind::Directories, false);
           });
 
@@ -350,30 +367,26 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
             QString fmt =
                 tr("Are you sure you want to stage '%1' with a size of %2?");
             QString text = fmt.arg(file, locale().formattedDataSize(size));
-            QMessageBox dialog(QMessageBox::Question, title, text,
-                               QMessageBox::Cancel, this);
-            QPushButton *stage =
-                dialog.addButton(tr("Stage"), QMessageBox::AcceptRole);
+            ConfirmDialog dialog(this);
+            dialog.setTitle(title);
+            dialog.setText(text);
+            dialog.setAcceptText(tr("Stage"));
 
-            QPushButton *track = nullptr;
+            int track = -1;
             if (this->repo().lfsIsInitialized()) {
-              track = dialog.addButton(tr("Track with LFS"),
-                                       QMessageBox::RejectRole);
+              track = dialog.addButton(tr("Track with LFS"));
               dialog.setInformativeText(
                   tr("This repository has LFS enabled. Do you "
                      "want to track the file with LFS instead?"));
             }
 
-            QString cbText = tr("Stop prompting to stage large files");
-            QCheckBox *cb = new QCheckBox(cbText, &dialog);
-            dialog.setCheckBox(cb);
+            dialog.setCheckText(tr("Stop prompting to stage large files"));
 
-            dialog.exec();
-            allow = (dialog.clickedButton() == stage);
-            if (cb->isChecked())
+            allow = (dialog.exec() == QDialog::Accepted);
+            if (dialog.isChecked())
               Settings::instance()->setPrompt(Prompt::Kind::LargeFiles, false);
 
-            if (dialog.clickedButton() == track)
+            if (track >= 0 && dialog.clickedButton() == track)
               configureSettings(ConfigDialog::Lfs);
           });
 
@@ -384,33 +397,15 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
   connect(mCommits, &CommitList::statusChanged, watcher,
           &RepositoryWatcher::cancelPendingNotification);
 
-  mDetailSplitter = new QSplitter(Qt::Horizontal, this);
-  mDetailSplitter->setChildrenCollapsible(false);
-  mDetailSplitter->setHandleWidth(0);
-  mDetailSplitter->addWidget(mSideBar);
-  mDetailSplitter->addWidget(mDetails);
-  mDetailSplitter->setStretchFactor(0, 1);
-  mDetailSplitter->setStretchFactor(1, 3);
-  connect(mDetailSplitter, &QSplitter::splitterMoved, this, [this] {
-    QSettings().setValue(kSplitterKey, mDetailSplitter->saveState());
-  });
-
-  // Create log.
-  mLogRoot = new LogEntry(this);
   connect(mLogRoot, &LogEntry::errorInserted, this, &RepoView::suspendLogTimer);
-
-  mLogView = new LogView(mLogRoot, this);
-  connect(mLogView, &LogView::linkActivated, this, &RepoView::visitLink);
-  connect(mLogView, &LogView::operationCanceled, this,
+  connect(mLogPanel, &LogPanel::linkActivated, this, &RepoView::visitLink);
+  connect(mLogPanel, &LogPanel::operationCanceled, this,
           &RepoView::cancelRemoteTransfer);
+  connect(mLogPanel, &LogPanel::closeRequested, this,
+          [this] { setLogVisible(false); });
 
   mLogTimer.setSingleShot(true);
   connect(&mLogTimer, &QTimer::timeout, this, [this] { setLogVisible(false); });
-
-  QShortcut *esc = new QShortcut(tr("Esc"), mLogView);
-  esc->setContext(Qt::WidgetWithChildrenShortcut);
-  connect(esc, &QShortcut::activated, mLogView,
-          [this] { setLogVisible(false); });
 
   connect(notifier, &git::RepositoryNotifier::indexStageError, this,
           [this] { error(mLogRoot, tr("stage")); });
@@ -426,22 +421,10 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
           });
 
   // Automatically hide the log when the model changes.
-  connect(mLogView->model(), &QAbstractItemModel::rowsInserted, this,
+  connect(mLogPanel->model(), &QAbstractItemModel::rowsInserted, this,
           &RepoView::startLogTimer);
-  connect(mLogView->model(), &QAbstractItemModel::dataChanged, this,
+  connect(mLogPanel->model(), &QAbstractItemModel::dataChanged, this,
           &RepoView::startLogTimer);
-
-  addWidget(mDetailSplitter);
-  addWidget(mLogView);
-  setCollapsible(0, false);
-  setStretchFactor(0, 1);
-  setSizes({1, 0});
-
-  connect(this, &QSplitter::splitterMoved,
-          [this] { mIsLogVisible = (sizes().last() > 0); });
-
-  // Restore splitter state.
-  mDetailSplitter->restoreState(QSettings().value(kSplitterKey).toByteArray());
 
   // Connect automatic fetch timer.
   connect(&mFetchTimer, &QTimer::timeout, this,
@@ -453,39 +436,57 @@ void RepoView::diffSelected(const git::Diff diff, const QString &file,
   git::Diff diff2 = diff;
   mHistory->update(diff.isValid() ? location() : Location(),
                    spontaneous); // TODO: why this changes diff?
-  mDetails->setDiff(diff2, file, mPathspec->pathspec());
+  mDetails->setDiff(diff2, file, mPathspec);
 }
 
 RepoView::~RepoView() {
-  // Work around crash caused by clearing focus from the commit list
-  // when it's destroyed. If it gets destroyed after the detail view
-  // then the focus change may trigger the menu bar to query the mode
-  // index from the already destroyed detail view.
-  mCommits->clearFocus();
+  // The QML page references this object, so it has to go first.
+  delete mPage;
+  delete mPageContext;
+}
+
+QPoint RepoView::mapFromPage(qreal x, qreal y) const {
+  return static_cast<MainWindow *>(window())->mapFromScene(x, y);
+}
+
+void RepoView::setPageVisible(bool visible) {
+  if (!mPage || visible == mPage->isVisible())
+    return;
+
+  mPage->setVisible(visible);
+  if (!visible)
+    return;
+
+  mPage->forceActiveFocus();
+
+  // Start background tasks after showing for the first time.
+  if (!mShown) {
+    mShown = true;
+    startIndexing();
+    startFetchTimer();
+  }
 }
 
 void RepoView::clean(const QStringList &untracked) {
   QString singular = tr("untracked file");
   QString plural = tr("untracked files");
   QString phrase = (untracked.count() == 1) ? singular : plural;
-  QMessageBox *mb = new QMessageBox(
-      QMessageBox::Warning, tr("Remove Untracked Files"),
-      tr("Remove %1 %2?").arg(QString::number(untracked.count()), phrase),
-      QMessageBox::Cancel, this);
-  mb->setAttribute(Qt::WA_DeleteOnClose);
-  mb->setInformativeText(tr("This action cannot be undone."));
-  mb->setDetailedText(untracked.join('\n'));
+  ConfirmDialog *dialog = new ConfirmDialog(this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setTitle(tr("Remove Untracked Files"));
+  dialog->setText(
+      tr("Remove %1 %2?").arg(QString::number(untracked.count()), phrase));
+  dialog->setInformativeText(tr("This action cannot be undone."));
+  dialog->setDetailedText(untracked.join('\n'));
+  dialog->setAcceptText(tr("Remove"));
+  dialog->setDanger(true);
 
-  QPushButton *remove = mb->addButton(tr("Remove"), QMessageBox::AcceptRole);
-  remove->setObjectName("RemoveButton");
-  mb->setDefaultButton(remove);
-
-  connect(remove, &QPushButton::clicked, [this, untracked] {
+  connect(dialog, &QDialog::accepted, this, [this, untracked] {
     for (const QString &name : untracked)
       repo().clean(name);
   });
 
-  mb->show();
+  dialog->show();
 }
 
 void RepoView::selectHead() { mRefs->select(mRepo.head()); }
@@ -564,7 +565,7 @@ void RepoView::cancelBackgroundTasks() {
 }
 
 void RepoView::visitLink(const QString &link) {
-  ScopedCollapse collapse(mLogView);
+  ScopedCollapse collapse(mLogPanel);
   (void)collapse;
 
   QUrl url(link);
@@ -705,14 +706,14 @@ void RepoView::visitLink(const QString &link) {
     if (mRepo.isValid()) {
       git::Config config = mRepo.gitConfig();
       config.setValue<bool>("http.sslVerify", false);
-      QMessageBox msg(QMessageBox::Icon::Information, tr("Certificate Error"),
-                      tr("SSL verification disabled for this repository"),
-                      QMessageBox::Button::Ok);
-      msg.setDetailedText(tr("[http]\n"
-                             "  sslVerify = false\n\n"
-                             "was added to %1/config")
-                              .arg(mRepo.dir().path()));
-      msg.exec();
+      ConfirmDialog::information(
+          this, tr("Certificate Error"),
+          tr("SSL verification disabled for this repository"),
+          tr("[http]\n"
+             "  sslVerify = false\n\n"
+             "was added to %1/config")
+              .arg(mRepo.dir().path()))
+          ->exec();
     }
     return;
   }
@@ -721,14 +722,14 @@ void RepoView::visitLink(const QString &link) {
     git::Config config = git::Config::global();
     if (config.isValid()) {
       config.setValue<bool>("http.sslVerify", false);
-      QMessageBox msg(QMessageBox::Icon::Information, tr("Certificate Error"),
-                      tr("SSL verification disabled for all git repositories"),
-                      QMessageBox::Button::Ok);
-      msg.setDetailedText(tr("[http]\n"
-                             "  sslVerify = false\n\n"
-                             "was added to %1")
-                              .arg(config.globalPath()));
-      msg.exec();
+      ConfirmDialog::information(
+          this, tr("Certificate Error"),
+          tr("SSL verification disabled for all git repositories"),
+          tr("[http]\n"
+             "  sslVerify = false\n\n"
+             "was added to %1")
+              .arg(config.globalPath()))
+          ->exec();
     }
     return;
   }
@@ -879,32 +880,24 @@ void RepoView::setLogVisible(bool visible) {
 
   mIsLogVisible = visible;
 
+  // The page animates the log sliding in or out.
+  mLogPanel->setVisible(visible);
+
   // Update interface.
   toolBar()->updateView();
   MenuBar::instance(this)->updateView();
-
-  // Animate log view sliding in or out.
-  int pos = visible ? mLogView->sizeHint().height() : sizes().last();
-
-  QTimeLine *timeline = new QTimeLine(250, this);
-  timeline->setDirection(visible ? QTimeLine::Forward : QTimeLine::Backward);
-  timeline->setEasingCurve(QEasingCurve(QEasingCurve::Linear));
-  timeline->setUpdateInterval(20);
-
-  connect(timeline, &QTimeLine::valueChanged, this, [this, pos](qreal value) {
-    setSizes({1, static_cast<int>(pos * value)});
-  });
-
-  connect(timeline, &QTimeLine::finished,
-          [timeline] { timeline->deleteLater(); });
-
-  timeline->start();
 }
 
 LogEntry *RepoView::addLogEntry(const QString &text, const QString &title,
                                 LogEntry *parent) {
   LogEntry *root = parent ? parent : mLogRoot;
-  return root->addEntry(text, title);
+  LogEntry *entry = root->addEntry(text, title);
+
+  // Each action starts with an entry in the log.
+  if (!parent && mUndo)
+    mUndo->begin(entry);
+
+  return entry;
 }
 
 LogEntry *RepoView::error(LogEntry *parent, const QString &action,
@@ -1045,6 +1038,7 @@ QFuture<git::Result> RepoView::fetch(const git::Remote &rmt, bool tags,
   QString url = remote.url();
   mCallbacks = new RemoteCallbacks(RemoteCallbacks::Receive, entry, url,
                                    remote.name(), mWatcher, mRepo);
+  mCallbacks->setInteractive(interactive);
   connect(mCallbacks, &RemoteCallbacks::referenceUpdated, this,
           &RepoView::notifyReferenceUpdated);
 
@@ -1145,6 +1139,72 @@ void RepoView::pull(MergeFlags flags, const git::Remote &rmt, bool tags,
     delete watcher;
     delete submodules;
   }
+}
+
+void RepoView::pullBranch(const git::Branch &branch) {
+  if (branch.isHead()) {
+    pull();
+    return;
+  }
+
+  if (mWatcher) {
+    // Queue pull.
+    connect(mWatcher, &QFutureWatcher<git::Result>::finished, mWatcher,
+            [this, branch] { pullBranch(branch); });
+
+    return;
+  }
+
+  git::Remote remote = branch.remote();
+  QString name = remote.isValid() ? remote.name() : tr("<i>no remote</i>");
+  QString text = tr("%1 from %2").arg(branch.name(), name);
+  LogEntry *entry = addLogEntry(text, tr("Pull"));
+
+  if (!branch.upstream().isValid()) {
+    QString msg = tr("The branch '%1' has no upstream branch.");
+    entry->addEntry(LogEntry::Error, msg.arg(branch.name()));
+    return;
+  }
+
+  // Fast-forward the branch without checking it out, like
+  // 'git fetch origin main:main'.
+  QString qualifiedName = branch.qualifiedName();
+  QFutureWatcher<git::Result> *watcher = new QFutureWatcher<git::Result>(this);
+  connect(watcher, &QFutureWatcher<git::Result>::finished, watcher,
+          [this, entry, watcher, qualifiedName] {
+            watcher->deleteLater();
+            if (!watcher->result())
+              return;
+
+            git::Branch local = mRepo.lookupRef(qualifiedName);
+            git::Branch upstream = local.upstream();
+            git::Commit commit = local.target();
+            git::Commit target = upstream.target();
+            if (!commit.isValid() || !target.isValid()) {
+              error(entry, tr("fast-forward"), local.name());
+              return;
+            }
+
+            git::Commit base = mRepo.mergeBase(commit, target);
+            if (base.isValid() && base.id() == target.id()) {
+              entry->addEntry(tr("Already up-to-date."));
+              return;
+            }
+
+            if (!base.isValid() || base.id() != commit.id()) {
+              QString msg = tr("Unable to fast-forward. Check out '%1' to "
+                               "merge or rebase it.");
+              entry->addEntry(LogEntry::Error, msg.arg(local.name()));
+              return;
+            }
+
+            if (!local.setTarget(target, "pull: fast-forward").isValid())
+              error(entry, tr("fast-forward"), local.name());
+          });
+
+  watcher->setFuture(fetch(remote, false, true, entry, nullptr, false));
+  if (watcher->isCanceled())
+    delete watcher;
 }
 
 void RepoView::merge(MergeFlags flags, const git::Reference &ref,
@@ -1637,18 +1697,18 @@ void RepoView::promptToForcePush(const git::Remote &remote,
 
   QString title = tr("Force Push to %1?").arg(remote.name());
   QString text = tr("Are you sure you want to force push?");
-  QMessageBox *dialog = new QMessageBox(QMessageBox::Warning, title, text,
-                                        QMessageBox::Cancel, this);
+  ConfirmDialog *dialog = new ConfirmDialog(this);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
-
+  dialog->setTitle(title);
+  dialog->setText(text);
   dialog->setInformativeText(
       tr("The remote will lose any commits that are reachable only from "
          "the overwritten reference. Dropped commits may be unexpectedly "
          "reintroduced by clones that already contain those commits locally."));
+  dialog->setAcceptText(tr("Force Push"));
+  dialog->setDanger(true);
 
-  QPushButton *accept =
-      dialog->addButton(tr("Force Push"), QMessageBox::AcceptRole);
-  connect(accept, &QPushButton::clicked, this,
+  connect(dialog, &QDialog::accepted, this,
           [this, remote, src] { push(remote, src, QString(), false, true); });
 
   dialog->open();
@@ -1841,18 +1901,17 @@ bool RepoView::commit(const git::Signature &author,
   if (!force && head.isValid() && !head.isLocalBranch()) {
     QString title = tr("Commit?");
     QString text = tr("Are you sure you want to commit on a detached HEAD?");
-    QMessageBox *dialog = new QMessageBox(QMessageBox::Warning, title, text,
-                                          QMessageBox::Cancel, this);
+    ConfirmDialog *dialog = new ConfirmDialog(this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
-
+    dialog->setTitle(title);
+    dialog->setText(text);
     dialog->setInformativeText(
-        tr("<p>You are in a detached HEAD state. You can still commit, but the "
+        tr("You are in a detached HEAD state. You can still commit, but the "
            "new commit will not be reachable from any branch. If you want to "
-           "commit to an existing branch, checkout the branch first.</p>"));
+           "commit to an existing branch, checkout the branch first."));
+    dialog->setAcceptText(tr("Commit"));
 
-    QPushButton *accept =
-        dialog->addButton(tr("Commit"), QMessageBox::AcceptRole);
-    connect(accept, &QPushButton::clicked, this,
+    connect(dialog, &QDialog::accepted, this,
             [this, message, upstream, parent] {
               this->commit(message, upstream, parent, true);
             });
@@ -1863,6 +1922,21 @@ bool RepoView::commit(const git::Signature &author,
 
   QString text = tr("<i>no commit</i>");
   LogEntry *entry = addLogEntry(text, tr("Commit"), parent);
+
+  // Like git, only commit changes, unless it's a merge.
+  if (!upstream.isValid() && mRepo.state() == GIT_REPOSITORY_STATE_NONE) {
+    git::Commit target = head.isValid() ? head.target() : git::Commit();
+    git::Tree tree = mRepo.index().writeTree();
+    if (target.isValid() && tree.isValid() && tree == target.tree()) {
+      entry->addEntry(LogEntry::Error, tr("Nothing is staged to commit."));
+      return false;
+    }
+  }
+
+  // Undoing a commit keeps its changes in the index.
+  if (!parent && !upstream.isValid() &&
+      mRepo.state() == GIT_REPOSITORY_STATE_NONE)
+    mUndo->setMode(UndoHistory::Soft);
 
   git::Commit commit = mRepo.commit(author, commiter, message, upstream);
 
@@ -1944,15 +2018,12 @@ void RepoView::checkout(const git::Reference &ref, bool detach) {
 
   // Prompt to create a new local branch instead
   // of checking out a remote tracking branch.
-  QMessageBox *dialog = new QMessageBox(this);
+  ConfirmDialog *dialog = new ConfirmDialog(this);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
-  dialog->setIcon(QMessageBox::Question);
-  dialog->setStandardButtons(QMessageBox::Cancel);
-  dialog->setWindowTitle(tr("Checkout Detached HEAD?"));
+  dialog->setTitle(tr("Checkout Detached HEAD?"));
 
-  QPushButton *checkoutButton = dialog->addButton(tr("Checkout Detached HEAD"),
-                                                  QMessageBox::DestructiveRole);
-  connect(checkoutButton, &QPushButton::clicked, this,
+  dialog->addButton(tr("Checkout Detached HEAD"));
+  connect(dialog, &ConfirmDialog::buttonClicked, this,
           [this, ref, detach] { checkout(ref.target(), ref, detach); });
 
   QString name = ref.name();
@@ -1964,9 +2035,8 @@ void RepoView::checkout(const git::Reference &ref, bool detach) {
            "this commit instead?")
             .arg(name, local));
 
-    QPushButton *resetButton =
-        dialog->addButton(tr("Reset Local Branch"), QMessageBox::AcceptRole);
-    connect(resetButton, &QPushButton::clicked, this, [this, ref, local] {
+    dialog->setAcceptText(tr("Reset Local Branch"));
+    connect(dialog, &QDialog::accepted, this, [this, ref, local] {
       createBranch(local, ref.target(), ref, true, true);
     });
   } else {
@@ -1980,9 +2050,8 @@ void RepoView::checkout(const git::Reference &ref, bool detach) {
            "new commits. Check out the detached HEAD to temporarily put your "
            "working directory into the state of the remote branch."));
 
-    QPushButton *createButton =
-        dialog->addButton(tr("Create Local Branch"), QMessageBox::AcceptRole);
-    connect(createButton, &QPushButton::clicked, this, [this, ref, local] {
+    dialog->setAcceptText(tr("Create Local Branch"));
+    connect(dialog, &QDialog::accepted, this, [this, ref, local] {
       createBranch(local, ref.target(), ref, true);
     });
   }
@@ -2165,15 +2234,15 @@ void RepoView::promptToAddTag(const git::Commit &commit) {
     bool force = dialog->force();
     QString name = dialog->name();
     QString msg = dialog->message();
+    QString link = commit.link();
+    LogEntry *entry = addLogEntry(link, tr("Tag"));
     git::TagRef tag =
         mRepo.createTag(commit, name, msg, force, mDetails->overrideUser(),
                         mDetails->overrideEmail());
 
     git::Remote remote = dialog->remote();
-
-    QString link = commit.link();
-    QString text = tag.isValid() ? tr("%1 as %2").arg(link, tag.name()) : link;
-    LogEntry *entry = addLogEntry(text, tr("Tag"));
+    if (tag.isValid())
+      entry->setText(tr("%1 as %2").arg(link, tag.name()));
     if (!tag.isValid())
       error(entry, tr("tag"), link);
     else if (remote.isValid())
@@ -2212,17 +2281,18 @@ void RepoView::amend(const git::Commit &commit, const git::Signature &author,
   Q_ASSERT(head.isValid());
 
   QString title = tr("Amend");
+  LogEntry *entry =
+      addLogEntry(tr("Amending commit %1").arg(commit.link()), title);
+  mUndo->setMode(UndoHistory::Soft);
 
   if (!mRepo.amend(commit, author, committer, commitMessage)) {
-    error(addLogEntry(tr("Amending commit %1").arg(commit.link()), title),
-          tr("amend"), head.name());
+    error(entry, tr("amend"), head.name());
   } else {
     head = mRepo.head();
     Q_ASSERT(head.isValid());
 
-    QString text =
-        tr("%1 to %2", "update ref").arg(head.name(), head.target().link());
-    addLogEntry(text, title);
+    entry->setText(
+        tr("%1 to %2", "update ref").arg(head.name(), head.target().link()));
   }
 }
 
@@ -2252,9 +2322,11 @@ void RepoView::promptToReset(const git::Commit &commit, git_reset_t type) {
 
   QString text =
       tr("Are you sure you want to reset '%1' to '%2'?").arg(head.name(), id);
-  QMessageBox *dialog = new QMessageBox(QMessageBox::Warning, title, text,
-                                        QMessageBox::Cancel, this);
+  ConfirmDialog *dialog = new ConfirmDialog(this);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setTitle(title);
+  dialog->setText(text);
+  dialog->setDanger(type == GIT_RESET_HARD);
 
   QString info;
   if (head.target() != commit)
@@ -2275,9 +2347,8 @@ void RepoView::promptToReset(const git::Commit &commit, git_reset_t type) {
 
   dialog->setInformativeText(info);
 
-  QString buttonText = tr("Reset");
-  QPushButton *accept = dialog->addButton(buttonText, QMessageBox::AcceptRole);
-  connect(accept, &QPushButton::clicked, this,
+  dialog->setAcceptText(tr("Reset"));
+  connect(dialog, &QDialog::accepted, this,
           [this, commit, type] { reset(commit, type); });
 
   dialog->open();
@@ -2291,6 +2362,11 @@ void RepoView::reset(const git::Commit &commit, git_reset_t type,
   QString title = commitToAmend ? tr("Amend") : tr("Reset");
   QString text = tr("%1 to %2").arg(head.name(), commit.link());
   LogEntry *entry = addLogEntry(text, title);
+  if (type == GIT_RESET_SOFT) {
+    mUndo->setMode(UndoHistory::Soft);
+  } else if (type == GIT_RESET_MIXED) {
+    mUndo->setMode(UndoHistory::Mixed);
+  }
 
   if (!commit.reset(type, QStringList(), false))
     error(entry, commitToAmend ? tr("amend") : tr("reset"), head.name());
@@ -2565,7 +2641,10 @@ bool RepoView::openSubmodule(const git::Submodule &submodule) {
     QString text =
         tr("The submodule '%1' doesn't have a valid repository. You may need "
            "to init and/or update the submodule to check out a repository.");
-    QMessageBox::warning(nullptr, title, text.arg(submodule.name()));
+    ConfirmDialog *dialog = ConfirmDialog::information(
+        this, title, text.arg(submodule.name()));
+    dialog->setDanger(true);
+    dialog->open();
     return false;
   }
 
@@ -2691,23 +2770,15 @@ void RepoView::openTerminal() {
   }
 
   if (terminalCmd.isEmpty()) {
-    auto messagebox = new QMessageBox(this);
-    messagebox->setWindowTitle(tr("No terminal executable found"));
-    messagebox->setText(tr("No terminal executable was found. Please configure "
-                           "a terminal in the configuration."));
-    messagebox->setStandardButtons(QMessageBox::Ok);
-    messagebox->addButton(tr("Open Configuration"), QMessageBox::ApplyRole);
-    messagebox->setAttribute(Qt::WA_DeleteOnClose);
-
+    ConfirmDialog *dialog = ConfirmDialog::information(
+        this, tr("No terminal executable found"),
+        tr("No terminal executable was found. Please configure "
+           "a terminal in the configuration."));
+    dialog->addButton(tr("Open Configuration"));
     connect(
-        messagebox, &QMessageBox::buttonClicked, this,
-        [=](QAbstractButton *button) {
-          if (messagebox->buttonRole(button) == QMessageBox::ApplyRole) {
-            SettingsDialog::openSharedInstance();
-          }
-        },
-        Qt::QueuedConnection);
-    messagebox->open();
+        dialog, &ConfirmDialog::buttonClicked, this,
+        [] { SettingsDialog::openSharedInstance(); }, Qt::QueuedConnection);
+    dialog->open();
     return;
   }
 
@@ -2785,16 +2856,13 @@ EditorWindow *RepoView::openEditor(const QString &path, int line,
   if (!window)
     return nullptr;
 
-  // Scroll line into view.
-  BlameEditor *widget = window->widget();
-  if (line >= 0) {
-    TextEditor *editor = widget->editor();
-    editor->ensureVisibleEnforcePolicy(line - 1);
-    editor->gotoLine(line - 1);
-  }
+  // Show the line.
+  FileEditor *editor = window->editor();
+  if (line >= 0)
+    editor->goToLine(line);
 
-  connect(widget, &BlameEditor::linkActivated, this, &RepoView::visitLink);
-  connect(widget, &BlameEditor::saved, this, [this] {
+  connect(editor, &FileEditor::linkActivated, this, &RepoView::visitLink);
+  connect(editor, &FileEditor::saved, this, [this] {
     // Notify window that the head branch is changed.
     emit mRepo.notifier()->referenceUpdated(mRepo.head());
   });
@@ -2811,10 +2879,6 @@ void RepoView::refresh() { refresh(true); }
 
 void RepoView::refresh(bool restoreSelection) {
   // Fake head update.
-  auto dtw = findChild<DoubleTreeWidget *>();
-  if (dtw) {
-    dtw->setDiffCounter();
-  }
   if (mRepo.head().isValid()) {
     DebugRefresh("Head name: " << mRepo.head().name());
   } else {
@@ -2826,7 +2890,21 @@ void RepoView::refresh(bool restoreSelection) {
 }
 
 void RepoView::setPathspec(const QString &path) {
-  mPathspec->setPathspec(path);
+  if (path == mPathspec)
+    return;
+
+  mPathspec = path;
+  emit pathspecChanged(path);
+
+  git::Config config = mRepo.appConfig();
+  mCommits->setPathspec(path, config.value<bool>("index.enable", true));
+}
+
+QAbstractItemModel *RepoView::pathModel() const { return mPathModel; }
+
+void RepoView::showPathContextMenu(const QString &path, qreal x, qreal y) {
+  FileContextMenu menu(this, {path});
+  QmlSupport::execMenu(&menu, mapFromPage(x, y));
 }
 
 git::Commit RepoView::nextRevision(const QString &path) const {
@@ -2874,20 +2952,6 @@ RepoView *RepoView::parentView(const QWidget *widget) {
   return parentView(parent);
 }
 
-bool RepoView::detailsMaximized() { return mMaximized; }
-
-void RepoView::showEvent(QShowEvent *event) {
-  QSplitter::showEvent(event);
-
-  if (mShown)
-    return;
-
-  // Start background tasks after showing for the first time.
-  mShown = true;
-  startIndexing();
-  startFetchTimer();
-}
-
 void RepoView::closeEvent(QCloseEvent *event) {
   // Try to close tracked windows. Iterate over a copy since closing a
   // window may synchronously remove it from mTrackedWindows.
@@ -2900,7 +2964,7 @@ void RepoView::closeEvent(QCloseEvent *event) {
   }
 
   cancelBackgroundTasks();
-  QSplitter::closeEvent(event);
+  QWidget::closeEvent(event);
 }
 
 ToolBar *RepoView::toolBar() const {
@@ -2969,7 +3033,7 @@ bool RepoView::checkForConflicts(LogEntry *parent, const QString &action) {
   resolve->addEntry(LogEntry::Entry, hint3);
   details->addEntry(LogEntry::Entry, mark);
   details->addEntry(LogEntry::Entry, commit.arg(action));
-  mLogView->setEntryExpanded(details, false);
+  mLogPanel->setEntryExpanded(details, false);
 
   if (action != tr("squash")) {
     QString abort = tr("You can <a href='action:abort'>abort</a> the %1 "
@@ -3003,52 +3067,16 @@ bool RepoView::match(QObject *search, QObject *parent) {
 RepoView::DetailSplitterWidgets
 RepoView::detailSplitterMaximize(bool maximized,
                                  DetailSplitterWidgets maximizeWidget) {
-  QWidget *widget = mDetailSplitter->focusWidget();
+  Q_UNUSED(maximizeWidget)
 
-  DetailSplitterWidgets newMaximized = DetailSplitterWidgets::NotDefined;
-
-  if (maximizeWidget != DetailSplitterWidgets::NotDefined)
-    newMaximized = maximizeWidget;
-
-  mMaximized = maximized;
-
-  if (mMaximized) {
-    bool found = false;
-    for (int i = 0; i < mDetailSplitter->count(); i++) {
-      QWidget *w = mDetailSplitter->widget(i);
-      if (maximizeWidget == DetailSplitterWidgets::SideBar) {
-        if (w == mSideBar) {
-          mSideBar->setVisible(true);
-          found = true;
-          continue;
-        }
-      } else if (maximizeWidget == DetailSplitterWidgets::DetailView) {
-        if (w == mDetails) {
-          mDetails->setVisible(true);
-          found = true;
-          continue;
-        }
-      } else if (!widget)
-        return DetailSplitterWidgets::NotDefined;
-      else if (w == widget || match(widget, w)) {
-        w->setVisible(true);
-        found = true;
-        if (w == mSideBar)
-          newMaximized = DetailSplitterWidgets::SideBar;
-        else if (w == mDetails)
-          newMaximized = DetailSplitterWidgets::DetailView;
-        continue;
-      }
-      w->setVisible(false);
-    }
-
-    assert(found);
-    Q_UNUSED(found)
-  } else {
-    for (int i = 0; i < mDetailSplitter->count(); i++)
-      mDetailSplitter->widget(i)->setVisible(true);
+  // Maximizing hides the panels around the graph or the diff.
+  if (maximized != mMaximized) {
+    mMaximized = maximized;
+    emit maximizedChanged();
   }
 
-  return newMaximized;
+  return maximized ? DetailSplitterWidgets::SideBar
+                   : DetailSplitterWidgets::NotDefined;
 }
+
 #include "RepoView.moc"

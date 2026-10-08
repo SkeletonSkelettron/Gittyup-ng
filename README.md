@@ -1,40 +1,94 @@
-[![Gittyup Status](https://github.com/Murmele/Gittyup/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/Murmele/Gittyup/actions/workflows/build.yml)
-[![Matrix](https://img.shields.io/matrix/Gittyup:matrix.org?label=Matrix%20Chat)](https://matrix.to/#/#Gittyup:matrix.org)
-[![Donate Liberapay](https://liberapay.com/assets/widgets/donate.svg)](https://liberapay.com/Gittyup/donate)
-
-<a href="https://flathub.org/apps/details/com.github.Murmele.Gittyup">
-<img
-    src="https://flathub.org/assets/badges/flathub-badge-i-en.png"
-    alt="Download Gittyup on Flathub"
-    width="240px"/>
-</a>
-
-Gittyup
+Gittyup-ng
 ==================================
 
-Gittyup is a graphical Git client designed to help you understand and manage your source code history. The [latest stable release](https://github.com/Murmele/Gittyup/releases/latest)
-is available either as pre-built flatpak for Linux, 32 / 64 binary for Windows, macOS,
-or can be built from source by following the directions [below](https://github.com/Murmele/Gittyup#how-to-build).
+Gittyup-ng is a graphical Git client designed to help you understand and manage your source code history.
+It continues [Gittyup](https://github.com/Murmele/Gittyup) with a new interface written in QML.
+Windows installers are on the [releases page](https://github.com/SkeletonSkelettron/Gittyup-ng/releases);
+on other systems, build it from source by following the directions [below](#how-to-build).
 
-The [latest development version](https://github.com/Murmele/Gittyup/releases/tag/development) is available pre-built as well.
+The changes that Gittyup-ng makes to Gittyup were made by an AI: Claude, by Anthropic.
+See [what Gittyup-ng changes](#what-gittyup-ng-changes).
 
 Gittyup is a continuation of the [GitAhead](https://github.com/gitahead/gitahead) client.
-
-![Gittyup](https://raw.githubusercontent.com/Murmele/Gittyup/master/rsrc/screenshots/main_dark_orig.png)
 
 Table of contents
 =================
 <!--ts-->
+   * [What Gittyup-ng Changes](#what-gittyup-ng-changes)
    * [Features](#features)
    * [How to Get Help](#how-to-get-help)
    * [Build Environment](#build-environment)
    * [Dependencies](#dependencies)
    * [How to Build](#how-to-build)
    * [How to Install](#how-to-install)
-      * [Flatpak from terminal](#flatpak-from-terminal)
    * [How to Contribute](#how-to-contribute)
    * [License](#license)
 <!--te-->
+
+What Gittyup-ng Changes
+---------------
+> **Made by AI.** All of the changes below were made by Claude Opus 5.5, an AI model by
+> [Anthropic](https://www.anthropic.com), working in [Claude Code](https://claude.com/claude-code)
+> at the request of the maintainer of this fork: the code, the tests, the build of the Windows packages
+> and this description. The commits say so with a `Co-Authored-By: Claude` line.
+
+Gittyup-ng starts from the master branch of Gittyup of 24 September 2026. On top of it:
+
+### A new interface in QML
+
+* The Qt Widgets interface is replaced by QML, in a style like GitKraken's, with dark and light Kraken themes.
+  The main window is a single QML scene: the tool bar, the sidebar with branches, remotes, tags and pull requests,
+  repository tabs that are reordered by dragging, the welcome page, the commit graph, the details of commits,
+  the diff, the activity log, the menu bar, the context menus and the tool tips.
+* Every dialog is in QML: branches, tags, checkout, merge, clone, commit messages and amends, fetch, pull and push,
+  submodules, ignore patterns, commit templates, accounts, credentials, settings with the hotkeys,
+  repository settings, external tools, plugins, pull requests, about and updates.
+* Files are shown and edited in a QML text editor instead of Scintilla, with a find bar, blame in a margin like
+  GitKraken's, the wrapping and indentation settings, and spell checking of commit messages.
+  Diffs show images before and after a change.
+* Syntax highlighting covers more languages: TypeScript, JSON, Dart, Dockerfile, PowerShell, TOML, Gradle,
+  Protocol Buffers, Nix, Elixir, Haskell, F#, Julia, R and Zig.
+
+### Features like GitKraken's
+
+* **Merge editor**: conflicts are resolved by taking lines or whole conflicts from either side into an output
+  that can be edited. The panes scroll together, the output waits while the conflicts scroll by, each side has
+  a color of its own, and the syntax is highlighted.
+* **Undo and redo** (Ctrl+Z) of the actions that move HEAD, branches, tags or upstreams, like commits, resets,
+  merges and checkouts.
+* **Drag and drop**: dropping a branch onto another branch fast-forwards, merges or rebases, and dropping it onto
+  a remote pushes it.
+* **Interactive rebase**: commits are picked, reworded, squashed, dropped and reordered in place of the graph.
+* **Solo and hide branches** in the graph.
+* **Command palette** (Ctrl+P) to find commands, branches, tags, files and repositories.
+* **Pull requests** of GitHub, GitLab and Gitea in the sidebar.
+* **Pull** a branch that isn't checked out from its context menu.
+* **Signed commits** with GPG, SSH or X.509 keys, as `commit.gpgsign` and `gpg.format` say.
+
+### Fixes
+
+* SSH tries every key of `~/.ssh/config`, of the settings and the default keys, and only asks for the passphrase
+  of a key that has one, naming the key.
+* Text that isn't ASCII, like Georgian, is read and saved as UTF-8 on Windows instead of in the code page of
+  the system.
+* Repositories that git opens also open when libgit2 refuses them because of who owns them, and the warning
+  about a repository that doesn't open says why.
+
+### Windows packages
+
+* The Windows installer and zip are cross-built with MinGW on Linux and ship the QML modules they need.
+* The installer doesn't start the application when it finishes: it would run as the administrator who installed it,
+  who doesn't own the repositories of the user.
+
+### The name
+
+* The application is called Gittyup-ng and has an identifier of its own, so it runs beside Gittyup.
+  The first time it runs, it starts with the settings and the data of Gittyup, and leaves them for Gittyup.
+
+### Tests
+
+* New tests load every QML view and cover the merge editor, undo and redo, dragging branches, interactive rebase,
+  signing, pulling branches, SSH keys and opening repositories.
 
 Features
 ---------------
@@ -140,45 +194,15 @@ where `<path-to-qt>` points to the Qt install directory that contains
 
 How to Install
 -----------------
-### Linux
+### Windows
 
-The easiest way to install Gittyup is by using [Flatpak](https://flathub.org/apps/details/com.github.Murmele.Gittyup).
+Download the installer or the zip from the [releases page](https://github.com/SkeletonSkelettron/Gittyup-ng/releases).
+Start Gittyup-ng from the Start menu after installing it.
 
-**Arch Linux**
+### Linux and macOS
 
-Install the `gittyup` package from the Arch User Repository.
-
-	git clone https://aur.archlinux.org/gittyup.git
-	cd gittyup
-	makepkg -si
-
-Or use an AUR helper.
-Install `gittyup-git` for the VCS build.
-
-### Mac OS
-
-**Homebrew**
-
-Install the `gittyup` cask from [Homebrew](https://formulae.brew.sh/cask/gittyup).
-
-    brew install gittyup
-
-### Flatpak from terminal
-
-If you want a more pure console use, this script run flatpak version disowning the process and silence the output pushing it to /dev/null.
-Just save the script somewhere in your path, for example `/usr/bin` (or `~/.local/bin` if you have exported it), give execution permissions `chmod +x`, and run `gittyup` from your terminal.
-
-```bash
-#!/bin/bash
-DIR=$(dirname "${BASH_SOURCE[0]}")
-function run_disown() {
-    "$@" & disown
-}
-function run_disown_silence(){
-    run_disown "$@" 1>/dev/null 2>/dev/null
-}
-run_disown_silence flatpak run com.github.Murmele.Gittyup
-```
+Build Gittyup-ng from source by following the directions [above](#how-to-build).
+The packages on Flathub, the AUR and Homebrew install Gittyup, not Gittyup-ng.
 
 How to Contribute
 -----------------
@@ -205,4 +229,4 @@ regressions. These are run using `ctest` in `<build-dir>`.
 License
 -------
 
-Gittyup and its predecessor GitAhead are licensed under the MIT license. See LICENSE.md for details.
+Gittyup-ng and its predecessors Gittyup and GitAhead are licensed under the MIT license. See LICENSE.md for details.

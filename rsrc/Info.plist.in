@@ -51,7 +51,7 @@
       <key>NSMenuItem</key>
       <dict>
         <key>default</key>
-        <string>Open in Gittyup</string>
+        <string>Open in ${MACOSX_BUNDLE_BUNDLE_NAME}</string>
       </dict>
       <key>NSMessage</key>
       <string>openInGittyup</string>

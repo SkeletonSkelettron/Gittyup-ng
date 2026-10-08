@@ -76,9 +76,11 @@ add_library(
   ${SCINTILLA_DIR}/src/ViewStyle.cxx
   ${SCINTILLA_DIR}/src/XPM.cxx)
 
+# Scintilla is linked statically, so its classes aren't imported from a DLL.
+# (MSVC tolerates the import, MinGW doesn't.)
 target_compile_definitions(
   scintilla
-  PUBLIC SCINTILLA_QT SCI_LEXER
+  PUBLIC SCINTILLA_QT SCI_LEXER EXPORT_IMPORT_API=
   PRIVATE SCI_EMPTYCATALOGUE MAKING_LIBRARY)
 
 target_include_directories(

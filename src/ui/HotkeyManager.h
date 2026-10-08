@@ -46,6 +46,8 @@ public:
   QString label() const;
   QKeySequence currentKeys(const HotkeyManager *manager = nullptr) const;
   QString defaultKeys() const;
+  // The default keys, including standard keys.
+  QKeySequence defaultSequence() const;
   void setKeys(const QKeySequence &keys, HotkeyManager *manager = nullptr);
 
   inline bool isValid() const { return mHandle != nullptr; }

@@ -4,138 +4,141 @@
 // This software is licensed under the MIT License. The LICENSE.md file
 // describes the conditions under which this software may be distributed.
 //
-// Author: Bryan Williams
+// Author: Jason Haslam
 //
 
 #include "MergeDialog.h"
 #include "conf/Settings.h"
-#include "git/Branch.h"
-#include "ui/ReferenceList.h"
-#include <QCheckBox>
-#include <QDialogButtonBox>
-#include <QFormLayout>
-#include <QLabel>
-#include <QPushButton>
-#include <QVBoxLayout>
 
 namespace {
 
-const ReferenceView::Kinds kRefKinds =
-    ReferenceView::InvalidRef | ReferenceView::LocalBranches |
-    ReferenceView::RemoteBranches | ReferenceView::Tags |
-    ReferenceView::ExcludeHead;
+const int kRefKinds = ReferenceItems::LocalBranches |
+                      ReferenceItems::RemoteBranches | ReferenceItems::Tags |
+                      ReferenceItems::ExcludeHead;
+
+// The flags of the actions, in the order of MergeDialog::actions().
+const QList<int> kActions = {
+    RepoView::Merge, RepoView::Rebase, RepoView::Squash,
+    RepoView::Merge | RepoView::NoFastForward,
+    RepoView::Merge | RepoView::FastForward};
 
 } // namespace
 
 MergeDialog::MergeDialog(RepoView::MergeFlags flags,
                          const git::Repository &repo, QWidget *parent)
-    : QDialog(parent), mRepo(repo) {
+    : QmlDialog(parent), mRepo(repo), mRefs(repo, kRefKinds) {
   setAttribute(Qt::WA_DeleteOnClose);
+  setWindowTitle(tr("Merge"));
 
-  mRefs = new ReferenceList(repo, kRefKinds, this);
-  connect(mRefs, &ReferenceList::referenceSelected, this, &MergeDialog::update);
+  mAction = qMax(0, static_cast<int>(kActions.indexOf(static_cast<int>(flags))));
+  mIndex = mRefs.count() ? 0 : -1;
 
-  auto noff = RepoView::Merge | RepoView::NoFastForward;
-  auto ffonly = RepoView::Merge | RepoView::FastForward;
-
-  mAction = new QComboBox(this);
-  mAction->addItem(tr("Merge"), RepoView::Merge);
-  mAction->addItem(tr("Rebase"), RepoView::Rebase);
-  mAction->addItem(tr("Squash"), RepoView::Squash);
-  mAction->addItem(tr("Merge (No Fast-forward)"), noff);
-  mAction->addItem(tr("Merge (Fast-forward Only)"), ffonly);
-  mAction->setCurrentIndex(mAction->findData(static_cast<int>(flags)));
-
-  QLabel *label = new QLabel(labelText(), this);
-
-  QCheckBox *noCommit = new QCheckBox(tr("No commit"), this);
-  noCommit->setChecked(!Settings::instance()
-                            ->value(Setting::Id::CommitMergeImmediately)
-                            .toBool());
-  connect(noCommit, &QCheckBox::toggled, [](bool checked) {
-    Settings::instance()->setValue(Setting::Id::CommitMergeImmediately,
-                                   !checked);
-  });
-
-  noCommit->setVisible(flags & RepoView::Merge);
-
-  auto signal = QOverload<int>::of(&QComboBox::currentIndexChanged);
-  connect(mAction, signal, [this, label, noCommit]() {
-    RepoView::MergeFlags flags = this->flags();
-    bool merge = (flags & RepoView::Merge);
-    bool ffonly = (flags & RepoView::FastForward);
-
-    label->setText(labelText());
-    mAccept->setText(buttonText());
-    noCommit->setVisible(merge && !ffonly);
-  });
-
-  QFormLayout *form = new QFormLayout;
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  form->addRow(label);
-  form->addRow(tr("Reference:"), mRefs);
-  form->addRow(tr("Action:"), mAction);
-  form->addRow(QString(), noCommit);
-
-  QDialogButtonBox *buttons = new QDialogButtonBox(this);
-  buttons->addButton(QDialogButtonBox::Cancel);
-  mAccept = buttons->addButton(buttonText(), QDialogButtonBox::AcceptRole);
-  connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-
-  QVBoxLayout *layout = new QVBoxLayout(this);
-  layout->addLayout(form);
-  layout->addWidget(buttons);
-
-  update();
+  setContent("MergeDialog");
 }
 
-git::Commit MergeDialog::target() const { return mRefs->target(); }
+git::Commit MergeDialog::target() const {
+  git::Reference ref = reference();
+  return ref.isValid() ? ref.target() : mCommit;
+}
 
 git::Reference MergeDialog::reference() const {
-  return mRefs->currentReference();
+  return mRefs.reference(mIndex);
+}
+
+RepoView::MergeFlags MergeDialog::actionFlags() const {
+  return static_cast<RepoView::MergeFlags>(kActions.value(mAction, RepoView::Merge));
 }
 
 RepoView::MergeFlags MergeDialog::flags() const {
-  int action = mAction->itemData(mAction->currentIndex()).toInt();
-  RepoView::MergeFlags flags = static_cast<RepoView::MergeFlags>(action);
-  if (!Settings::instance()
-           ->value(Setting::Id::CommitMergeImmediately)
-           .toBool())
+  RepoView::MergeFlags flags = actionFlags();
+  if (noCommit())
     flags |= RepoView::NoCommit;
   return flags;
 }
 
 void MergeDialog::setCommit(const git::Commit &commit) {
-  mRefs->setCommit(commit);
-  update();
+  // Prefer a reference that points to the commit.
+  int index = mRefs.indexOf(commit);
+  if (index >= 0) {
+    setRefIndex(index);
+    return;
+  }
+
+  // Merge a commit that no reference points to.
+  if (mCommit.isValid() || !commit.isValid())
+    return;
+
+  mCommit = commit;
+  mRefs.prepend(QVariantMap{
+      {"text", QString("%1  %2").arg(commit.shortId(), commit.summary())},
+      {"icon", "commit"}});
+  mIndex = 0;
+  emit changed();
 }
 
 void MergeDialog::setReference(const git::Reference &ref) {
-  mRefs->select(ref);
-  update();
+  int index = mRefs.indexOf(ref);
+  if (index >= 0)
+    setRefIndex(index);
 }
 
-void MergeDialog::update() { mAccept->setEnabled(mRefs->target().isValid()); }
+void MergeDialog::setRefIndex(int index) {
+  if (index == mIndex)
+    return;
+
+  mIndex = index;
+  emit changed();
+}
+
+QStringList MergeDialog::actions() const {
+  return {tr("Merge"), tr("Rebase"), tr("Squash"),
+          tr("Merge (No Fast-forward)"), tr("Merge (Fast-forward Only)")};
+}
+
+void MergeDialog::setAction(int action) {
+  if (action == mAction || action < 0 || action >= kActions.size())
+    return;
+
+  mAction = action;
+  setWindowTitle(buttonText());
+  emit changed();
+}
+
+bool MergeDialog::noCommit() const {
+  return !Settings::instance()
+              ->value(Setting::Id::CommitMergeImmediately)
+              .toBool();
+}
+
+void MergeDialog::setNoCommit(bool noCommit) {
+  Settings::instance()->setValue(Setting::Id::CommitMergeImmediately,
+                                 !noCommit);
+  emit changed();
+}
+
+bool MergeDialog::isNoCommitVisible() const {
+  RepoView::MergeFlags flags = actionFlags();
+  return (flags & RepoView::Merge) && !(flags & RepoView::FastForward);
+}
 
 QString MergeDialog::labelText() const {
   QString fmt;
-  if (flags() & RepoView::Merge)
+  RepoView::MergeFlags flags = actionFlags();
+  if (flags & RepoView::Merge)
     fmt = tr("Choose a reference to merge into '%1'.");
-  else if (flags() & RepoView::Rebase)
+  else if (flags & RepoView::Rebase)
     fmt = tr("Choose a reference to rebase '%1' on.");
   else
     fmt = tr("Choose a reference to squash into '%1'.");
 
   git::Reference head = mRepo.head();
-  Q_ASSERT(head.isValid());
-
-  return fmt.arg(head.name(false));
+  return fmt.arg(head.isValid() ? head.name(false) : QString());
 }
 
 QString MergeDialog::buttonText() const {
-  if (flags() & RepoView::Merge)
+  RepoView::MergeFlags flags = actionFlags();
+  if (flags & RepoView::Merge)
     return tr("Merge");
 
-  return (flags() & RepoView::Rebase) ? tr("Rebase") : tr("Squash");
+  return (flags & RepoView::Rebase) ? tr("Rebase") : tr("Squash");
 }

@@ -1,5 +1,5 @@
 //
-//          Copyright (c) 2018, Scientific Toolworks, Inc.
+//          Copyright (c) 2016, Scientific Toolworks, Inc.
 //
 // This software is licensed under the MIT License. The LICENSE.md file
 // describes the conditions under which this software may be distributed.
@@ -8,119 +8,66 @@
 //
 
 #include "AccountDialog.h"
+#include "ConfirmDialog.h"
 #include "cred/CredentialHelper.h"
 #include "host/Accounts.h"
-#include "ui/ExpandButton.h"
-#include <QApplication>
-#include <QFormLayout>
-#include <QMessageBox>
-#include <QPushButton>
+#include <QUrl>
+
+namespace {
+
+// The hosts in the order of the list.
+const QList<Account::Kind> kHosts = {Account::GitHub, Account::Gitea,
+                                     Account::Bitbucket, Account::Beanstalk,
+                                     Account::GitLab};
+
+} // namespace
 
 AccountDialog::AccountDialog(Account *account, QWidget *parent)
-    : QDialog(parent) {
+    : QmlDialog(parent) {
   setAttribute(Qt::WA_DeleteOnClose);
   setWindowTitle(tr("Add Remote Account"));
 
-  mHost = new QComboBox(this);
-  mHost->setMinimumWidth(mHost->sizeHint().width() * 2);
-  mHost->addItem("GitHub", Account::GitHub);
-  mHost->addItem("Gitea", Account::Gitea);
-  mHost->addItem("Bitbucket", Account::Bitbucket);
-  mHost->addItem("Beanstalk", Account::Beanstalk);
-  mHost->addItem("GitLab", Account::GitLab);
+  setKind(account ? account->kind() : Account::GitHub);
+  if (account) {
+    mUsername = account->username();
+    mPassword = account->password();
+    mUrl = account->url();
+  }
 
-  Account::Kind kind = account ? account->kind() : Account::GitHub;
-  setKind(kind);
-
-  mUsername = new QLineEdit(this);
-  mUsername->setText(account ? account->username() : QString());
-  connect(mUsername, &QLineEdit::textChanged, this,
-          &AccountDialog::updateButtons);
-
-  mPassword = new QLineEdit(this);
-  mPassword->setEchoMode(QLineEdit::Password);
-  mPassword->setText(account ? account->password() : QString());
-  connect(mPassword, &QLineEdit::textChanged, this,
-          &AccountDialog::updateButtons);
-
-  auto signal = QOverload<int>::of(&QComboBox::currentIndexChanged);
-  mLabel = new QLabel(Account::helpText(kind), this);
-  mLabel->setWordWrap(true);
-  mLabel->setOpenExternalLinks(true);
-  mLabel->setVisible(!mLabel->text().isEmpty());
-  connect(mHost, signal, [this] {
-    Account::Kind kind =
-        static_cast<Account::Kind>(mHost->currentData().toInt());
-    mLabel->setText(Account::helpText(kind));
-    mLabel->setVisible(!mLabel->text().isEmpty());
-  });
-
-  mUrl = new QLineEdit(this);
-  mUrl->setText(account ? account->url() : Account::defaultUrl(kind));
-  connect(mHost, signal, [this] {
-    Account::Kind kind =
-        static_cast<Account::Kind>(mHost->currentData().toInt());
-    mUrl->setText(Account::defaultUrl(kind));
-    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    resize(sizeHint());
-  });
-
-  QFormLayout *form = new QFormLayout;
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  form->addRow(tr("Host:"), mHost);
-  form->addRow(tr("Username:"), mUsername);
-  form->addRow(tr("Password:"), mPassword);
-  form->addRow(mLabel);
-  form->addRow(tr("URL:"), mUrl);
-
-  QDialogButtonBox::StandardButtons buttons =
-      QDialogButtonBox::Ok | QDialogButtonBox::Cancel;
-  mButtons = new QDialogButtonBox(buttons, this);
-  mButtons->button(QDialogButtonBox::Ok)->setEnabled(false);
-  connect(mButtons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-  connect(mButtons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-
-  QVBoxLayout *layout = new QVBoxLayout(this);
-  layout->addLayout(form);
-  layout->addWidget(mButtons);
-
-  updateButtons();
+  setContent("AccountDialog");
 }
 
 void AccountDialog::accept() {
+  if (!isAcceptable())
+    return;
+
   // Validate account.
-  Account::Kind kind = static_cast<Account::Kind>(mHost->currentData().toInt());
-  QString username = mUsername->text();
-  QString url =
-      (mUrl->text() != Account::defaultUrl(kind)) ? mUrl->text() : QString();
+  Account::Kind kind = this->kind();
+  QString url = (mUrl != Account::defaultUrl(kind)) ? mUrl : QString();
 
-  if (Account *account = Accounts::instance()->lookup(username, kind)) {
-    QMessageBox mb(QMessageBox::Information, tr("Replace?"),
-                   tr("An account of this type already exists."));
-    mb.setInformativeText(
+  if (Account *account = Accounts::instance()->lookup(mUsername, kind)) {
+    ConfirmDialog dialog(this);
+    dialog.setTitle(tr("Replace?"));
+    dialog.setText(tr("An account of this type already exists."));
+    dialog.setInformativeText(
         tr("Would you like to replace the previous account?"));
-    QPushButton *remove = mb.addButton(tr("Replace"), QMessageBox::AcceptRole);
-    mb.addButton(tr("Cancel"), QMessageBox::RejectRole);
-    mb.setDefaultButton(remove);
-    mb.exec();
-
-    if (mb.clickedButton() != remove)
+    dialog.setAcceptText(tr("Replace"));
+    if (dialog.exec() != QDialog::Accepted)
       return;
 
     Accounts::instance()->removeAccount(account);
   }
 
-  Account *account = Accounts::instance()->createAccount(kind, username, url);
+  Account *account = Accounts::instance()->createAccount(kind, mUsername, url);
   AccountProgress *progress = account->progress();
   connect(progress, &AccountProgress::finished, this, [this, account] {
+    mBusy = false;
+    emit changed();
+
     AccountError *error = account->error();
     if (error->isValid()) {
-      QString text = error->text();
-      QString title = tr("Connection Failed");
-      QMessageBox msg(QMessageBox::Warning, title, text, QMessageBox::Ok);
-      msg.setInformativeText(error->detailedText());
-      msg.exec();
-
+      ConfirmDialog::warning(this, tr("Connection Failed"), error->text(),
+                             error->detailedText());
       Accounts::instance()->removeAccount(account);
       return;
     }
@@ -131,21 +78,73 @@ void AccountDialog::accept() {
     url.setHost(account->host());
 
     CredentialHelper *helper = CredentialHelper::instance();
-    helper->store(url.toString(), account->username(), mPassword->text());
+    helper->store(url.toString(), account->username(), mPassword);
 
     QDialog::accept();
   });
 
   // Start asynchronous connection.
-  account->connect(mPassword->text());
+  mBusy = true;
+  emit changed();
+  account->connect(mPassword);
 }
 
 void AccountDialog::setKind(Account::Kind kind) {
-  mHost->setCurrentIndex(mHost->findData(kind));
+  setHostIndex(qMax(0, static_cast<int>(kHosts.indexOf(kind))));
 }
 
-void AccountDialog::updateButtons() {
-  mButtons->button(QDialogButtonBox::Ok)
-      ->setEnabled(!mUsername->text().isEmpty() &&
-                   !mPassword->text().isEmpty());
+Account::Kind AccountDialog::kind() const {
+  return kHosts.value(mHostIndex, Account::GitHub);
+}
+
+QVariantList AccountDialog::hosts() const {
+  QVariantList hosts;
+  for (Account::Kind kind : kHosts)
+    hosts.append(QVariantMap{{"text", Account::name(kind)},
+                             {"icon", QString("account-%1").arg(kind)}});
+  return hosts;
+}
+
+void AccountDialog::setHostIndex(int index) {
+  if (index < 0 || index >= kHosts.size())
+    return;
+
+  bool defaultUrl = mUrl.isEmpty() || mUrl == Account::defaultUrl(kind());
+  mHostIndex = index;
+
+  // Follow the default URL of the host.
+  if (defaultUrl)
+    mUrl = Account::defaultUrl(kind());
+
+  emit changed();
+}
+
+void AccountDialog::setUsername(const QString &username) {
+  if (username == mUsername)
+    return;
+
+  mUsername = username;
+  emit changed();
+}
+
+void AccountDialog::setPassword(const QString &password) {
+  if (password == mPassword)
+    return;
+
+  mPassword = password;
+  emit changed();
+}
+
+void AccountDialog::setUrl(const QString &url) {
+  if (url == mUrl)
+    return;
+
+  mUrl = url;
+  emit changed();
+}
+
+QString AccountDialog::helpText() const { return Account::helpText(kind()); }
+
+bool AccountDialog::isAcceptable() const {
+  return !mBusy && !mUsername.isEmpty() && !mPassword.isEmpty();
 }

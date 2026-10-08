@@ -27,6 +27,8 @@ public:
                   QWidget *parent = nullptr);
 
   QAction *doubleClickAction() { return mDoubleClickAction; }
+  // Discard the changes of uncommitted files, or nullptr.
+  QAction *discardAction() { return mDiscardAction; }
 
 private slots:
   void ignoreFile();
@@ -43,6 +45,7 @@ private:
   RepoView *mView;
   QStringList mFiles;
   QAction *mDoubleClickAction;
+  QAction *mDiscardAction = nullptr;
 
   friend class TestTreeView;
 };

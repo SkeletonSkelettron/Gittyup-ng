@@ -9,12 +9,11 @@
 
 #include "Test.h"
 #include "log/LogEntry.h"
-#include "log/LogView.h"
+#include "ui/LogPanel.h"
+#include <QAbstractItemModel>
+#include <QClipboard>
+#include <QMimeData>
 #include <QtTest/QtTest>
-#include <QSplitter>
-#include <QPlainTextEdit>
-#include <QShortcut>
-#include <QTextEdit>
 
 using namespace QTest;
 
@@ -24,21 +23,17 @@ class TestLog : public QObject {
 private slots:
   void initTestCase();
   void copy();
+  void copyNested();
   void copyAll();
   void cleanupTestCase();
 
 private:
-  int inputDelay = 0;
-  int closeDelay = 0;
+  QStringList clipboardLines() const;
 
-  QSplitter *mSplitter = nullptr;
-  bool firstEntry;
-  void copyEachEntry(LogView *logView, QList<QAbstractScrollArea *> qTextEdits,
-                     int entries);
+  LogPanel *mPanel = nullptr;
 };
 
 void TestLog::initTestCase() {
-  // Create LogView
   LogEntry *rootEntry = new LogEntry;
   rootEntry->addEntry("Entry", "Title");
   for (LogEntry::Kind kind :
@@ -49,83 +44,52 @@ void TestLog::initTestCase() {
       ->addEntry(LogEntry::File, "Nested 3")
       ->addEntry(LogEntry::File, "Message");
 
-  LogView *logView = new LogView(rootEntry);
-  logView->expandAll();
-  logView->show();
-  QVERIFY(qWaitForWindowActive(logView));
+  mPanel = new LogPanel(rootEntry);
+  QCOMPARE(mPanel->model()->rowCount(), 6);
+}
 
-  // Simulate global copy shortcut (Ctrl + C) available in application context
-  QShortcut *copy = new QShortcut(QKeySequence::Copy, logView);
-  connect(copy, &QShortcut::activated, logView, &LogView::copy);
-
-  // Create plain text edit box
-  QPlainTextEdit *plainTextEdit = new QPlainTextEdit();
-  plainTextEdit->show();
-  QVERIFY(qWaitForWindowActive(plainTextEdit));
-
-  // Create rich text edit box
-  QTextEdit *richTextEdit = new QTextEdit();
-  richTextEdit->show();
-  QVERIFY(qWaitForWindowActive(richTextEdit));
-
-  // Assemble parent widget
-  mSplitter = new QSplitter();
-  mSplitter->addWidget(logView);
-  mSplitter->addWidget(plainTextEdit);
-  mSplitter->addWidget(richTextEdit);
-  mSplitter->setMinimumHeight(400);
-  mSplitter->show();
-  QVERIFY(qWaitForWindowActive(mSplitter));
+QStringList TestLog::clipboardLines() const {
+  const QMimeData *data = QApplication::clipboard()->mimeData();
+  return data ? data->text().split('\n', Qt::SkipEmptyParts) : QStringList();
 }
 
 void TestLog::copy() {
-  LogView *logView = mSplitter->findChild<LogView *>();
-  QList<LogEntry *> entries = logView->model()->findChildren<LogEntry *>();
-  QList<QAbstractScrollArea *> qTextEdits =
-      mSplitter->findChildren<QAbstractScrollArea *>();
-  copyEachEntry(logView, qTextEdits, entries.size());
+  // Each top-level entry without children copies as one line.
+  QAbstractItemModel *model = mPanel->model();
+  for (int i = 0; i < 5; ++i) {
+    mPanel->copy(model->index(i, 0));
+    QStringList lines = clipboardLines();
+    QCOMPARE(lines.size(), 1);
+    QVERIFY(lines.first().endsWith("Entry"));
+    QVERIFY(!lines.first().contains('<'));
+  }
+
+  // Titles are kept without markup.
+  mPanel->copy(model->index(0, 0));
+  QVERIFY(clipboardLines().first().endsWith("Title - Entry"));
+
+  // The rich text keeps the markup.
+  QVERIFY(QApplication::clipboard()->mimeData()->html().contains("<b>Title</b>"));
+}
+
+void TestLog::copyNested() {
+  // Nested entries are indented.
+  QAbstractItemModel *model = mPanel->model();
+  mPanel->copy(model->index(5, 0));
+  QStringList lines = clipboardLines();
+  QCOMPARE(lines.size(), 4);
+  QVERIFY(lines.at(0).endsWith("Nested 1 - Entry"));
+  QCOMPARE(lines.at(1), QString("    Nested 2"));
+  QCOMPARE(lines.at(2), QString("        Nested 3"));
+  QCOMPARE(lines.at(3), QString("            Message"));
 }
 
 void TestLog::copyAll() {
-  LogView *logView = mSplitter->findChild<LogView *>();
-  QList<LogEntry *> entries = logView->model()->findChildren<LogEntry *>();
-  QList<QAbstractScrollArea *> qTextEdits =
-      mSplitter->findChildren<QAbstractScrollArea *>();
-  QAbstractScrollArea *plainTextEditor = qTextEdits.at(1);
-  QAbstractScrollArea *richTextEditor = qTextEdits.at(0);
-  for (int i = 1; i < entries.size() - 1; i++) {
-    keyClick(logView, Qt::Key_Up, Qt::ShiftModifier, inputDelay);
-  }
-  keyClick(logView, 'c', Qt::ControlModifier, inputDelay);
-  keyClick(plainTextEditor, Qt::Key_Return);
-  keyClick(plainTextEditor, 'v', Qt::ControlModifier, inputDelay);
-  keyClick(richTextEditor, Qt::Key_Return);
-  keyClick(richTextEditor, 'v', Qt::ControlModifier, inputDelay);
+  mPanel->copyAll();
+  QCOMPARE(clipboardLines().size(), 9);
 }
 
-void TestLog::copyEachEntry(LogView *logView,
-                            QList<QAbstractScrollArea *> qTextEdits,
-                            int entries) {
-  if (firstEntry) {
-    keyClick(logView, Qt::Key_Down);
-    keyClick(logView, Qt::Key_Up);
-    firstEntry = false;
-  } else {
-    keyClick(logView, Qt::Key_Down);
-  }
-  keyClick(logView, 'c', Qt::ControlModifier, inputDelay);
-  keyClick(qTextEdits.at(1), 'v', Qt::ControlModifier, inputDelay);
-  keyClick(qTextEdits.at(0), 'v', Qt::ControlModifier, inputDelay);
-  entries--;
-  if (entries == 1) // Skip root entry
-    return;
-  copyEachEntry(logView, qTextEdits, entries);
-}
-
-void TestLog::cleanupTestCase() {
-  qWait(closeDelay);
-  mSplitter->close();
-}
+void TestLog::cleanupTestCase() { delete mPanel; }
 
 TEST_MAIN(TestLog)
 

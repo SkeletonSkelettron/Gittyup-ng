@@ -10,7 +10,7 @@
 #include "Application.h"
 #include "git/Config.h"
 #include "ui/MainWindow.h"
-#include <QMessageBox>
+#include "dialogs/ConfirmDialog.h"
 
 int main(int argc, char *argv[]) {
   Application app(argc, argv, true);
@@ -20,10 +20,11 @@ int main(int argc, char *argv[]) {
     return 0;
 
   if (!git::Config::global().isValid()) {
-    QMessageBox::warning(
+    ConfirmDialog::warning(
         nullptr, GITTYUP_NAME,
-        QObject::tr("Your global GIT configuration is invalid, Gittyup won't "
-                    "run properly until this is fixed"));
+        QObject::tr("Your global GIT configuration is invalid, %1 won't "
+                    "run properly until this is fixed")
+            .arg(GITTYUP_NAME));
   }
 
   // Restore windows before checking for updates so that

@@ -60,6 +60,10 @@ public:
 
   bool hasConflicts() const;
 
+  // The index of the same file for another thread: an index can't be used by
+  // two threads at once.
+  Index reopen() const;
+
   static Index create();
 
 private:

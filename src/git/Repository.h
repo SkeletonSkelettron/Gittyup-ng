@@ -230,7 +230,11 @@ public:
   void cleanupState();
 
   // encoding
+  // The encoding of new text: the one of 'gui.encoding', or UTF-8.
   QStringConverter::Encoding encoding() const;
+  // The encoding of 'text': the one of 'gui.encoding', or UTF-8 unless the
+  // text isn't valid UTF-8, then the encoding of the system or Latin-1.
+  QStringConverter::Encoding encoding(const QByteArray &text) const;
   QString decode(const QByteArray &text) const;
 
   // clean
@@ -306,8 +310,10 @@ private:
   friend class Object;
   friend class Patch;
   friend class Rebase;
+  friend class RefState;
   friend class Reference;
   friend class Remote;
+  friend class Rewrite;
   friend class Submodule;
   friend class TagRef;
 };

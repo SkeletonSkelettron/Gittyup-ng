@@ -11,152 +11,176 @@
 #include "conf/Settings.h"
 #include "git/Config.h"
 #include "git/Remote.h"
-#include "git/Repository.h"
-#include "ui/ExpandButton.h"
-#include "ui/ReferenceList.h"
 #include "ui/RepoView.h"
-#include <QApplication>
-#include <QCheckBox>
-#include <QComboBox>
-#include <QDialogButtonBox>
-#include <QFormLayout>
-#include <QLineEdit>
-#include <QPushButton>
+#include "ui/qml/QmlSupport.h"
+#include <QMenu>
 
-RemoteDialog::RemoteDialog(Kind kind, RepoView *parent) : QDialog(parent) {
-  git::Repository repo = parent->repo();
+namespace {
+
+// The flags of the pull actions, in the order of RemoteDialog::actions().
+const QList<int> kPullActions = {
+    RepoView::Merge, RepoView::Rebase,
+    RepoView::Merge | RepoView::NoFastForward,
+    RepoView::Merge | RepoView::FastForward};
+
+} // namespace
+
+RemoteDialog::RemoteDialog(Kind kind, RepoView *parent)
+    : QmlDialog(parent), mKind(kind), mRepo(parent->repo()),
+      mRefs(mRepo, kind == Push
+                       ? ReferenceItems::LocalBranches | ReferenceItems::Tags
+                       : 0) {
   setAttribute(Qt::WA_DeleteOnClose);
 
-  mRemotes = new QComboBox(this);
-  mRemotes->setEditable(true);
-  mRemotes->setMinimumContentsLength(16);
-  for (const git::Remote &remote : repo.remotes())
-    mRemotes->addItem(remote.name(), QVariant::fromValue(remote));
-
-  git::Remote defaultRemote = repo.defaultRemote();
-  if (defaultRemote.isValid()) {
-    int index = mRemotes->findText(defaultRemote.name());
-    if (index >= 0)
-      mRemotes->setCurrentIndex(index);
+  switch (kind) {
+    case Fetch:
+      setWindowTitle(tr("Fetch"));
+      break;
+    case Pull:
+      setWindowTitle(tr("Pull"));
+      break;
+    case Push:
+      setWindowTitle(tr("Push"));
+      break;
   }
 
-  QString tagsText =
-      (kind == Push) ? tr("Push all tags") : tr("Update existing tags");
-  mTags = new QCheckBox(tagsText, this);
-
-  if (kind == Pull) {
-    auto noff = RepoView::Merge | RepoView::NoFastForward;
-    auto ffonly = RepoView::Merge | RepoView::FastForward;
-
-    mAction = new QComboBox(this);
-    mAction->addItem(tr("Merge"), RepoView::Merge);
-    mAction->addItem(tr("Rebase"), RepoView::Rebase);
-    mAction->addItem(tr("Merge (No Fast-forward)"), noff);
-    mAction->addItem(tr("Merge (Fast-forward Only)"), ffonly);
-  }
-
-  QCheckBox *prune = nullptr;
+  git::Remote remote = mRepo.defaultRemote();
+  if (!remote.isValid() && !mRepo.remotes().isEmpty())
+    remote = mRepo.remotes().first();
+  mRemote = remote.isValid() ? remote.name() : QString();
 
   if (kind == Push) {
-    auto kinds = ReferenceView::LocalBranches | ReferenceView::Tags;
-    mRefs = new ReferenceList(repo, kinds, this);
-    mSetUpstream = new QCheckBox(tr("Set upstream"), this);
-    mForce = new QCheckBox(tr("Force"), this);
-    mRemoteRef = new QLineEdit(this);
-
-    connect(mRefs, &ReferenceList::referenceSelected,
-            [this](const git::Reference &ref) {
-              QString value = QString();
-              if (ref.isValid()) {
-                QString key = QString("branch.%1.merge").arg(ref.name());
-                git::Config config =
-                    RepoView::parentView(this)->repo().gitConfig();
-                value = config.value<QString>(key);
-              }
-              mRemoteRef->setText(value);
-            });
-
-    mRefs->select(repo.head());
-
+    setRefIndex(mRefs.indexOf(mRepo.head()));
   } else {
     bool autoPrune =
         Settings::instance()->value(Setting::Id::PruneAfterFetch).toBool();
-    git::Config config = repo.appConfig();
-
-    prune = new QCheckBox(tr("Prune references"), this);
-    prune->setChecked(config.value<bool>("autoprune.enable", autoPrune));
+    mPrune = mRepo.appConfig().value<bool>("autoprune.enable", autoPrune);
   }
 
-  QString button;
-  switch (kind) {
+  connect(this, &QDialog::accepted, this, &RemoteDialog::run);
+
+  setContent("RemoteDialog");
+}
+
+void RemoteDialog::setRemote(const QString &remote) {
+  if (remote == mRemote)
+    return;
+
+  mRemote = remote;
+  emit changed();
+}
+
+void RemoteDialog::showRemoteMenu(qreal x, qreal y) {
+  QMenu menu;
+  for (const git::Remote &remote : mRepo.remotes()) {
+    QString name = remote.name();
+    QAction *action = menu.addAction(QString("%1  —  %2").arg(name, remote.url()),
+                                     this, [this, name] { setRemote(name); });
+    action->setCheckable(true);
+    action->setChecked(name == mRemote);
+  }
+
+  menu.exec(QmlSupport::host(view())->mapToGlobal(x, y));
+}
+
+void RemoteDialog::setTags(bool tags) {
+  if (tags == mTags)
+    return;
+
+  mTags = tags;
+  emit changed();
+}
+
+void RemoteDialog::setPrune(bool prune) {
+  if (prune == mPrune)
+    return;
+
+  mPrune = prune;
+  emit changed();
+}
+
+QStringList RemoteDialog::actions() const {
+  return {tr("Merge"), tr("Rebase"), tr("Merge (No Fast-forward)"),
+          tr("Merge (Fast-forward Only)")};
+}
+
+void RemoteDialog::setAction(int action) {
+  if (action == mAction || action < 0 || action >= kPullActions.size())
+    return;
+
+  mAction = action;
+  emit changed();
+}
+
+void RemoteDialog::setRefIndex(int index) {
+  if (index == mRefIndex)
+    return;
+
+  mRefIndex = index;
+
+  // Push to the branch that the local branch merges from.
+  git::Reference ref = mRefs.reference(index);
+  QString value;
+  if (ref.isValid()) {
+    QString key = QString("branch.%1.merge").arg(ref.name());
+    value = mRepo.gitConfig().value<QString>(key);
+  }
+
+  mRemoteRef = value;
+  emit changed();
+}
+
+void RemoteDialog::setRemoteRef(const QString &ref) {
+  if (ref == mRemoteRef)
+    return;
+
+  mRemoteRef = ref;
+  emit changed();
+}
+
+void RemoteDialog::setSetUpstream(bool setUpstream) {
+  if (setUpstream == mSetUpstream)
+    return;
+
+  mSetUpstream = setUpstream;
+  emit changed();
+}
+
+void RemoteDialog::setForce(bool force) {
+  if (force == mForce)
+    return;
+
+  mForce = force;
+  emit changed();
+}
+
+void RemoteDialog::run() {
+  RepoView *view = RepoView::parentView(this);
+  QString name = mRemote.trimmed();
+  git::Remote remote;
+  for (const git::Remote &candidate : mRepo.remotes()) {
+    if (candidate.name() == name)
+      remote = candidate;
+  }
+
+  // Use a URL or an unknown name as an anonymous remote.
+  if (!remote.isValid())
+    remote = mRepo.anonymousRemote(name);
+
+  switch (mKind) {
     case Fetch:
-      button = tr("Fetch");
+      view->fetch(remote, mTags, true, nullptr, nullptr, mPrune);
       break;
 
-    case Pull:
-      button = tr("Pull");
+    case Pull: {
+      RepoView::MergeFlags flags(kPullActions.value(mAction, RepoView::Merge));
+      view->pull(flags, remote, mTags, mPrune);
       break;
+    }
 
     case Push:
-      button = tr("Push");
+      view->push(remote, mRefs.reference(mRefIndex), mRemoteRef, mSetUpstream,
+                 mForce, mTags);
       break;
   }
-
-  QFormLayout *form = new QFormLayout;
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  form->addRow(tr("Remote:"), mRemotes);
-  if (mRefs)
-    form->addRow(tr("Reference:"), mRefs);
-  if (mAction)
-    form->addRow(tr("Action:"), mAction);
-  form->addRow(QString(), mTags);
-  if (prune)
-    form->addRow(QString(), prune);
-  if (mSetUpstream)
-    form->addRow(QString(), mSetUpstream);
-  if (mForce)
-    form->addRow(QString(), mForce);
-  if (mRemoteRef)
-    form->addRow(tr("Remote Reference:"), mRemoteRef);
-
-  QDialogButtonBox *buttons =
-      new QDialogButtonBox(QDialogButtonBox::Cancel, this);
-  connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-  buttons->addButton(button, QDialogButtonBox::AcceptRole);
-
-  QVBoxLayout *layout = new QVBoxLayout(this);
-  layout->addLayout(form);
-  layout->addWidget(buttons);
-
-  connect(this, &RemoteDialog::accepted, [this, kind, prune] {
-    RepoView *view = RepoView::parentView(this);
-    QString remoteName = mRemotes->currentText();
-    git::Remote tmp = mRemotes->currentData().value<git::Remote>();
-    git::Remote remote = (tmp.isValid() && tmp.name() == remoteName)
-                             ? tmp
-                             : view->repo().anonymousRemote(remoteName);
-    bool tags = mTags->isChecked();
-
-    switch (kind) {
-      case Fetch:
-        view->fetch(remote, tags, true, nullptr, nullptr, prune->isChecked());
-        break;
-
-      case Pull: {
-        RepoView::MergeFlags flags(mAction->currentData().toInt());
-        view->pull(flags, remote, tags, prune->isChecked());
-        break;
-      }
-
-      case Push: {
-        git::Reference ref = mRefs->currentReference();
-        QString remoteRef = mRemoteRef->text();
-        bool setUpstream = mSetUpstream->isChecked();
-        bool force = mForce->isChecked();
-        view->push(remote, ref, remoteRef, setUpstream, force, tags);
-        break;
-      }
-    }
-  });
 }

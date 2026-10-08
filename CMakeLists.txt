@@ -1,15 +1,16 @@
 # 3.19+: install(FILES $<TARGET_FILE:...>) in pack/CMakeLists.txt (libssh2.dll).
 cmake_minimum_required(VERSION 3.19)
-project(Gittyup)
+project(Gittyup-ng)
 
-# Set name and version.
-set(GITTYUP_NAME "Gittyup")
-set(GITTYUP_EXECUTABLE_NAME "gittyup")
-set(GITTYUP_IDENTIFIER "com.github.Murmele.Gittyup")
-set(GITTYUP_ORGANIZATION_DOMAIN "Murmele.github.com")
-set(GITTYUP_VERSION_MAJOR 2)
+# Set name and version. Gittyup-ng keeps its settings apart from Gittyup's and
+# runs beside it.
+set(GITTYUP_NAME "Gittyup-ng")
+set(GITTYUP_EXECUTABLE_NAME "gittyup-ng")
+set(GITTYUP_IDENTIFIER "io.github.SkeletonSkelettron.GittyupNg")
+set(GITTYUP_ORGANIZATION_DOMAIN "SkeletonSkelettron.github.io")
+set(GITTYUP_VERSION_MAJOR 0)
 set(GITTYUP_VERSION_MINOR 0)
-set(GITTYUP_VERSION_PATCH 0)
+set(GITTYUP_VERSION_PATCH 2)
 set(GITTYUP_VERSION
     "${GITTYUP_VERSION_MAJOR}.${GITTYUP_VERSION_MINOR}.${GITTYUP_VERSION_PATCH}"
 )
@@ -119,6 +120,8 @@ set(QT_MODULES
     Core5Compat
     Gui
     Network
+    Quick
+    QuickWidgets
     Widgets
     Test)
 
@@ -143,7 +146,7 @@ else()
 endif()
 
 find_package(
-  Qt6 6.4
+  Qt6 6.5
   COMPONENTS ${QT_MODULES} LinguistTools
   REQUIRED)
 if(FLATPAK)

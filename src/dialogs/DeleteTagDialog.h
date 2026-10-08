@@ -10,13 +10,13 @@
 #ifndef DELETETAGDIALOG_H
 #define DELETETAGDIALOG_H
 
-#include <QMessageBox>
+#include "ConfirmDialog.h"
 
 namespace git {
 class TagRef;
 }
 
-class DeleteTagDialog : public QMessageBox {
+class DeleteTagDialog : public ConfirmDialog {
   Q_OBJECT
 
 public:

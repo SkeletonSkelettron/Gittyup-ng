@@ -8,6 +8,7 @@
 //
 
 #include "Application.h"
+#include "dialogs/ConfirmDialog.h"
 #include "conf/Settings.h"
 #include "git/Id.h"
 #include "git/Repository.h"
@@ -22,15 +23,16 @@
 #include <QCommandLineParser>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QFontDatabase>
-#include <QMessageBox>
 #include <QNetworkAccessManager>
 #include <QNetworkProxyFactory>
 #include <QNetworkReply>
 #include <QOperatingSystemVersion>
 #include <QPalette>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QStyle>
 #include <QTimer>
 #include <QTranslator>
@@ -70,7 +72,7 @@ static LONG WINAPI exceptionFilter(PEXCEPTION_POINTERS info) {
   GetTempPath(MAX_PATH, temp);
 
   wchar_t dir[MAX_PATH];
-  const wchar_t *gittyup_name = L"%sGittyup";
+  const wchar_t *gittyup_name = L"%s" GITTYUP_NAME;
   StringCchPrintf(dir, MAX_PATH, gittyup_name, temp);
   CreateDirectory(dir, NULL);
 
@@ -97,6 +99,61 @@ static LONG WINAPI exceptionFilter(PEXCEPTION_POINTERS info) {
 }
 #endif
 
+namespace {
+
+// Where Gittyup, which Gittyup-ng continues, keeps its settings.
+const QString kGittyupOrganization = "Murmele.github.com";
+const QString kGittyupName = "Gittyup";
+
+void copyDir(const QDir &from, const QDir &to) {
+  to.mkpath(".");
+  const QFileInfoList entries =
+      from.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot |
+                         QDir::Hidden | QDir::NoSymLinks);
+  for (const QFileInfo &entry : entries) {
+    QString target = to.filePath(entry.fileName());
+    if (entry.isDir()) {
+      copyDir(QDir(entry.filePath()), QDir(target));
+    } else {
+      QFile::copy(entry.filePath(), target);
+    }
+  }
+}
+
+// The first time Gittyup-ng runs, start with the settings and the data of
+// Gittyup, and leave them for Gittyup.
+void importGittyupSettings() {
+  QSettings settings;
+  if (!settings.allKeys().isEmpty())
+    return;
+
+  QSettings gittyup(QSettings::NativeFormat, QSettings::UserScope,
+                    kGittyupOrganization, kGittyupName);
+  const QStringList keys = gittyup.allKeys();
+  for (const QString &key : keys)
+    settings.setValue(key, gittyup.value(key));
+
+  QDir data =
+      QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+  if (data.exists())
+    return;
+
+  // Find the data of Gittyup under its names.
+  QString organization = QCoreApplication::organizationDomain();
+  QString name = QCoreApplication::applicationName();
+  QCoreApplication::setOrganizationDomain(kGittyupOrganization);
+  QCoreApplication::setApplicationName(kGittyupName);
+  QDir gittyupData =
+      QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+  QCoreApplication::setOrganizationDomain(organization);
+  QCoreApplication::setApplicationName(name);
+
+  if (gittyupData.exists())
+    copyDir(gittyupData, data);
+}
+
+} // namespace
+
 Application::Application(int &argc, char **argv, bool haltOnParseError)
     : QApplication(argc, argv) {
   Q_INIT_RESOURCE(resources);
@@ -115,6 +172,8 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope,
                        mTempSettingsDir->path());
+  } else {
+    importGittyupSettings();
   }
 
   // Register types that are queued at runtime.
@@ -126,7 +185,7 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
 
   // Parse command line arguments.
   QCommandLineParser parser;
-  parser.setApplicationDescription("Gittyup" BUILD_DESCRIPTION);
+  parser.setApplicationDescription(GITTYUP_NAME BUILD_DESCRIPTION);
   parser.addHelpOption();
   parser.addVersionOption();
   parser.addPositionalArgument("repository",
@@ -209,7 +268,8 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
 
     QLocale locale;
     QDir l10n = Settings::l10nDir();
-    QString name = QString(GITTYUP_NAME).toLower();
+    // The translations keep the name of Gittyup.
+    QString name = "gittyup";
     QTranslator *translator = new QTranslator(this);
     if (translator->load(locale, name, "_", l10n.absolutePath())) {
       installTranslator(translator);
@@ -383,7 +443,7 @@ void DBusGittyup::setFocus() { MainWindow::activeWindow()->activateWindow(); }
 
 #elif defined(Q_OS_WIN)
 #define COPYDATA_WINDOW_TITLE                                                  \
-  "Gittyup WM_COPYDATA receiver 16b8b3f6-6446-4fa7-8c72-53c25b1f206c"
+  GITTYUP_NAME " WM_COPYDATA receiver 16b8b3f6-6446-4fa7-8c72-53c25b1f206c"
 enum CopyDataCommand { Focus = 0, FocusAndOpen = 1 };
 
 namespace {
@@ -531,15 +591,18 @@ void Application::handleSslErrors(QNetworkReply *reply,
   QString title = tr("SSL Errors");
   QString text =
       tr("Failed to set up SSL session. Do you want to ignore these errors?");
-  auto buttons = QMessageBox::Abort | QMessageBox::Ignore;
-  QMessageBox msg(QMessageBox::Warning, title, text, buttons);
+  ConfirmDialog dialog;
+  dialog.setTitle(title);
+  dialog.setText(text);
+  dialog.setWarning(true);
+  dialog.setAcceptText(tr("Ignore"));
 
-  QString message;
+  QStringList message;
   for (const QSslError &error : errors)
-    message.append(QString("<p>%1</p>").arg(error.errorString()));
-  msg.setInformativeText(message);
+    message.append(error.errorString());
+  dialog.setDetailedText(message.join('\n'));
 
-  if (msg.exec()) {
+  if (dialog.exec() == QDialog::Accepted) {
     reply->ignoreSslErrors(errors);
     settings.setValue("ssl/ignore", true);
   }

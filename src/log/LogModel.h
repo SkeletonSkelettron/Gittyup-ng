@@ -18,7 +18,7 @@ class QStyle;
 
 class LogModel : public QAbstractItemModel {
 public:
-  enum Role { EntryRole = Qt::UserRole };
+  enum Role { EntryRole = Qt::UserRole, KindRole, ProgressRole, StatusRole };
 
   LogModel(LogEntry *root, QStyle *style, QObject *parent = nullptr);
 
@@ -31,6 +31,8 @@ public:
 
   QVariant data(const QModelIndex &index,
                 int role = Qt::DisplayRole) const override;
+
+  QHash<int, QByteArray> roleNames() const override;
 
   QModelIndex index(LogEntry *entry) const;
   LogEntry *entry(const QModelIndex &index) const;

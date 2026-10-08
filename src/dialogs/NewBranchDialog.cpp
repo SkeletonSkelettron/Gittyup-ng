@@ -8,85 +8,102 @@
 //
 
 #include "NewBranchDialog.h"
+#include "git/Branch.h"
 #include "git/Reference.h"
-#include "ui/ExpandButton.h"
-#include "ui/ReferenceList.h"
 #include "ui/RepoView.h"
-#include <QApplication>
-#include <QCheckBox>
-#include <QDialogButtonBox>
-#include <QFormLayout>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QVBoxLayout>
 
 NewBranchDialog::NewBranchDialog(const git::Repository &repo,
                                  const git::Commit &commit, QWidget *parent)
-    : QDialog(parent) {
+    : QmlDialog(parent), mRepo(repo), mCommit(commit),
+      mCheckoutVisible(qobject_cast<RepoView *>(parent)),
+      mStartPoints(repo, ReferenceItems::AllRefs),
+      mUpstreams(repo, ReferenceItems::RemoteBranches, tr("None")) {
   setAttribute(Qt::WA_DeleteOnClose);
+  setWindowTitle(tr("New Branch"));
 
-  mName = new QLineEdit(this);
+  mStartPoint = mStartPoints.indexOf(repo.head());
+  if (mStartPoint < 0 && mStartPoints.count())
+    mStartPoint = 0;
 
-  auto kinds = ReferenceView::InvalidRef | ReferenceView::RemoteBranches;
-  mUpstream = new ReferenceList(repo, kinds, this);
-
-  kinds = ReferenceView::AllRefs;
-  if (commit.isValid())
-    kinds |= ReferenceView::InvalidRef;
-  mRefs = new ReferenceList(repo, kinds, this);
-  mRefs->select(repo.head());
-  mRefs->setCommit(commit);
-  mRefs->setVisible(!commit.isValid());
-
-  mCheckout = new QCheckBox(tr("Checkout branch"), this);
-  mCheckout->setVisible(qobject_cast<RepoView *>(parent));
-  mCheckout->setChecked(true);
-
-  QFormLayout *form = new QFormLayout;
-  form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  form->addRow(tr("Name:"), mName);
-  if (!commit.isValid()) {
-    form->addRow(tr("Start Point:"), mRefs);
-  }
-  form->addRow(QString(), mCheckout);
-
-  form->addRow(tr("Upstream:"), mUpstream);
-
-  QDialogButtonBox *buttons = new QDialogButtonBox(this);
-  buttons->addButton(QDialogButtonBox::Cancel);
-  QPushButton *create =
-      buttons->addButton(tr("Create Branch"), QDialogButtonBox::AcceptRole);
-  create->setEnabled(false);
-  connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-  connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-
-  QVBoxLayout *layout = new QVBoxLayout(this);
-  layout->addLayout(form);
-  layout->addWidget(buttons);
-
-  // Update button when name text changes.
-  connect(mName, &QLineEdit::textChanged, [repo, create](const QString &text) {
-    create->setEnabled(git::Branch::isNameValid(text) &&
-                       !repo.lookupBranch(text, GIT_BRANCH_LOCAL).isValid());
-  });
-
-  // Populate name and start point when upstream changes.
-  connect(mUpstream, &ReferenceList::referenceSelected,
-          [this](const git::Reference &ref) {
-            if (ref.isValid()) {
-              if (mName->text().isEmpty())
-                mName->setText(ref.name().section('/', -1));
-              mRefs->select(ref);
-            }
-          });
+  setContent("NewBranchDialog");
 }
 
-QString NewBranchDialog::name() const { return mName->text(); }
+void NewBranchDialog::setName(const QString &name) {
+  if (name == mName)
+    return;
 
-bool NewBranchDialog::checkout() const { return mCheckout->isChecked(); }
+  mName = name;
+  emit nameChanged();
+}
 
-git::Commit NewBranchDialog::target() const { return mRefs->target(); }
+QString NewBranchDialog::nameError() const {
+  if (mName.isEmpty())
+    return QString();
+
+  if (!git::Branch::isNameValid(mName))
+    return tr("This isn't a valid branch name.");
+
+  if (mRepo.lookupBranch(mName, GIT_BRANCH_LOCAL).isValid())
+    return tr("A branch with this name already exists.");
+
+  return QString();
+}
+
+bool NewBranchDialog::isAcceptable() const {
+  return !mName.isEmpty() && nameError().isEmpty();
+}
+
+void NewBranchDialog::setCheckout(bool checkout) {
+  if (checkout == mCheckout)
+    return;
+
+  mCheckout = checkout;
+  emit checkoutChanged();
+}
+
+QString NewBranchDialog::commitText() const {
+  if (!mCommit.isValid())
+    return QString();
+
+  return QString("%1  %2").arg(mCommit.shortId(), mCommit.summary());
+}
+
+void NewBranchDialog::setStartPoint(int index) {
+  if (index == mStartPoint)
+    return;
+
+  mStartPoint = index;
+  emit startPointChanged();
+}
+
+void NewBranchDialog::setUpstreamIndex(int index) {
+  if (index == mUpstream)
+    return;
+
+  mUpstream = index;
+  emit upstreamChanged();
+
+  // Populate the name and the start point from the upstream.
+  git::Reference ref = mUpstreams.reference(index);
+  if (!ref.isValid())
+    return;
+
+  if (mName.isEmpty())
+    setName(ref.name().section('/', -1));
+
+  int start = mStartPoints.indexOf(ref);
+  if (start >= 0)
+    setStartPoint(start);
+}
+
+git::Commit NewBranchDialog::target() const {
+  if (mCommit.isValid())
+    return mCommit;
+
+  git::Reference ref = mStartPoints.reference(mStartPoint);
+  return ref.isValid() ? ref.target() : git::Commit();
+}
 
 git::Reference NewBranchDialog::upstream() const {
-  return mUpstream->currentReference();
+  return mUpstreams.reference(mUpstream);
 }

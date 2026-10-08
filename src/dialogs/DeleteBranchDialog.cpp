@@ -14,9 +14,7 @@
 #include "log/LogEntry.h"
 #include "ui/RemoteCallbacks.h"
 #include "ui/RepoView.h"
-#include <QCheckBox>
 #include <QFutureWatcher>
-#include <QPushButton>
 #include <QtConcurrent>
 
 namespace {
@@ -27,21 +25,19 @@ const QString kBranchMergeFmt = "branch.%1.merge";
 
 DeleteBranchDialog::DeleteBranchDialog(const git::Branch &branch,
                                        QWidget *parent)
-    : QMessageBox(parent) {
+    : ConfirmDialog(parent) {
   QString text = tr("Are you sure you want to delete local branch '%1'?");
-  setWindowTitle(tr("Delete Branch?"));
+  setTitle(tr("Delete Branch?"));
   setText(text.arg(branch.name()));
-  setStandardButtons(QMessageBox::Cancel);
+  setAcceptText(tr("Delete"));
+  setDanger(true);
 
   git::Branch upstream = branch.upstream();
-  if (upstream.isValid()) {
-    QString text = tr("Also delete the upstream branch from its remote");
-    setCheckBox(new QCheckBox(text, this));
-  }
+  if (upstream.isValid())
+    setCheckText(tr("Also delete the upstream branch from its remote"));
 
-  QPushButton *remove = addButton(tr("Delete"), QMessageBox::AcceptRole);
-  connect(remove, &QPushButton::clicked, [this, branch, upstream] {
-    if (upstream.isValid() && checkBox()->isChecked()) {
+  connect(this, &QDialog::accepted, [this, branch, upstream] {
+    if (upstream.isValid() && isChecked()) {
       RepoView *view = RepoView::parentView(this);
       git::Repository repo = view->repo();
 
@@ -84,11 +80,8 @@ DeleteBranchDialog::DeleteBranchDialog(const git::Branch &branch,
     git::Branch(branch).remove();
   });
 
-  remove->setFocus();
-
   if (!branch.isMerged()) {
     setInformativeText(tr("The branch is not fully merged. Deleting "
                           "it may cause some commits to be lost."));
-    setDefaultButton(QMessageBox::Cancel);
   }
 }

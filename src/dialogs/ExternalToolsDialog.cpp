@@ -4,110 +4,69 @@
 // This software is licensed under the MIT License. The LICENSE.md file
 // describes the conditions under which this software may be distributed.
 //
-// Author: Shane Gramlich
-//
 
 #include "ExternalToolsDialog.h"
 #include "dialogs/ExternalToolsModel.h"
-#include "git/Config.h"
-#include "ui/Footer.h"
-#include <QDialogButtonBox>
 #include <QFileDialog>
-#include <QHeaderView>
-#include <QLabel>
-#include <QTableView>
-#include <QVBoxLayout>
 
 ExternalToolsDialog::ExternalToolsDialog(const QString &type, QWidget *parent)
-    : QDialog(parent) {
+    : QmlDialog(parent), mType(type),
+      mDetected(new ExternalToolsModel(type, true, this)),
+      mUserDefined(new ExternalToolsModel(type, false, this)) {
   setAttribute(Qt::WA_DeleteOnClose);
   setWindowTitle(tr("Configure External Tools"));
   setModal(false);
-  resize(700, 600);
-
-  QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok, this);
-  connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::close);
-  connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
-
-  QVBoxLayout *externalToolsLayout = new QVBoxLayout(this);
-  externalToolsLayout->setSpacing(10);
-  externalToolsLayout->addLayout(createDetectedLayout(type));
-  externalToolsLayout->addLayout(createUserDefinedLayout(type));
-  externalToolsLayout->addWidget(buttons);
+  setContent("ExternalToolsDialog");
 }
 
-QVBoxLayout *ExternalToolsDialog::createDetectedLayout(const QString &type) {
-  QLabel *title = new QLabel(tr("Detected Tools"));
-  title->setStyleSheet("QLabel {padding: 0px 0px 5px 0px;}");
-
-  QTableView *table = new QTableView(this);
-  table->verticalHeader()->setVisible(false);
-  table->setEditTriggers(QAbstractItemView::SelectedClicked);
-  table->setSelectionBehavior(QAbstractItemView::SelectRows);
-  table->setSelectionMode(QAbstractItemView::ExtendedSelection);
-  table->setShowGrid(false);
-  table->setModel(new ExternalToolsModel(type, true, this));
-  table->horizontalHeader()->setSectionResizeMode(ExternalToolsModel::Arguments,
-                                                  QHeaderView::Stretch);
-  table->resizeColumnsToContents();
-  table->selectRow(0);
-
-  QVBoxLayout *layout = new QVBoxLayout;
-  layout->setSpacing(0);
-  layout->addWidget(title);
-  layout->addWidget(table);
-
-  return layout;
+QVariantList ExternalToolsDialog::detected() const {
+  return items(mDetected);
 }
 
-QVBoxLayout *ExternalToolsDialog::createUserDefinedLayout(const QString &type) {
-  QLabel *title = new QLabel(tr("User Defined Tools"));
-  title->setStyleSheet("QLabel {padding: 0px 0px 5px 0px;}");
+QVariantList ExternalToolsDialog::userDefined() const {
+  return items(mUserDefined);
+}
 
-  ExternalToolsModel *model = new ExternalToolsModel(type, false, this);
+void ExternalToolsDialog::setToolValue(int row, int column,
+                                       const QString &value) {
+  QModelIndex index = mUserDefined->index(row, column);
+  if (!index.isValid() || index.data().toString() == value)
+    return;
 
-  QTableView *table = new QTableView(this);
-  table->verticalHeader()->setVisible(false);
-  table->setEditTriggers(QAbstractItemView::SelectedClicked);
-  table->setSelectionBehavior(QAbstractItemView::SelectRows);
-  table->setSelectionMode(QAbstractItemView::ExtendedSelection);
-  table->setShowGrid(false);
-  table->setModel(model);
-  table->sortByColumn(1, Qt::AscendingOrder);
-  table->horizontalHeader()->setSectionResizeMode(ExternalToolsModel::Arguments,
-                                                  QHeaderView::Stretch);
-  table->resizeColumnsToContents();
+  mUserDefined->setData(index, value);
+  emit changed();
+}
 
-  Footer *footer = new Footer(table);
-  connect(footer, &Footer::plusClicked, [this, table, model] {
-    model->add(QFileDialog::getOpenFileName(this, tr("Select Executable")));
-    model->refresh();
-    table->resizeColumnsToContents();
-  });
+void ExternalToolsDialog::addTool() {
+  QString path = QFileDialog::getOpenFileName(this, tr("Select Executable"));
+  if (path.isEmpty())
+    return;
 
-  connect(footer, &Footer::minusClicked, [table, model] {
-    QModelIndexList indexes = table->selectionModel()->selectedRows(0);
-    for (const QModelIndex &index : indexes)
-      model->remove(index.data(Qt::DisplayRole).toString());
-    model->refresh();
-    table->resizeColumnsToContents();
-  });
+  mUserDefined->add(path);
+  mUserDefined->refresh();
+  emit changed();
+}
 
-  // Enable/disable minus button.
-  auto updateMinusButton = [table, footer] {
-    footer->setMinusEnabled(table->selectionModel()->hasSelection());
-  };
+void ExternalToolsDialog::removeTool(int row) {
+  QModelIndex index = mUserDefined->index(row, ExternalToolsModel::Name);
+  if (!index.isValid())
+    return;
 
-  connect(table->selectionModel(), &QItemSelectionModel::selectionChanged, this,
-          updateMinusButton);
-  connect(table->model(), &QAbstractItemModel::modelReset, this,
-          updateMinusButton);
+  mUserDefined->remove(index.data().toString());
+  mUserDefined->refresh();
+  emit changed();
+}
 
-  QVBoxLayout *layout = new QVBoxLayout;
-  layout->setSpacing(0);
-  layout->addWidget(title);
-  layout->addWidget(table);
-  layout->addWidget(footer);
+QVariantList ExternalToolsDialog::items(ExternalToolsModel *model) const {
+  QVariantList items;
+  for (int row = 0; row < model->rowCount(); ++row) {
+    QModelIndex name = model->index(row, ExternalToolsModel::Name);
+    items.append(QVariantMap{
+        {"name", name.data()},
+        {"command", model->index(row, ExternalToolsModel::Command).data()},
+        {"arguments", model->index(row, ExternalToolsModel::Arguments).data()},
+        {"found", model->flags(name) != Qt::ItemFlags()}});
+  }
 
-  return layout;
+  return items;
 }

@@ -34,8 +34,15 @@ public:
 
   void storeDeferredCredentials();
 
+  // Callbacks of automatic fetches don't ask for credentials. They use only
+  // the stored ones.
+  bool isInteractive() const { return mInteractive; }
+  void setInteractive(bool interactive) { mInteractive = interactive; }
+
   bool credentials(const QString &url, QString &username,
                    QString &password) override;
+  bool passphrase(const QString &url, const QString &keyFile,
+                  QString &passphrase) override;
 
   virtual void
   interactiveAuth(const QString &name, const QString &instruction,
@@ -102,6 +109,10 @@ private:
   QString mSideband;
   size_t mBytesReceived = 0;
   bool mCanceled = false;
+  bool mInteractive = true;
+
+  // The encrypted identity file whose passphrase is asked for.
+  QString mKeyFile;
 
   LogEntry *mSidebandItem = nullptr;
   LogEntry *mTransferItem = nullptr;

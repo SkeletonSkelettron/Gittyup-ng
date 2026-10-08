@@ -53,10 +53,6 @@ Scintilla::Colour ToScintillaColour(const QColor &color) {
          (color.alpha() << 24);
 }
 
-QColor FromScintillaColour(Scintilla::Colour colour) {
-  return QColor(colour & 0xff, (colour >> 8) & 0xff, (colour >> 16) & 0xff);
-}
-
 // Expand '$(key)' references against the theme's flat property map. Entries
 // may reference other entries (e.g. style.constant = '$(style.keyword)'), so
 // repeat until nothing changes, bounded to avoid a cycle looping forever.
@@ -179,14 +175,17 @@ TextEditor::TextEditor(QWidget *parent) : ScintillaEdit(parent) {
   clearCmdKey(SCK_SUBTRACT + (static_cast<int>(Scintilla::KeyMod::Ctrl) << 16));
 
   // Set find indicators.
-  indicSetStyle(FindAll, INDIC_STRAIGHTBOX);
-  indicSetFore(FindAll, Qt::white);
-  indicSetAlpha(FindAll, 255);
+  // Matches are translucent, so they work on light and dark themes.
+  indicSetStyle(FindAll, INDIC_ROUNDBOX);
+  indicSetFore(FindAll, ToScintillaColour(QColor("#F2C94C")));
+  indicSetAlpha(FindAll, 90);
+  indicSetOutlineAlpha(FindAll, 170);
   indicSetUnder(FindAll, true);
 
-  indicSetStyle(FindCurrent, INDIC_STRAIGHTBOX);
-  indicSetFore(FindCurrent, Qt::yellow);
-  indicSetAlpha(FindCurrent, 255);
+  indicSetStyle(FindCurrent, INDIC_ROUNDBOX);
+  indicSetFore(FindCurrent, ToScintillaColour(QColor("#F2994A")));
+  indicSetAlpha(FindCurrent, 190);
+  indicSetOutlineAlpha(FindCurrent, 255);
   indicSetUnder(FindCurrent, true);
 
   // Set word diff indicators.
@@ -430,9 +429,6 @@ void TextEditor::clearHighlights() {
   setIndicatorCurrent(FindCurrent);
   indicatorClearRange(0, length());
 
-  // Restore styles.
-  applySettings();
-
   emit highlightActivated(false);
 }
 
@@ -441,16 +437,6 @@ int TextEditor::highlightAll(const QString &text) {
   clearHighlights();
   if (text.isEmpty())
     return 0;
-
-  // Darken styles.
-  markerSetBack(Addition, ToScintillaColour(mAdditionColor.darker(120)));
-  markerSetBack(Deletion, ToScintillaColour(mDeletionColor.darker(120)));
-  markerSetBack(Ours, ToScintillaColour(mOursColor.darker(120)));
-  markerSetBack(Theirs, ToScintillaColour(mTheirsColor.darker(120)));
-  for (int i = 0; i <= STYLE_DEFAULT; i++) {
-    styleSetBack(
-        i, ToScintillaColour(FromScintillaColour(styleBack(i)).darker(120)));
-  }
 
   emit highlightActivated(true);
 
@@ -498,6 +484,16 @@ int TextEditor::find(const QString &text, bool forward, bool indicator) {
 
 QList<TextEditor::Diagnostic> TextEditor::diagnostics(int line) {
   return mDiagnostics.value(line);
+}
+
+void TextEditor::clearDiagnostics() {
+  mDiagnostics.clear();
+  for (int indicator : {NoteIndicator, WarningIndicator, ErrorIndicator}) {
+    setIndicatorCurrent(indicator);
+    indicatorClearRange(0, length());
+  }
+  for (int marker : {NoteMarker, WarningMarker, ErrorMarker})
+    markerDeleteAll(marker);
 }
 
 void TextEditor::addDiagnostic(int line, const Diagnostic &diag) {

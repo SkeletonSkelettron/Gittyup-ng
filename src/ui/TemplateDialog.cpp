@@ -1,240 +1,117 @@
-#include "TemplateDialog.h"
+//
+//          Copyright (c) 2022, Gittyup contributors
+//
+// This software is licensed under the MIT License. The LICENSE.md file
+// describes the conditions under which this software may be distributed.
+//
 
-#include <QPushButton>
-#include <QLineEdit>
-#include <QTextEdit>
-#include <QListWidget>
-#include <QLabel>
-#include <QHBoxLayout>
-#include <QVBoxLayout>
-#include <QSpacerItem>
-#include <QDialogButtonBox>
-#include <QFileDialog>
+#include "TemplateDialog.h"
 #include <QFile>
+#include <QFileDialog>
 #include <QTextStream>
 
 namespace {
+
 const QString kTemplateFileExtension =
     QStringLiteral(".GittyupCommitMessageTemplate");
+
+} // namespace
+
+TemplateDialog::TemplateDialog(QList<CommitTemplates::Template> &templates,
+                               QWidget *parent)
+    : QmlDialog(parent), mTemplates(templates), mNew(templates) {
+  setWindowTitle(tr("Commit Message Templates"));
+  if (!mNew.isEmpty())
+    showTemplate(0);
+
+  setContent("TemplateDialog");
 }
 
-TemplateDialog::TemplateDialog(QList<TemplateButton::Template> &templates,
-                               QWidget *parent)
-    : QDialog(parent), mTemplates(templates), mNew(templates) {
+QStringList TemplateDialog::names() const {
+  QStringList names;
+  for (const CommitTemplates::Template &tmpl : mNew)
+    names.append(tmpl.name);
+  return names;
+}
 
-  QLabel *lbl;
-  QHBoxLayout *hBox;
-  QHBoxLayout *hBox2;
-  QVBoxLayout *vBox;
-  QSpacerItem *spacer;
+void TemplateDialog::setCurrent(int index) {
+  if (index < 0 || index >= mNew.size() || index == mCurrent)
+    return;
 
-  // first column
-  lbl = new QLabel(tr("Name"));
-  mName = new QLineEdit(this);
-  hBox = new QHBoxLayout();
-  hBox->addWidget(lbl);
-  hBox->addWidget(mName);
+  showTemplate(index);
+}
 
-  lbl = new QLabel(tr("Content"));
-  mTemplate = new QTextEdit(this);
+void TemplateDialog::setName(const QString &name) {
+  if (name == mName)
+    return;
 
-  spacer =
-      new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
-  mAdd = new QPushButton(tr("Add"), this);
-  hBox2 = new QHBoxLayout();
-  hBox2->addItem(spacer);
-  hBox2->addWidget(mAdd);
+  mName = name;
+  emit editChanged();
+}
 
-  vBox = new QVBoxLayout();
-  vBox->addLayout(hBox);
-  vBox->addWidget(lbl);
-  vBox->addWidget(mTemplate);
-  vBox->addWidget(new QLabel(tr("use %1 to declare the position of the cursor.")
-                                 .arg(TemplateButton::cursorPositionString),
-                             this));
-  vBox->addWidget(
-      new QLabel(tr("use ${files:x} to add all updated file names,\nx (number) "
-                    "determines the number of maximum files shown"),
-                 this));
-  vBox->addLayout(hBox2);
+void TemplateDialog::setTemplateText(const QString &text) {
+  if (text == mTemplate)
+    return;
 
-  // second column
-  mTemplateList = new QListWidget(this);
+  mTemplate = text;
+  emit editChanged();
+}
 
-  spacer =
-      new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
-  mRemove = new QPushButton(tr("Remove"));
-  hBox = new QHBoxLayout();
-  hBox->addItem(spacer);
-  hBox->addWidget(mRemove);
-  QVBoxLayout *vBox2 = new QVBoxLayout();
-  vBox2->addWidget(
-      new QLabel(tr("First template will be applied automatically"), this));
-  vBox2->addWidget(mTemplateList);
-  vBox2->addLayout(hBox);
-
-  // third column
-  spacer =
-      new QSpacerItem(40, 20, QSizePolicy::Minimum, QSizePolicy::Expanding);
-  mUp = new QPushButton(tr("Up"), this);
-  mDown = new QPushButton(tr("Down"), this);
-  QSpacerItem *spacer2 =
-      new QSpacerItem(40, 20, QSizePolicy::Minimum, QSizePolicy::Expanding);
-  QVBoxLayout *vBox3 = new QVBoxLayout();
-  vBox3->addItem(spacer);
-  vBox3->addWidget(mUp);
-  vBox3->addWidget(mDown);
-  vBox3->addItem(spacer2);
-
-  hBox = new QHBoxLayout();
-  hBox->addLayout(vBox);
-  hBox->addLayout(vBox2);
-  hBox->addLayout(vBox3);
-
-  // Import, export, ok, cancel
-  auto importButton = new QPushButton(tr("Import"), this);
-  auto exportButton = new QPushButton(tr("Export"), this);
-  spacer =
-      new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
-  mButtonBox = new QDialogButtonBox(
-      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-  hBox2 = new QHBoxLayout();
-  hBox2->addWidget(importButton);
-  hBox2->addWidget(exportButton);
-  hBox2->addItem(spacer);
-  hBox2->addWidget(mButtonBox);
-
-  vBox = new QVBoxLayout();
-  vBox->addLayout(hBox);
-  vBox->addLayout(hBox2);
-
-  setLayout(vBox);
-
-  // setting widgets
-
-  for (auto templ : templates) {
-    mTemplateList->addItem(templ.name);
-  }
-
-  connect(mAdd, &QPushButton::pressed, this, &TemplateDialog::addTemplate);
-  connect(mRemove, &QPushButton::pressed, this,
-          &TemplateDialog::removeTemplate);
-  connect(mUp, &QPushButton::pressed, this, &TemplateDialog::moveTemplateUp);
-  connect(mDown, &QPushButton::pressed, this,
-          &TemplateDialog::moveTemplateDown);
-  connect(mButtonBox, &QDialogButtonBox::accepted, this,
-          &TemplateDialog::applyTemplates);
-  connect(mButtonBox, &QDialogButtonBox::rejected, this,
-          &TemplateDialog::reject);
-  connect(mName, &QLineEdit::textChanged, this, &TemplateDialog::checkName);
-  connect(mTemplateList, &QListWidget::currentRowChanged, this,
-          &TemplateDialog::showTemplate);
-  connect(importButton, &QPushButton::pressed, [this] { importTemplates(); });
-  connect(exportButton, &QPushButton::pressed, [this] { exportTemplates(); });
+QString TemplateDialog::cursorHint() const {
+  return tr("Use %1 to place the cursor and ${files:x} to add the names of "
+            "up to x changed files.")
+      .arg(CommitTemplates::cursorPositionString);
 }
 
 void TemplateDialog::addTemplate() {
-  QString name = mName->text();
-  QString value = mTemplate->toPlainText();
+  if (mName.isEmpty())
+    return;
 
+  // Replace the value of a template with the same name.
   for (int i = 0; i < mNew.count(); i++) {
-    if (mNew[i].name == name) {
-      // replace value
-      mNew[i].value = value;
+    if (mNew[i].name == mName) {
+      mNew[i].value = mTemplate;
+      mCurrent = i;
+      emit templatesChanged();
       return;
     }
   }
 
-  TemplateButton::Template tmpl;
-  tmpl.name = name;
-  tmpl.value = value;
-
+  CommitTemplates::Template tmpl;
+  tmpl.name = mName;
+  tmpl.value = mTemplate;
   mNew.append(tmpl);
+  mCurrent = mNew.count() - 1;
 
-  mTemplateList->addItem(tmpl.name);
-
-  checkName(tmpl.name);
+  emit templatesChanged();
+  emit editChanged();
 }
 
 void TemplateDialog::removeTemplate() {
-  QListWidgetItem *itm = mTemplateList->currentItem();
-  if (!itm) // no item selected
+  if (mCurrent < 0 || mCurrent >= mNew.count())
     return;
 
-  mSupress = true;
+  mNew.removeAt(mCurrent);
+  int index = qMin(mCurrent, static_cast<int>(mNew.count()) - 1);
+  mCurrent = -1;
+  emit templatesChanged();
 
-  QString name = itm->text();
-
-  for (int i = 0; i < mNew.count(); i++) {
-    if (mNew[i].name == name) {
-      mNew.takeAt(i);
-      QListWidgetItem *itm = mTemplateList->takeItem(i);
-      delete itm;
-      break;
-    }
-  }
-
-  mSupress = false;
-
-  if (mNew.count())
-    showTemplate(mTemplateList->currentRow());
+  if (index >= 0)
+    showTemplate(index);
 }
 
-void TemplateDialog::moveTemplateUp() {
-  QListWidgetItem *curr = mTemplateList->currentItem();
-  if (!curr)
+void TemplateDialog::moveTemplateUp() { moveTemplate(-1); }
+
+void TemplateDialog::moveTemplateDown() { moveTemplate(1); }
+
+void TemplateDialog::moveTemplate(int offset) {
+  int to = mCurrent + offset;
+  if (mCurrent < 0 || to < 0 || to >= mNew.count())
     return;
 
-  QString name = curr->text();
-
-  for (int i = 0; i < mNew.count(); i++) {
-    if (mNew[i].name == name) {
-      if (i - 1 < 0)
-        return;
-
-      mSupress = true;
-
-      TemplateButton::Template tmpl = mNew.takeAt(i);
-      mNew.insert(i - 1, tmpl);
-
-      QListWidgetItem *itm = mTemplateList->takeItem(i);
-      assert(curr->text() == itm->text());
-      mTemplateList->insertItem(i - 1, itm);
-
-      mSupress = false;
-      break;
-    }
-  }
-  showTemplate(mTemplateList->currentRow());
-}
-
-void TemplateDialog::moveTemplateDown() {
-  QListWidgetItem *curr = mTemplateList->currentItem();
-  if (!curr)
-    return;
-
-  QString name = curr->text();
-
-  for (int i = 0; i < mNew.count(); i++) {
-    if (mNew[i].name == name) {
-      if (i + 1 >= mNew.count())
-        return;
-
-      mSupress = true;
-
-      TemplateButton::Template tmpl = mNew.takeAt(i);
-      mNew.insert(i + 1, tmpl);
-
-      QListWidgetItem *itm = mTemplateList->takeItem(i);
-      assert(curr->text() == itm->text());
-      mTemplateList->insertItem(i + 1, itm);
-
-      mSupress = false;
-      break;
-    }
-  }
-
-  showTemplate(mTemplateList->currentRow());
+  mNew.move(mCurrent, to);
+  mCurrent = to;
+  emit templatesChanged();
 }
 
 void TemplateDialog::importTemplates(QString filename) {
@@ -245,7 +122,7 @@ void TemplateDialog::importTemplates(QString filename) {
   }
 
   mNew.clear();
-  mTemplateList->clear();
+  mCurrent = -1;
 
   QFile file(filename);
   if (file.open(QIODevice::ReadOnly)) {
@@ -262,19 +139,19 @@ void TemplateDialog::importTemplates(QString filename) {
       QString value = line.sliced(index + 1);
       value = value.replace(QStringLiteral("\\n"), QStringLiteral("\n"));
       value = value.replace(QStringLiteral("\\t"), QStringLiteral("\t"));
-      TemplateButton::Template t;
+      CommitTemplates::Template t;
       t.name = name;
       t.value = value;
       mNew.append(t);
     }
   }
-  if (mNew.count() > 0) {
-    for (const auto &t : mNew)
-      mTemplateList->addItem(t.name);
+
+  emit templatesChanged();
+  if (!mNew.isEmpty()) {
     showTemplate(0);
   } else {
-    mName->setText(QStringLiteral(""));
-    mTemplate->setText(QStringLiteral(""));
+    setName(QString());
+    setTemplateText(QString());
   }
 }
 
@@ -308,27 +185,19 @@ void TemplateDialog::applyTemplates() {
   accept();
 }
 
-void TemplateDialog::checkName(QString name) {
-  if (!uniqueName(name)) {
-    mAdd->setText(tr("Replace"));
-    return;
-  }
-
-  mAdd->setText(tr("Add"));
-}
-
-void TemplateDialog::showTemplate(int idx) {
-  if (mSupress)
+void TemplateDialog::showTemplate(int index) {
+  if (index < 0 || index >= mNew.count())
     return;
 
-  // TODO: called before item is inserted?
-  // maybe index is anymore valid
-  mName->setText(mNew[idx].name);
-  mTemplate->setText(mNew[idx].value);
+  mCurrent = index;
+  mName = mNew.at(index).name;
+  mTemplate = mNew.at(index).value;
+  emit templatesChanged();
+  emit editChanged();
 }
 
-bool TemplateDialog::uniqueName(QString name) {
-  for (auto templ : mNew) {
+bool TemplateDialog::uniqueName(const QString &name) const {
+  for (const auto &templ : mNew) {
     if (templ.name == name)
       return false;
   }

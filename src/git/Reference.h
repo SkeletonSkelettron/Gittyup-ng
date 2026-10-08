@@ -71,6 +71,7 @@ protected:
   QSharedPointer<git_reference> d;
 
   friend class Commit;
+  friend class RefState;
   friend class Repository;
   friend class RevWalk;
 };

@@ -7,12 +7,13 @@
 // Author: Jason Haslam
 //
 
-#ifndef UPTODATEDDIALOG_H
-#define UPTODATEDDIALOG_H
+#ifndef UPTODATEDIALOG_H
+#define UPTODATEDIALOG_H
 
-#include <QDialog>
+#include "dialogs/ConfirmDialog.h"
 
-class UpToDateDialog : public QDialog {
+// Tell that no update is available.
+class UpToDateDialog : public ConfirmDialog {
   Q_OBJECT
 
 public:

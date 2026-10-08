@@ -51,6 +51,9 @@ public:
 
   void registerActions(QWidget *parent) const;
 
+  // The menus that are shown, for windows that draw the menu bar.
+  QList<QMenu *> menus() const;
+
   static const QString donationUrlLiberapay;
 
 private:
@@ -61,6 +64,8 @@ private:
    * \return
    */
   RepoView *view() const;
+  // The current view of a main window, or null for other windows.
+  RepoView *currentView() const;
   /*!
    * \brief views
    * Return all open views. Needed in the maximize feature

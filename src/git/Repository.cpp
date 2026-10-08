@@ -8,6 +8,7 @@
 //
 
 #include "Repository.h"
+#include "Signing.h"
 #include "AnnotatedCommit.h"
 #include "Blame.h"
 #include "Branch.h"
@@ -63,6 +64,23 @@
 namespace git {
 
 namespace {
+
+// Whether git itself opens the repository at 'path'.
+bool gitAccepts(const QString &path) {
+  QString git = QStandardPaths::findExecutable("git");
+#ifdef Q_OS_WIN
+  if (git.isEmpty() && QFileInfo::exists("C:/Program Files/Git/cmd/git.exe"))
+    git = "C:/Program Files/Git/cmd/git.exe";
+#endif
+  if (git.isEmpty())
+    return false;
+
+  QProcess process;
+  process.start(git, {"-C", path, "rev-parse", "--git-dir"});
+  return process.waitForFinished(10000) &&
+         process.exitStatus() == QProcess::NormalExit &&
+         process.exitCode() == 0;
+}
 
 const QString kConfigDir = "gittyup";
 const QString kConfigFile = "config";
@@ -636,11 +654,12 @@ Commit Repository::commit(const Signature &author, const Signature &committer,
   if (mergeHead.isValid())
     parents.append(mergeHead.commit());
 
-  // Create the commit.
+  // Create the commit, signed when the configuration asks for it.
   git_oid id;
-  if (git_commit_create(&id, d->repo, "HEAD", author, committer, 0,
-                        message.toUtf8(), tree, parents.size(),
-                        (const git_commit **)parents.data()))
+  QByteArray raw = message.toUtf8();
+  if (Signing::createCommit(&id, d->repo, "HEAD", author, committer,
+                            raw.constData(), tree, parents.size(),
+                            (const git_commit **)parents.data()))
     return Commit();
 
   // Cleanup merge state.
@@ -918,6 +937,9 @@ bool Repository::merge(const AnnotatedCommit &mergeHead) {
 Rebase Repository::rebaseOpen() {
   git_rebase *rebase = nullptr;
   git_rebase_options opts = GIT_REBASE_OPTIONS_INIT; // TODO: check quite option
+  // Sign the commits when the configuration asks for it.
+  opts.commit_create_cb = Signing::createRebaseCommit;
+  opts.payload = d->repo;
   git_rebase_open(&rebase, d->repo, &opts);
   return Rebase(d->repo, rebase);
 }
@@ -936,6 +958,8 @@ void Repository::rebase(const AnnotatedCommit &mergeHead,
                         const QString &overrideEmail) {
   git_rebase *r = nullptr;
   git_rebase_options opts = GIT_REBASE_OPTIONS_INIT;
+  opts.commit_create_cb = Signing::createRebaseCommit;
+  opts.payload = d->repo;
   git_rebase_init(&r, d->repo, nullptr, mergeHead, nullptr, &opts);
   auto rebase = git::Rebase(d->repo, r, overrideUser, overrideEmail);
 
@@ -1066,11 +1090,32 @@ void Repository::cleanupState() {
 QStringConverter::Encoding Repository::encoding() const {
   QString encoding = gitConfig().value<QString>("gui.encoding");
   auto conv = QStringConverter::encodingForName(encoding.toLocal8Bit().data());
-  return conv ? conv.value() : QStringConverter::System;
+  return conv ? conv.value() : QStringConverter::Utf8;
+}
+
+QStringConverter::Encoding Repository::encoding(const QByteArray &text) const {
+  QString encoding = gitConfig().value<QString>("gui.encoding");
+  auto conv = QStringConverter::encodingForName(encoding.toLocal8Bit().data());
+  if (conv)
+    return conv.value();
+
+  // Most text is UTF-8 now, and the encoding of the system isn't on Windows.
+  // (Decoders decode when the result is converted.)
+  QStringDecoder utf8(QStringConverter::Utf8);
+  QString decoded = utf8.decode(text);
+  if (!utf8.hasError())
+    return QStringConverter::Utf8;
+
+  // Older text is in the encoding of the system, or else in Latin-1, which
+  // keeps every byte when the text is saved again.
+  QStringDecoder system(QStringConverter::System);
+  decoded = system.decode(text);
+  return system.hasError() ? QStringConverter::Latin1
+                           : QStringConverter::System;
 }
 
 QString Repository::decode(const QByteArray &text) const {
-  return QStringDecoder{encoding()}.decode(text);
+  return QStringDecoder{encoding(text)}.decode(text);
 }
 
 QString Repository::attributeValue(const QString &attribute,
@@ -1205,8 +1250,18 @@ Repository Repository::init(const QString &path, bool bare) {
 Repository Repository::open(const QString &path, bool searchParents) {
   git_repository *repo = nullptr;
   int flags = searchParents ? 0 : GIT_REPOSITORY_OPEN_NO_SEARCH;
-  git_repository_open_ext(&repo, util::canonicalizePath(path).toUtf8(), flags,
-                          nullptr);
+  QByteArray dir = util::canonicalizePath(path).toUtf8();
+  int error = git_repository_open_ext(&repo, dir, flags, nullptr);
+
+  // libgit2 refuses more repositories that aren't owned by the current user
+  // than git on Windows, like folders of the Administrators while Gittyup
+  // isn't elevated. Open the repositories that git itself opens.
+  if (error == GIT_EOWNER && gitAccepts(path)) {
+    git_libgit2_opts(GIT_OPT_SET_OWNER_VALIDATION, 0);
+    git_repository_open_ext(&repo, dir, flags, nullptr);
+    git_libgit2_opts(GIT_OPT_SET_OWNER_VALIDATION, 1);
+  }
+
   return Repository(repo);
 }
 

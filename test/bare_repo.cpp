@@ -10,8 +10,6 @@
 #include "Test.h"
 #include "Debug.h"
 #include "dialogs/CloneDialog.h"
-#include "dialogs/StartDialog.h"
-#include "ui/Footer.h"
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
 #include <QMenu>
@@ -33,44 +31,23 @@ private:
 };
 
 void TestBareRepo::initTestCase() {
-  StartDialog *dialog = StartDialog::openSharedInstance();
-  QVERIFY(qWaitForWindowExposed(dialog));
-
-  // Find the first button in the first footer.
-  Footer *footer = dialog->findChild<Footer *>();
-  QToolButton *plus = footer->findChild<QToolButton *>();
-
-  // Set up timer to dismiss the popup.
-  QTimer::singleShot(500, [] {
-    QMenu *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
-    QVERIFY(menu);
-
-    keyClick(menu, Qt::Key_Down);
-    keyClick(menu, Qt::Key_Down);
-    keyClick(menu, Qt::Key_Down);
-    keyClick(menu, Qt::Key_Return);
+  // Initialize a repository like the welcome page does.
+  CloneDialog *cloneDialog = new CloneDialog(CloneDialog::Init);
+  QObject::connect(cloneDialog, &CloneDialog::accepted, [cloneDialog] {
+    MainWindow::open(cloneDialog->path());
   });
-
-  {
-    auto timeout = Timeout(1000, "Start dialog hasn't been dismissed in time");
-
-    // Show popup menu.
-    mouseClick(plus, Qt::LeftButton);
-  }
-
-  CloneDialog *cloneDialog =
-      qobject_cast<CloneDialog *>(QApplication::activeModalWidget());
-  QVERIFY(cloneDialog);
+  cloneDialog->open();
+  QVERIFY(qWaitForWindowExposed(cloneDialog));
 
   // Set fields.
   cloneDialog->setField("name", "test_bare_repo");
   cloneDialog->setField("path", QDir::tempPath());
   cloneDialog->setField("bare", true);
-  qWait(2000);
-  Debug(cloneDialog->field("bare").toBool());
+  QVERIFY(cloneDialog->field("bare").toBool());
 
-  // Click return.
-  keyClick(cloneDialog, Qt::Key_Return);
+  // Initialize.
+  QVERIFY(cloneDialog->canContinue());
+  cloneDialog->next();
 
   // Wait on the new window.
   mWindow = MainWindow::activeWindow();

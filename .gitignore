@@ -13,3 +13,7 @@ build
 compile_commands.json
 .flatpak-builder
 dep/scintilla/scintilla/
+
+# Settings of Qt Design Studio and Qt Creator for Gittyup-ng.qmlproject
+*.qmlproject.qtds
+*.qmlproject.user

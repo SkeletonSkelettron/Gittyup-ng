@@ -1,14 +1,44 @@
-### vX.X.X - 2026-01-07 (DEV)
+### v0.0.2 - 2026-10-06
 
-Bug Fix and Feature release
+Bug Fix release
+
+#### Fixed
+
+* The check box of a conflict on the side that has no lines takes that side, and the conflict resolves without its lines. Before, clicking it did nothing.
+
+----
+
+### v0.0.1 - 2026-10-05
+
+The first release of Gittyup-ng, which continues Gittyup 2.0.0 with a new interface. The releases below it are the ones of Gittyup.
 
 #### Added
 
+* A new interface in QML, in a style like GitKraken's, with dark and light Kraken themes
+* Resolve conflicts in a merge editor, whose panes scroll together
+* Undo and redo actions, like commits, resets, merges and checkouts
+* Drag branches onto branches to fast-forward, merge or rebase, and onto remotes to push
+* Rebase interactively, solo and hide branches, and find anything with Ctrl+P
+* List the open pull requests of GitHub, GitLab and Gitea in the sidebar
+* Pull branches that aren't checked out from their context menu
+* Sign commits with GPG, SSH or X.509 keys
+* Highlight TypeScript, JSON and more languages
 * Add more information about the credential stores to give the user the possibility to easily see the tradeoffs of every credential store
 
 #### Changed
 
+* Gittyup-ng runs beside Gittyup and starts with its settings
+* Windows packages are built with MinGW
 * Autohide sidebar when opening repository
+
+#### Fixed
+
+* SSH tries every key and only asks for the passphrases of keys that have one
+* Read and save UTF-8 text on Windows
+* Open repositories that git opens, and say why others don't open
+* Don't make empty commits when Commit is clicked again right after a commit
+* Notice the changes of other programs on Windows and Linux
+* Mark the side of a conflict that has no lines in the merge editor
 
 ----
 

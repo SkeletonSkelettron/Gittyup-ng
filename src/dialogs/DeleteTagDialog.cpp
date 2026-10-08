@@ -14,31 +14,26 @@
 #include "log/LogEntry.h"
 #include "ui/RemoteCallbacks.h"
 #include "ui/RepoView.h"
-#include <QCheckBox>
 #include <QFutureWatcher>
-#include <QPushButton>
 #include <QtConcurrent>
 
 DeleteTagDialog::DeleteTagDialog(const git::TagRef &tag, QWidget *parent)
-    : QMessageBox(parent) {
+    : ConfirmDialog(parent) {
   QString text = tr("Are you sure you want to delete tag '%1'?");
-  setWindowTitle(tr("Delete Tag?"));
+  setTitle(tr("Delete Tag?"));
   setText(text.arg(tag.name()));
-  setStandardButtons(QMessageBox::Cancel);
+  setAcceptText(tr("Delete"));
+  setDanger(true);
 
   git::Remote remote = tag.repo().defaultRemote();
+  if (remote.isValid())
+    setCheckText(tr("Also delete the upstream tag from %1").arg(remote.name()));
 
-  if (remote.isValid()) {
-    text = tr("Also delete the upstream tag from %1");
-    setCheckBox(new QCheckBox(text.arg(remote.name()), this));
-  }
-
-  QPushButton *remove = addButton(tr("Delete"), QMessageBox::AcceptRole);
-  connect(remove, &QPushButton::clicked, [this, tag, remote] {
+  connect(this, &QDialog::accepted, [this, tag, remote] {
     RepoView *view = RepoView::parentView(this);
     QString name = tag.name();
 
-    if (remote.isValid() && checkBox()->isChecked()) {
+    if (remote.isValid() && isChecked()) {
       git::Repository repo = view->repo();
 
       QString remoteName = remote.name();
@@ -79,6 +74,4 @@ DeleteTagDialog::DeleteTagDialog(const git::TagRef &tag, QWidget *parent)
       return;
     }
   });
-
-  remove->setFocus();
 }

@@ -11,6 +11,7 @@ add_library(update DownloadDialog.cpp UpdateDialog.cpp Updater.cpp
 target_link_libraries(
   update
   conf
+  dialogs
   ${LIBCMARK_LIBRARIES}
   git
   Qt6::Network

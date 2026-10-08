@@ -7,6 +7,7 @@ add_library(
   GitHub.cpp
   Gitea.cpp
   GitLab.cpp
+  PullRequests.cpp
   Repository.cpp)
 
 target_link_libraries(host conf cred Qt6::Core Qt6::Gui Qt6::Network)

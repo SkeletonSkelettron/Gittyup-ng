@@ -9,10 +9,8 @@
 
 #include "Test.h"
 #include "dialogs/NewBranchDialog.h"
-#include <QAbstractButton>
-#include <QDialogButtonBox>
-#include <QLineEdit>
 #include <QMainWindow>
+#include <QQuickWidget>
 
 using namespace Test;
 using namespace QTest;
@@ -40,29 +38,25 @@ void TestNewBranchDialog::initTestCase() {
 }
 
 void TestNewBranchDialog::verifyName() {
-  QLineEdit *nameField = mWindow->findChild<QLineEdit *>();
-  QDialogButtonBox *buttons = mWindow->findChild<QDialogButtonBox *>();
-  QVERIFY(nameField && buttons);
+  NewBranchDialog *dialog = mWindow->findChild<NewBranchDialog *>();
+  QVERIFY(dialog);
+  QVERIFY(!dialog->isAcceptable());
 
-  // Find the button with the accept role.
-  auto button_list = buttons->buttons();
-  auto end = button_list.end();
-  auto begin = button_list.begin();
-  auto it = std::find_if(begin, end, [buttons](QAbstractButton *button) {
-    return buttons->buttonRole(button) == QDialogButtonBox::AcceptRole;
-  });
+  // The name field has the focus.
+  QQuickWidget *view = dialog->findChild<QQuickWidget *>();
+  QVERIFY(view);
 
-  QVERIFY(it != end);
-  QAbstractButton *accept = *it;
+  keyClicks(view, "valid");
+  QCOMPARE(dialog->name(), QString("valid"));
+  QVERIFY(dialog->isAcceptable());
 
-  keyClicks(nameField, "valid");
-  QVERIFY(accept->isEnabled());
+  keyClick(view, 'a', Qt::ControlModifier);
+  keyClick(view, Qt::Key_Delete);
+  QVERIFY(dialog->name().isEmpty());
 
-  keyClick(nameField, 'a', Qt::ControlModifier);
-  keyClick(nameField, Qt::Key_Delete);
-
-  keyClicks(nameField, "Invalid Name");
-  QVERIFY(!accept->isEnabled());
+  keyClicks(view, "Invalid Name");
+  QVERIFY(!dialog->isAcceptable());
+  QVERIFY(!dialog->nameError().isEmpty());
 }
 
 void TestNewBranchDialog::cleanupTestCase() {

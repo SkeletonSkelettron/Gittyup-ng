@@ -45,6 +45,7 @@ private:
   friend class Commit;
   friend class Rebase;
   friend class Repository;
+  friend class Rewrite;
   friend class Tag;
 };
 

@@ -64,8 +64,6 @@ public:
   Theme();
   virtual ~Theme() = default;
 
-  QString diffButtonStyle(Diff role);
-
   virtual QDir dir() const;
   virtual QString name() const;
   virtual QStyle *style() const;
@@ -86,6 +84,10 @@ public:
   // Editor (Scintilla/Scintillua) style definitions: theme.property['style.*']
   // and theme.property['color.*'] entries from the theme's .lua file.
   virtual QVariantMap editorStyleProperties() const;
+
+  // Colors for the QML parts of the interface: theme['ui'] entries from the
+  // theme's .lua file. Missing entries fall back to the widget palette.
+  virtual QVariantMap ui() const;
 
   static Theme *create(const QString &name = QString());
 

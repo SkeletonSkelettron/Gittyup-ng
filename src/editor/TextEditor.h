@@ -119,6 +119,7 @@ public:
 
   QList<Diagnostic> diagnostics(int line);
   void addDiagnostic(int line, const Diagnostic &diag);
+  void clearDiagnostics();
 
   // Make wheel event public.
   // FIXME: This should be an event filter?

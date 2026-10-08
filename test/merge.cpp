@@ -11,14 +11,10 @@
 #include "Test.h"
 #include "ui/MainWindow.h"
 #include "ui/DetailView.h"
-#include "ui/DiffView/DiffView.h"
-#include "ui/DoubleTreeWidget.h"
+#include "ui/DiffModel.h"
 #include "ui/RepoView.h"
-#include "ui/TreeView.h"
+#include "git/Patch.h"
 #include <QFile>
-#include <QPushButton>
-#include <QTextEdit>
-#include <QToolButton>
 
 using namespace Test;
 using namespace QTest;
@@ -60,25 +56,17 @@ void TestMerge::firstCommit() {
   RepoView *view = mWindow->currentView();
   refresh(view);
 
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
+  auto details = view->findChild<DetailView *>();
+  QVERIFY(details);
 
-  auto files = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(files);
-
-  QAbstractItemModel *model = files->model();
+  QAbstractItemModel *model = details->unstagedFiles();
   QCOMPARE(model->rowCount(), 1);
 
-  // Click on the check box.
-  QModelIndex index = model->index(0, 0);
-  mouseClick(files->viewport(), Qt::LeftButton, Qt::KeyboardModifiers(),
-             files->checkRect(index).center());
+  // Stage the file.
+  details->stageFiles(DetailView::UnstagedFiles, 0, true);
 
   // Commit and refresh.
-  QTextEdit *editor = view->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-
-  editor->setText("base commit");
+  details->setCommitMessage("base commit");
   view->commit();
   refresh(view, false);
 }
@@ -97,25 +85,17 @@ void TestMerge::secondCommit() {
 
   refresh(view);
 
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
+  auto details = view->findChild<DetailView *>();
+  QVERIFY(details);
 
-  auto files = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(files);
-
-  QAbstractItemModel *model = files->model();
+  QAbstractItemModel *model = details->unstagedFiles();
   QCOMPARE(model->rowCount(), 1);
 
-  // Click on the check box.
-  QModelIndex index = model->index(0, 0);
-  mouseClick(files->viewport(), Qt::LeftButton, Qt::KeyboardModifiers(),
-             files->checkRect(index).center());
+  // Stage the file.
+  details->stageFiles(DetailView::UnstagedFiles, 0, true);
 
   // Commit and refresh.
-  QTextEdit *editor = view->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-
-  editor->setText("conflicting commit b");
+  details->setCommitMessage("conflicting commit b");
   view->commit();
   refresh(view, false);
 }
@@ -135,25 +115,17 @@ void TestMerge::thirdCommit() {
 
   refresh(view);
 
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
+  auto details = view->findChild<DetailView *>();
+  QVERIFY(details);
 
-  auto files = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(files);
-
-  QAbstractItemModel *model = files->model();
+  QAbstractItemModel *model = details->unstagedFiles();
   QCOMPARE(model->rowCount(), 1);
 
-  // Click on the check box.
-  QModelIndex index = model->index(0, 0);
-  mouseClick(files->viewport(), Qt::LeftButton, Qt::KeyboardModifiers(),
-             files->checkRect(index).center());
+  // Stage the file.
+  details->stageFiles(DetailView::UnstagedFiles, 0, true);
 
   // Commit and refresh.
-  QTextEdit *editor = view->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-
-  editor->setText("conflicting commit a");
+  details->setCommitMessage("conflicting commit a");
   view->commit();
   refresh(view, false);
 }
@@ -178,67 +150,44 @@ void TestMerge::mergeConflict() {
 
 void TestMerge::resolve() {
   RepoView *view = mWindow->currentView();
-  DiffView *diffView = view->findChild<DiffView *>();
-
-  auto doubleTree = view->findChild<DoubleTreeWidget *>();
-  QVERIFY(doubleTree);
-
-  auto files = doubleTree->findChild<TreeView *>("Unstaged");
-  QVERIFY(files);
+  DetailView *details = view->findChild<DetailView *>();
+  QVERIFY(details);
 
   // Wait for refresh
-  QAbstractItemModel *model = files->model();
+  QAbstractItemModel *model = details->unstagedFiles();
   qWait(1000); // Because before the merge, there is already an item in the
                // unstaged model
   while (model->rowCount() < 1)
     qWait(300);
 
-  files->selectionModel()->select(files->model()->index(0, 0),
-                                  QItemSelectionModel::Select);
+  details->selectFile(DetailView::UnstagedFiles, 0);
 
-  QToolButton *theirs = diffView->findChild<QToolButton *>("ConflictTheirs");
-  QVERIFY(theirs);
-  mouseClick(theirs, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(),
-             inputDelay);
+  auto diff = qobject_cast<DiffModel *>(details->diffModel());
+  QVERIFY(diff);
+  QVERIFY(diff->isConflicted());
+  QVERIFY(diff->hunkCount() > 0);
 
-  QToolButton *undo =
-      diffView->widget()->findChild<QToolButton *>("ConflictUndo");
-  QVERIFY(undo);
-  mouseClick(undo, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(),
-             inputDelay);
+  // Theirs, undo, ours and save.
+  diff->chooseConflict(0, git::Patch::Theirs);
+  diff->chooseConflict(0, git::Patch::Unresolved);
+  diff->chooseConflict(0, git::Patch::Ours);
+  diff->saveConflict(0);
 
-  QToolButton *ours =
-      diffView->widget()->findChild<QToolButton *>("ConflictOurs");
-  QVERIFY(ours);
-  mouseClick(ours, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(),
-             inputDelay);
-
-  QToolButton *save =
-      diffView->widget()->findChild<QToolButton *>("ConflictSave");
-  QVERIFY(save);
-  mouseClick(save, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(),
-             inputDelay);
-
-  DetailView *detailView = view->findChild<DetailView *>();
-  QPushButton *stageAll = nullptr;
-  while (stageAll == nullptr) {
-    stageAll = detailView->findChild<QPushButton *>("StageAll");
-    qWait(100);
+  {
+    auto timeout = Timeout(10000, "Conflict wasn't resolved in time");
+    while (!details->isStageEnabled())
+      qWait(100);
   }
-  mouseClick(stageAll, Qt::LeftButton, Qt::KeyboardModifiers(), QPoint(),
-             inputDelay);
+  details->stage();
 
   // Commit and refresh.
-  QTextEdit *editor = view->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-
-  editor->setText("conflicts resolved");
+  details->setCommitMessage("conflicts resolved");
   view->commit();
   refresh(view, false);
 
   // Diff is not in a conflicted state
-  git::Diff diff = mRepo->diffIndexToWorkdir();
-  QVERIFY(!diff.isConflicted());
+  git::Diff wdiff = mRepo->diffIndexToWorkdir();
+  QVERIFY(!wdiff.isConflicted());
 }
 
 void TestMerge::cleanupTestCase() {

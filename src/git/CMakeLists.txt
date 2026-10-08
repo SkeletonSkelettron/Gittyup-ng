@@ -15,12 +15,15 @@ add_library(
   Object.cpp
   Patch.cpp
   Rebase.cpp
+  RefState.cpp
   Reference.cpp
   Remote.cpp
   Repository.cpp
   Result.cpp
   RevWalk.cpp
+  Rewrite.cpp
   Signature.cpp
+  Signing.cpp
   Submodule.cpp
   Tag.cpp
   TagRef.cpp

@@ -13,14 +13,15 @@ if(WIN32)
   set(GITTYUP_PACK_WIN64 ON)
 endif()
 
-# Install Qt plugins.
-set(QT_PLUGINS QJpegPlugin)
+# Install Qt plugins. The icons of the QML views are SVG files.
+set(QT_PLUGINS QJpegPlugin QSvgPlugin QSvgIconPlugin)
 
 if(APPLE)
   set(QT_PLUGINS ${QT_PLUGINS} QCocoaIntegrationPlugin QMacStylePlugin)
 elseif(GITTYUP_PACK_WIN64)
+  # Schannel is the TLS backend of HTTPS requests, like the pull requests.
   set(QT_PLUGINS ${QT_PLUGINS} QWindowsIntegrationPlugin
-                 QModernWindowsStylePlugin)
+                 QModernWindowsStylePlugin QSchannelBackendPlugin)
 else()
   set(QT_PLUGINS ${QT_PLUGINS} QXcbIntegrationPlugin
                  QComposePlatformInputContextPlugin)
@@ -140,6 +141,37 @@ elseif(NOT USE_SYSTEM_QT)
       endif()
     endif()
   endforeach()
+
+  # Install the QML modules that the views import, and the modules they import
+  # in turn, into the default import path of qt.conf.
+  if(GITTYUP_PACK_WIN64)
+    set(QML_DIR ${QT6_INSTALL_PREFIX}/${QT6_INSTALL_QML})
+    foreach(QML_MODULE QML QtQml QtQuick)
+      install(
+        DIRECTORY ${QML_DIR}/${QML_MODULE}
+        DESTINATION ${INSTALL_LIBDIR}/qml
+        COMPONENT ${GITTYUP_NAME}
+        # Modules and styles that aren't used.
+        PATTERN "XmlListModel" EXCLUDE
+        PATTERN "Dialogs" EXCLUDE
+        PATTERN "Effects" EXCLUDE
+        PATTERN "LocalStorage" EXCLUDE
+        PATTERN "NativeStyle" EXCLUDE
+        PATTERN "Particles" EXCLUDE
+        PATTERN "Shapes" EXCLUDE
+        PATTERN "VectorImage" EXCLUDE
+        PATTERN "tooling" EXCLUDE
+        PATTERN "designer" EXCLUDE
+        PATTERN "FluentWinUI3" EXCLUDE
+        PATTERN "Fusion" EXCLUDE
+        PATTERN "Imagine" EXCLUDE
+        PATTERN "Material" EXCLUDE
+        PATTERN "Universal" EXCLUDE
+        PATTERN "Windows" EXCLUDE
+        PATTERN "*.debug" EXCLUDE
+        PATTERN "*.pdb" EXCLUDE)
+    endforeach()
+  endif()
 endif()
 
 # Install SSL libraries.
@@ -204,6 +236,109 @@ if(NOT APPLE)
   endif()
 endif()
 
+# Install the libraries that the installed executables and plugins load and that
+# Windows doesn't provide, like the Qt libraries of the QML modules and the
+# runtime of MinGW.
+if(GITTYUP_PACK_WIN64 AND NOT USE_SYSTEM_QT)
+  get_target_property(QT_CORE_LIBRARY Qt6::Core LOCATION_${CMAKE_BUILD_TYPE})
+  get_filename_component(QT_BIN_DIR ${QT_CORE_LIBRARY} DIRECTORY)
+  install(
+    CODE "
+    set(GITTYUP_LIBRARY_DIR \"${INSTALL_LIBDIR}\")
+    set(GITTYUP_SEARCH_DIRS \"${QT_BIN_DIR}\")
+    set(GITTYUP_MINGW \"${MINGW}\")
+    set(GITTYUP_OBJDUMP \"${CMAKE_OBJDUMP}\")
+    set(GITTYUP_STRIP \"${CMAKE_STRIP}\")"
+    COMPONENT ${GITTYUP_NAME})
+  install(
+    CODE [[
+    if(GITTYUP_MINGW)
+      set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM "windows+pe")
+      set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL "objdump")
+      set(CMAKE_GET_RUNTIME_DEPENDENCIES_COMMAND "${GITTYUP_OBJDUMP}")
+    endif()
+
+    # Windows ignores the case of library names, but on other systems
+    # file(GET_RUNTIME_DEPENDENCIES) misses libraries with upper case letters
+    # in their names, like Qt6Core.dll, so look them up by their lower case
+    # names.
+    foreach(DIR ${GITTYUP_SEARCH_DIRS})
+      file(GLOB FILES "${DIR}/*.dll")
+      foreach(FILE ${FILES})
+        get_filename_component(NAME "${FILE}" NAME)
+        string(TOLOWER "${NAME}" NAME)
+        if(NOT DEFINED "CANDIDATE_${NAME}")
+          set("CANDIDATE_${NAME}" "${FILE}")
+        endif()
+      endforeach()
+    endforeach()
+
+    # Install the libraries until the installed files need no more.
+    set(LIBRARY_DIR "${CMAKE_INSTALL_PREFIX}/${GITTYUP_LIBRARY_DIR}")
+    while(TRUE)
+      file(GLOB_RECURSE EXECUTABLES "${LIBRARY_DIR}/*.exe")
+      file(GLOB_RECURSE MODULES "${LIBRARY_DIR}/*.dll")
+      file(
+        GET_RUNTIME_DEPENDENCIES
+        EXECUTABLES ${EXECUTABLES}
+        MODULES ${MODULES}
+        DIRECTORIES ${GITTYUP_SEARCH_DIRS}
+        RESOLVED_DEPENDENCIES_VAR FOUND
+        UNRESOLVED_DEPENDENCIES_VAR UNRESOLVED
+        CONFLICTING_DEPENDENCIES_PREFIX CONFLICT
+        PRE_EXCLUDE_REGEXES "^api-ms-" "^ext-ms-"
+        POST_EXCLUDE_REGEXES "[Ss]ystem32")
+
+      # Libraries found more than once are installed once.
+      foreach(NAME ${CONFLICT_FILENAMES})
+        list(GET "CONFLICT_${NAME}" 0 FILE)
+        list(APPEND FOUND "${FILE}")
+      endforeach()
+
+      set(MISSING)
+      foreach(NAME ${UNRESOLVED})
+        string(TOLOWER "${NAME}" LOWER)
+        if(DEFINED "CANDIDATE_${LOWER}")
+          list(APPEND FOUND "${CANDIDATE_${LOWER}}")
+        else()
+          list(APPEND MISSING "${NAME}")
+        endif()
+      endforeach()
+
+      set(NEW)
+      foreach(FILE ${FOUND})
+        get_filename_component(NAME "${FILE}" NAME)
+        if(NOT EXISTS "${LIBRARY_DIR}/${NAME}")
+          list(APPEND NEW "${FILE}")
+        endif()
+      endforeach()
+
+      if(NOT NEW)
+        break()
+      endif()
+
+      list(REMOVE_DUPLICATES NEW)
+      file(INSTALL ${NEW} DESTINATION "${LIBRARY_DIR}")
+
+      # Some libraries of MinGW come with their debug information.
+      if(CMAKE_INSTALL_DO_STRIP AND GITTYUP_MINGW)
+        foreach(FILE ${NEW})
+          get_filename_component(NAME "${FILE}" NAME)
+          execute_process(COMMAND "${GITTYUP_STRIP}" --strip-unneeded
+                                  "${LIBRARY_DIR}/${NAME}")
+        endforeach()
+      endif()
+    endwhile()
+
+    if(MISSING)
+      list(REMOVE_DUPLICATES MISSING)
+      list(JOIN MISSING " " MISSING)
+      message(STATUS "Libraries expected from Windows: ${MISSING}")
+    endif()
+    ]]
+    COMPONENT ${GITTYUP_NAME})
+endif()
+
 # The bundled libssh2 is shared and referenced as @rpath/libssh2.1.dylib, so it
 # must be shipped in Frameworks (as the real file under its soname).
 if(APPLE
@@ -264,14 +399,19 @@ elseif(GITTYUP_PACK_WIN64)
     \\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\""
   )
   set(CPACK_NSIS_EXECUTABLES_DIRECTORY ${CMAKE_INSTALL_BINDIR})
-  set(CPACK_NSIS_MUI_FINISHPAGE_RUN ${GITTYUP_EXECUTABLE_NAME}.exe)
+  # The installer doesn't offer to run Gittyup when it finishes: it would run
+  # with the rights of the installer, often as another administrator, who
+  # doesn't own the repositories of the user.
 
-  install(
-    FILES ${RSRC_DIR}/vcredist_x64.exe
-    DESTINATION .
-    COMPONENT ${GITTYUP_NAME})
-  set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
-      "ExecWait '\\\"$INSTDIR\\\\vcredist_x64.exe\\\" /q /norestart'")
+  # Builds of MinGW ship its runtime instead.
+  if(MSVC)
+    install(
+      FILES ${RSRC_DIR}/vcredist_x64.exe
+      DESTINATION .
+      COMPONENT ${GITTYUP_NAME})
+    set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+        "ExecWait '\\\"$INSTDIR\\\\vcredist_x64.exe\\\" /q /norestart'")
+  endif()
   set(PLATFORM "-win64")
 else()
   set(CPACK_GENERATOR TGZ)
@@ -286,6 +426,11 @@ set(PACKAGE_FILE_NAME
     "${GITTYUP_NAME}${PLATFORM}-${GITTYUP_VERSION}${BUILD_TAG}")
 
 set(CPACK_MONOLITHIC_INSTALL true)
+
+# MSVC keeps debug information in separate files, MinGW in the binaries.
+if(MINGW)
+  set(CPACK_STRIP_FILES true)
+endif()
 set(CPACK_INSTALL_CMAKE_PROJECTS ${CMAKE_BINARY_DIR} ${GITTYUP_NAME}
                                  ${GITTYUP_NAME} /)
 
@@ -293,17 +438,17 @@ set(CPACK_INSTALL_CMAKE_PROJECTS ${CMAKE_BINARY_DIR} ${GITTYUP_NAME}
 if(GITTYUP_PACK_WIN64)
   set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
       "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
-    WriteRegStr HKCR 'Directory\\\\Background\\\\shell\\\\Gittyup' '' 'Open with Gittyup'
-    WriteRegStr HKCR 'Directory\\\\Background\\\\shell\\\\Gittyup' 'Icon' '\\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\"'
-    WriteRegStr HKCR 'Directory\\\\Background\\\\shell\\\\Gittyup\\\\command' '' '\\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\" \\\"%V\\\"'
-    WriteRegStr HKCR 'Directory\\\\shell\\\\Gittyup' '' 'Open with Gittyup'
-    WriteRegStr HKCR 'Directory\\\\shell\\\\Gittyup' 'Icon' '\\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\"'
-    WriteRegStr HKCR 'Directory\\\\shell\\\\Gittyup\\\\command' '' '\\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\" \\\"%L\\\"'"
+    WriteRegStr HKCR 'Directory\\\\Background\\\\shell\\\\${GITTYUP_NAME}' '' 'Open with ${GITTYUP_NAME}'
+    WriteRegStr HKCR 'Directory\\\\Background\\\\shell\\\\${GITTYUP_NAME}' 'Icon' '\\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\"'
+    WriteRegStr HKCR 'Directory\\\\Background\\\\shell\\\\${GITTYUP_NAME}\\\\command' '' '\\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\" \\\"%V\\\"'
+    WriteRegStr HKCR 'Directory\\\\shell\\\\${GITTYUP_NAME}' '' 'Open with ${GITTYUP_NAME}'
+    WriteRegStr HKCR 'Directory\\\\shell\\\\${GITTYUP_NAME}' 'Icon' '\\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\"'
+    WriteRegStr HKCR 'Directory\\\\shell\\\\${GITTYUP_NAME}\\\\command' '' '\\\"$INSTDIR\\\\${CMAKE_INSTALL_BINDIR}\\\\${GITTYUP_EXECUTABLE_NAME}.exe\\\" \\\"%L\\\"'"
   )
   set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
       "${CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS}
-    DeleteRegKey HKCR 'Directory\\\\Background\\\\shell\\\\Gittyup'
-    DeleteRegKey HKCR 'Directory\\\\shell\\\\Gittyup'")
+    DeleteRegKey HKCR 'Directory\\\\Background\\\\shell\\\\${GITTYUP_NAME}'
+    DeleteRegKey HKCR 'Directory\\\\shell\\\\${GITTYUP_NAME}'")
 endif()
 
 set(CPACK_PACKAGE_FILE_NAME ${PACKAGE_FILE_NAME})
@@ -319,7 +464,7 @@ if(GITTYUP_PACK_WIN64)
 else()
   install(
     FILES ${CMAKE_SOURCE_DIR}/LICENSE.md
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/Gittyup
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/${GITTYUP_NAME}
     RENAME LICENSE)
 endif()
 
@@ -341,10 +486,10 @@ if(GITTYUP_PACK_WIN64)
     ${CERTIFICATE_PASSWORD}
     ${CMAKE_BINARY_DIR}/${PACKAGE_FILE_NAME}.exe
     COMMAND ${CMAKE_COMMAND} -E make_directory ${PACKAGE_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/Gittyup.exe
-            ${PACKAGE_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/Gittyup.pdb
-            ${PACKAGE_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_BINARY_DIR}/${GITTYUP_EXECUTABLE_NAME}.exe ${PACKAGE_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_BINARY_DIR}/${GITTYUP_EXECUTABLE_NAME}.pdb ${PACKAGE_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/gittyup-indexer.exe
             ${PACKAGE_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/gittyup-indexer.pdb

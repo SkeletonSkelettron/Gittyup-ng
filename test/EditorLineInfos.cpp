@@ -2,11 +2,10 @@
 #include "Debug.h"
 #include "dialogs/ExternalToolsDialog.h"
 
-#include "ui/DiffView/HunkWidget.h"
-#include "ui/DiffView/FileWidget.h"
+#include "editor/TextEditor.h"
+#include "ui/DiffModel.h"
 
 #include "ui/MainWindow.h"
-#include "ui/DiffView/DiffView.h"
 #include "ui/RepoView.h"
 #include <QString>
 
@@ -14,6 +13,92 @@
 #include "git/Diff.h"
 #include "git/Commit.h"
 #include "git/Tree.h"
+
+namespace {
+
+// Presents the lines of a hunk of a DiffModel like the text editor of the
+// former HunkWidget, so the tests can check line markers.
+class HunkView {
+public:
+  HunkView(DiffModel *model, int hunk) : mModel(model), mHunk(hunk) {}
+
+  HunkView(RepoView *view, const git::Diff &diff, const git::Patch &patch,
+           int hunk)
+      : mOwned(new DiffModel(view)), mModel(mOwned.data()), mHunk(hunk) {
+    mModel->setDiff(diff, patch.name());
+  }
+
+  HunkView *editor() { return this; }
+  void load(const git::Patch & = git::Patch(), bool = false) {}
+
+  int lineCount() const { return mModel->lines(mHunk).size(); }
+
+  QString getLine(int i) const {
+    const DiffLines::Line &line = mModel->lines(mHunk).at(i);
+    return QString::fromUtf8(line.content) + (line.noNewline ? "\n" : "");
+  }
+
+  int markerGet(int i) const {
+    const DiffLines::Line &line = mModel->lines(mHunk).at(i);
+    int markers = 0;
+    if (line.origin == '+')
+      markers |= 1 << TextEditor::Marker::Addition;
+    else if (line.origin == '-')
+      markers |= 1 << TextEditor::Marker::Deletion;
+    else
+      markers |= 1 << TextEditor::Marker::Context;
+    if (line.staged)
+      markers |= 1 << TextEditor::Marker::StagedMarker;
+    return markers;
+  }
+
+  // Stage the lines [start, end).
+  void stageSelected(int start, int end) {
+    mModel->setLinesStaged(mModel->row(mHunk, start),
+                           mModel->row(mHunk, end - 1), true);
+  }
+
+  // Discard the lines [start, end).
+  void discardSelected(int start, int end) {
+    QList<bool> lines(lineCount(), false);
+    for (int i = start; i < end && i < lines.size(); ++i)
+      lines[i] = true;
+    mModel->discard(mHunk, lines);
+  }
+
+  // The content of the hunk when nothing is discarded.
+  QByteArray hunk() const {
+    const QList<DiffLines::Line> &lines = mModel->lines(mHunk);
+    return DiffLines::discardContent(lines, QList<bool>(lines.size(), false));
+  }
+
+private:
+  QScopedPointer<DiffModel> mOwned;
+  DiffModel *mModel;
+  int mHunk;
+};
+
+// The hunks of a file, like the former FileWidget.
+class FileView {
+public:
+  FileView(RepoView *view, const git::Diff &diff, const git::Patch &patch)
+      : mModel(view) {
+    mModel.setDiff(diff, patch.name());
+    for (int i = 0; i < mModel.hunkCount(); ++i)
+      mHunks.append(new HunkView(&mModel, i));
+  }
+
+  ~FileView() { qDeleteAll(mHunks); }
+
+  void setStageState(git::Index::StagedState) {}
+  QList<HunkView *> hunks() const { return mHunks; }
+
+private:
+  DiffModel mModel;
+  QList<HunkView *> mHunks;
+};
+
+} // namespace
 
 #define INIT_REPO(repoPath)                                                    \
   QString path = Test::extractRepository(repoPath);                            \
@@ -31,7 +116,6 @@
                                                                                \
   RepoView *repoView = window.currentView();                                   \
   Test::refresh(repoView);                                                     \
-  DiffView diffView = DiffView(mRepo, repoView);                               \
   auto diff = mRepo.status(mRepo.index(), nullptr, false);
 
 #define BITSET(value, bit) ((value & (1 << bit)) == (1 << bit))
@@ -152,8 +236,7 @@ void TestEditorLineInfo::editorLineSingleHunkAdditionStaged() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -180,8 +263,7 @@ void TestEditorLineInfo::editorLineSingleHunkDeletionStaged() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -208,8 +290,7 @@ void TestEditorLineInfo::editorLineSingleHunkChangeStaged() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -244,8 +325,7 @@ void TestEditorLineInfo::editorLineSingleHunkChange_onlyAdditionStaged() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -280,8 +360,7 @@ void TestEditorLineInfo::editorLineSingleHunkChange_onlyDeletionStaged() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -316,8 +395,7 @@ void TestEditorLineInfo::singleHunk_multipleDeletions() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -348,8 +426,7 @@ void TestEditorLineInfo::singleHunk_multipleAdditions() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -382,8 +459,7 @@ void TestEditorLineInfo::multipleHunks_multipleDeletions() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -409,8 +485,7 @@ void TestEditorLineInfo::multipleHunks_multipleDeletions() {
   }
 
   // Second hunk
-  auto hw2 = HunkWidget(&diffView, diff, patch, stagedPatch, 1, false, false,
-                        repoView);
+  HunkView hw2(repoView, diff, patch, 1);
   hw2.load(stagedPatch, true);
   editor = hw2.editor();
 
@@ -443,8 +518,7 @@ void TestEditorLineInfo::multipleHunks_multipleAdditions() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -470,8 +544,7 @@ void TestEditorLineInfo::multipleHunks_multipleAdditions() {
   }
 
   // Second hunk
-  auto hw2 = HunkWidget(&diffView, diff, patch, stagedPatch, 1, false, false,
-                        repoView);
+  HunkView hw2(repoView, diff, patch, 1);
   hw2.load(stagedPatch, true);
   editor = hw2.editor();
 
@@ -506,8 +579,7 @@ void TestEditorLineInfo::singleHunk_additionsOnly_secondStagedPatch() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -542,8 +614,7 @@ void TestEditorLineInfo::singleHunk_deletionsOnly_secondStagedPatch() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -576,8 +647,7 @@ void TestEditorLineInfo::multipleHunks_misc1() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   auto editor = hw.editor();
 
@@ -648,8 +718,7 @@ void TestEditorLineInfo::multipleHunks_StageSingleLines() {
   QString path_ = mRepo.workdir().filePath(name);
   bool submodule = mRepo.lookupSubmodule(name).isValid();
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path_, submodule);
+    FileView fw(repoView, diff, patch);
     fw.setStageState(git::Index::StagedState::Unstaged);
 
     auto hunks = fw.hunks();
@@ -677,8 +746,7 @@ void TestEditorLineInfo::multipleHunks_StageSingleLines() {
   stagedPatch = stagedDiff.patch(0);
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path, submodule);
+    FileView fw(repoView, diff, patch);
 
     // It is important that all hunks are loaded!!!!
     auto hunks = fw.hunks();
@@ -704,8 +772,7 @@ void TestEditorLineInfo::multipleHunks_StageSingleLines() {
   stagedPatch = stagedDiff.patch(0);
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path, submodule);
+    FileView fw(repoView, diff, patch);
 
     auto hunks = fw.hunks();
     QCOMPARE(hunks.count(), 2);
@@ -739,8 +806,7 @@ void TestEditorLineInfo::multipleHunks_StageSingleLines2() {
   bool submodule = mRepo.lookupSubmodule(name).isValid();
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path_, submodule);
+    FileView fw(repoView, diff, patch);
     fw.setStageState(git::Index::StagedState::Unstaged);
 
     auto hunks = fw.hunks();
@@ -768,8 +834,7 @@ void TestEditorLineInfo::multipleHunks_StageSingleLines2() {
   stagedPatch = stagedDiff.patch(0);
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path, submodule);
+    FileView fw(repoView, diff, patch);
 
     // It is important that all hunks are loaded!!!!
     auto hunks = fw.hunks();
@@ -796,8 +861,7 @@ void TestEditorLineInfo::multipleHunks_StageSingleLines2() {
   stagedPatch = stagedDiff.patch(0);
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path, submodule);
+    FileView fw(repoView, diff, patch);
 
     auto hunks = fw.hunks();
     QCOMPARE(hunks.count(), 2);
@@ -840,8 +904,7 @@ void TestEditorLineInfo::windowsCRLF() {
   bool submodule = mRepo.lookupSubmodule(name).isValid();
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path_, submodule);
+    FileView fw(repoView, diff, patch);
     fw.setStageState(git::Index::StagedState::Unstaged);
 
     auto hunks = fw.hunks();
@@ -863,8 +926,7 @@ void TestEditorLineInfo::windowsCRLF() {
   stagedPatch = stagedDiff.patch(0);
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path, submodule);
+    FileView fw(repoView, diff, patch);
 
     auto hunks = fw.hunks();
     QVERIFY(hunks.count() == 1);
@@ -894,8 +956,7 @@ void TestEditorLineInfo::windowsCRLFMultiHunk() {
   bool submodule = mRepo.lookupSubmodule(name).isValid();
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path_, submodule);
+    FileView fw(repoView, diff, patch);
     fw.setStageState(git::Index::StagedState::Unstaged);
 
     auto hunks = fw.hunks();
@@ -921,8 +982,7 @@ void TestEditorLineInfo::windowsCRLFMultiHunk() {
   stagedPatch = stagedDiff.patch(0);
 
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path, submodule);
+    FileView fw(repoView, diff, patch);
 
     auto hunks = fw.hunks();
     QVERIFY(hunks.count() == 2);
@@ -944,8 +1004,7 @@ void TestEditorLineInfo::sameContentRemoveLine() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   checkEditorMarkers(hw.editor(), QVector<int>({3, 4, 5, 12, 13, 21, 22}),
                      QVector<int>(), QVector<int>({11, 19, 20}),
@@ -959,8 +1018,7 @@ void TestEditorLineInfo::sameContentAddLine() {
   git::Patch patch = diff.patch(0);
   git::Patch stagedPatch = stagedDiff.patch(0);
 
-  auto hw = HunkWidget(&diffView, diff, patch, stagedPatch, 0, false, false,
-                       repoView);
+  HunkView hw(repoView, diff, patch, 0);
   hw.load(stagedPatch, true);
   checkEditorMarkers(hw.editor(), QVector<int>({3, 4}), QVector<int>({9}),
                      QVector<int>({}), QVector<int>({}));
@@ -997,8 +1055,7 @@ void TestEditorLineInfo::discardCompleteDeletedContent() {
   QString path_ = mRepo.workdir().filePath(name);
   bool submodule = mRepo.lookupSubmodule(name).isValid();
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path_, submodule, repoView);
+    FileView fw(repoView, diff, patch);
     fw.setStageState(git::Index::StagedState::Unstaged);
 
     auto hunks = fw.hunks();
@@ -1029,8 +1086,7 @@ void TestEditorLineInfo::discardCompleteAddedContent() {
   QString path_ = mRepo.workdir().filePath(name);
   bool submodule = mRepo.lookupSubmodule(name).isValid();
   {
-    FileWidget fw(&diffView, diff, patch, stagedPatch, QModelIndex(), name,
-                  path_, submodule, repoView);
+    FileView fw(repoView, diff, patch);
     fw.setStageState(git::Index::StagedState::Unstaged);
 
     auto hunks = fw.hunks();

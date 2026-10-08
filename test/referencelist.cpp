@@ -10,9 +10,8 @@
 #include "Test.h"
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
-#include "ui/ReferenceList.h"
-#include "ui/ReferenceModel.h"
 #include "dialogs/CloneDialog.h"
+#include "dialogs/ReferenceItems.h"
 #include <QMainWindow>
 
 using namespace Test;
@@ -23,7 +22,6 @@ class TestReferenceList : public QObject {
 
 private slots:
   void test();
-  void testIndexCalculation();
 
 private:
 };
@@ -48,7 +46,7 @@ void TestReferenceList::test() {
   d->setField("name", "GittyupTestRepo");
   d->setField("path", repoPath);
   d->setField("bare", "false");
-  d->page(2)->initializePage(); // start clone
+  d->startClone();
 
   {
     auto timeout = Timeout(1000e3, "Failed to clone");
@@ -60,19 +58,20 @@ void TestReferenceList::test() {
   QVERIFY(repo.isValid());
   initRepo(repo);
 
-  const ReferenceView::Kinds kRefKinds =
-      ReferenceView::InvalidRef | ReferenceView::LocalBranches |
-      ReferenceView::RemoteBranches | ReferenceView::Tags;
-  ReferenceList *rl = new ReferenceList(repo, kRefKinds);
+  ReferenceItems items(repo, ReferenceItems::LocalBranches |
+                                 ReferenceItems::RemoteBranches |
+                                 ReferenceItems::Tags);
+  auto name = [&items](const git::Commit &commit) {
+    int index = items.indexOf(commit);
+    return index >= 0 ? items.reference(index).name() : QString();
+  };
 
   {
     // Only one tag
     git::Commit commit =
         repo.lookupCommit("99219268e1f838b0da616761fd7a184676965a69");
     QVERIFY(commit.isValid());
-    rl->setCommit(commit);
-    QVERIFY(rl->target().isValid());
-    QCOMPARE(rl->currentReference().name(), "Tag");
+    QCOMPARE(name(commit), QString("Tag"));
   }
 
   {
@@ -80,9 +79,7 @@ void TestReferenceList::test() {
     git::Commit commit =
         repo.lookupCommit("79f4bee33320391fa99a8ef3f504b2ba229a8181");
     QVERIFY(commit.isValid());
-    rl->setCommit(commit);
-    QVERIFY(rl->target().isValid());
-    QCOMPARE(rl->currentReference().name(), "origin/Branch");
+    QCOMPARE(name(commit), QString("origin/Branch"));
   }
 
   {
@@ -90,9 +87,7 @@ void TestReferenceList::test() {
     git::Commit commit =
         repo.lookupCommit("54ecb63965b50287ceb73095c72f344c1611d94a");
     QVERIFY(commit.isValid());
-    rl->setCommit(commit);
-    QVERIFY(rl->target().isValid());
-    QCOMPARE(rl->currentReference().name(), "main");
+    QCOMPARE(name(commit), QString("main"));
   }
 
   {
@@ -100,123 +95,7 @@ void TestReferenceList::test() {
     git::Commit commit =
         repo.lookupCommit("63460da2b069250c34506249516029f2ba7c6057");
     QVERIFY(commit.isValid());
-    rl->setCommit(commit);
-    QVERIFY(rl->target().isValid());
-    QCOMPARE(rl->currentReference().name(), "");
-  }
-}
-
-void TestReferenceList::testIndexCalculation() {
-  {
-    const ReferenceView::Kinds kRefKinds =
-        ReferenceView::InvalidRef | ReferenceView::LocalBranches |
-        ReferenceView::RemoteBranches | ReferenceView::Tags;
-    ReferenceModel model(git::Repository(), kRefKinds);
-
-    QCOMPARE(model.indexToReferenceType(0),
-             ReferenceModel::ReferenceType::Branches);
-    QCOMPARE(
-        model.referenceTypeToIndex(ReferenceModel::ReferenceType::Branches), 0);
-
-    QCOMPARE(model.indexToReferenceType(1),
-             ReferenceModel::ReferenceType::Remotes);
-    QCOMPARE(model.referenceTypeToIndex(ReferenceModel::ReferenceType::Remotes),
-             1);
-
-    QCOMPARE(model.indexToReferenceType(2),
-             ReferenceModel::ReferenceType::Tags);
-    QCOMPARE(model.referenceTypeToIndex(ReferenceModel::ReferenceType::Tags),
-             2);
-  }
-
-  {
-    // No local branches
-    const ReferenceView::Kinds kRefKinds = ReferenceView::InvalidRef |
-                                           ReferenceView::RemoteBranches |
-                                           ReferenceView::Tags;
-    ReferenceModel model(git::Repository(), kRefKinds);
-
-    QCOMPARE(model.indexToReferenceType(0),
-             ReferenceModel::ReferenceType::Remotes);
-    QCOMPARE(model.referenceTypeToIndex(ReferenceModel::ReferenceType::Remotes),
-             0);
-
-    QCOMPARE(model.indexToReferenceType(1),
-             ReferenceModel::ReferenceType::Tags);
-    QCOMPARE(model.referenceTypeToIndex(ReferenceModel::ReferenceType::Tags),
-             1);
-  }
-
-  {
-    // No remote branches
-    const ReferenceView::Kinds kRefKinds = ReferenceView::InvalidRef |
-                                           ReferenceView::LocalBranches |
-                                           ReferenceView::Tags;
-    ReferenceModel model(git::Repository(), kRefKinds);
-
-    QCOMPARE(model.indexToReferenceType(0),
-             ReferenceModel::ReferenceType::Branches);
-    QCOMPARE(
-        model.referenceTypeToIndex(ReferenceModel::ReferenceType::Branches), 0);
-
-    QCOMPARE(model.indexToReferenceType(1),
-             ReferenceModel::ReferenceType::Tags);
-    QCOMPARE(model.referenceTypeToIndex(ReferenceModel::ReferenceType::Tags),
-             1);
-  }
-
-  {
-    // No tags
-    const ReferenceView::Kinds kRefKinds = ReferenceView::InvalidRef |
-                                           ReferenceView::LocalBranches |
-                                           ReferenceView::RemoteBranches;
-    ReferenceModel model(git::Repository(), kRefKinds);
-
-    QCOMPARE(model.indexToReferenceType(0),
-             ReferenceModel::ReferenceType::Branches);
-    QCOMPARE(
-        model.referenceTypeToIndex(ReferenceModel::ReferenceType::Branches), 0);
-
-    QCOMPARE(model.indexToReferenceType(1),
-             ReferenceModel::ReferenceType::Remotes);
-    QCOMPARE(model.referenceTypeToIndex(ReferenceModel::ReferenceType::Remotes),
-             1);
-  }
-
-  {
-    // Only tags. No local/remote branches
-    const ReferenceView::Kinds kRefKinds =
-        ReferenceView::InvalidRef | ReferenceView::Tags;
-    ReferenceModel model(git::Repository(), kRefKinds);
-
-    QCOMPARE(model.indexToReferenceType(0),
-             ReferenceModel::ReferenceType::Tags);
-    QCOMPARE(model.referenceTypeToIndex(ReferenceModel::ReferenceType::Tags),
-             0);
-  }
-
-  {
-    // Only local branches. No tag/remote
-    const ReferenceView::Kinds kRefKinds =
-        ReferenceView::InvalidRef | ReferenceView::LocalBranches;
-    ReferenceModel model(git::Repository(), kRefKinds);
-
-    QCOMPARE(model.indexToReferenceType(0),
-             ReferenceModel::ReferenceType::Branches);
-    QCOMPARE(
-        model.referenceTypeToIndex(ReferenceModel::ReferenceType::Branches), 0);
-  }
-
-  {
-    // Only remote branches. No tag/local
-    const ReferenceView::Kinds kRefKinds =
-        ReferenceView::InvalidRef | ReferenceView::RemoteBranches;
-    ReferenceModel model(git::Repository(), kRefKinds);
-
-    QCOMPARE(model.indexToReferenceType(0),
-             ReferenceModel::ReferenceType::Remotes);
-    QCOMPARE(model.referenceTypeToIndex(ReferenceModel::ReferenceType::Remotes),
-             0);
+    QCOMPARE(name(commit), QString(""));
   }
 }
 

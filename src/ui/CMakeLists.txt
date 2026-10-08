@@ -1,60 +1,68 @@
 add_library(
   ui
-  AdvancedSearchWidget.cpp
-  Badge.cpp
-  BlameEditor.cpp
-  BlameMargin.cpp
-  ColumnView.cpp
+  ChangedFilesModel.cpp
   CommitList.cpp
-  CommitToolBar.cpp
-  CommitEditor.cpp
-  ContextMenuButton.cpp
+  CommandPalette.cpp
+  CodeHighlighter.cpp
+  CommitMessage.cpp
   DetailView.cpp
-  DiffView/DiffView.cpp
-  DiffView/HunkWidget.cpp
-  DiffView/FileWidget.cpp
-  DiffView/FileLabel.cpp
-  DiffView/Images.cpp
-  DiffView/Comment.cpp
-  DiffView/EditButton.cpp
-  DoubleTreeWidget.cpp
+  DiffLines.cpp
+  DiffModel.cpp
   EditorWindow.cpp
-  ExpandButton.cpp
   FileContextMenu.cpp
-  FindWidget.cpp
-  Footer.cpp
+  FileEditor.cpp
+  FileViewModel.cpp
+  MergeModel.cpp
+  PullRequestList.cpp
+  FindController.cpp
   History.cpp
   IgnoreDialog.cpp
+  InteractiveRebase.cpp
   HotkeyManager.cpp
-  IndexCompleter.cpp
   Location.cpp
+  LogPanel.cpp
   MainWindow.cpp
   MenuBar.cpp
-  PathspecWidget.cpp
-  ProgressIndicator.cpp
-  ReferenceList.cpp
-  ReferenceView.cpp
-  ReferenceModel.cpp
-  ReferenceWidget.cpp
+  RefDrop.cpp
+  RefsPanel.cpp
   RepoView.cpp
   RemoteCallbacks.cpp
   SearchField.cpp
   SideBar.cpp
+  SpellCheck.cpp
   StateAction.cpp
-  StatePushButton.cpp
+  SyntaxHighlighter.cpp
   SpellChecker.cpp
-  TabBar.cpp
+  TabStrip.cpp
   TabWidget.cpp
-  TemplateButton.cpp
+  CommitTemplates.cpp
   TemplateDialog.cpp
   ToolBar.cpp
   TreeModel.cpp
-  DiffTreeModel.cpp
-  TreeProxy.cpp
-  TreeView.cpp
-  TreeWidget.cpp
-  ViewDelegate.cpp
-  ConfigKeys.cpp)
+  UndoHistory.cpp
+  WelcomePage.cpp
+  ConfigKeys.cpp
+  qml/CommitGraphItem.cpp
+  qml/QmlSupport.cpp
+  qml/QmlTheme.cpp)
+
+# QML files and icons for the tool bar and sidebar.
+file(
+  GLOB QML_ICONS
+  RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/qml/icons/*.svg)
+file(
+  GLOB QML_FILES
+  RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/qml/*.qml)
+qt_add_resources(
+  ui
+  "qml"
+  PREFIX
+  "/"
+  FILES
+  ${QML_FILES}
+  ${QML_ICONS})
 
 target_compile_definitions(ui PRIVATE BUILD_DESCRIPTION="${BUILD_DESCRIPTION}")
 
@@ -62,6 +70,7 @@ target_include_directories(ui PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 target_link_libraries(
   ui
+  PUBLIC
   conf
   cred
   dialogs
@@ -78,6 +87,8 @@ target_link_libraries(
   watcher
   Qt6::Concurrent
   Qt6::Network
+  Qt6::Quick
+  Qt6::QuickWidgets
   Qt6::Widgets)
 
 set_target_properties(ui PROPERTIES AUTOMOC ON)

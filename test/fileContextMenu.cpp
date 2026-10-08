@@ -6,7 +6,7 @@
 #include "ui/IgnoreDialog.h"
 #include "git/Reference.h"
 
-#include <QMessageBox>
+#include "dialogs/ConfirmDialog.h"
 #include <QPushButton>
 
 #define INIT_REPO(repoPath)                                                    \
@@ -18,6 +18,19 @@
   window.show();                                                               \
   QVERIFY(QTest::qWaitForWindowExposed(&window));                              \
   RepoView *repoView = window.currentView();
+
+namespace {
+
+// The visible confirmation dialog of the view.
+ConfirmDialog *confirmDialog(QWidget *parent) {
+  for (ConfirmDialog *dialog : parent->findChildren<ConfirmDialog *>()) {
+    if (dialog->isVisible())
+      return dialog;
+  }
+  return nullptr;
+}
+
+} // namespace
 
 class TestFileContextMenu : public QObject {
   Q_OBJECT
@@ -80,11 +93,9 @@ void TestFileContextMenu::testDiscardFile() {
   QVERIFY(action->isEnabled());
   action->triggered(true);
 
-  auto *msgBox = repoView->findChild<QMessageBox *>();
-  QVERIFY(msgBox);
-  auto *button = msgBox->findChild<QPushButton *>("DiscardButton");
-  QVERIFY(button);
-  emit button->clicked(true);
+  auto *dialog = confirmDialog(repoView);
+  QVERIFY(dialog);
+  dialog->accept();
 
   // original text
   //  {"file.txt", "File.txt\n"},
@@ -153,12 +164,9 @@ void TestFileContextMenu::testDiscardSubmodule() {
   QCOMPARE(action->isEnabled(), true);
   action->triggered(true);
 
-  auto *msgBox = repoView->findChild<QMessageBox *>();
-  QVERIFY(msgBox);
-  auto *button = msgBox->findChild<QPushButton *>("DiscardButton");
-  QVERIFY(button);
-  QVERIFY(button->isEnabled());
-  emit button->clicked(true);
+  auto *dialog = confirmDialog(repoView);
+  QVERIFY(dialog);
+  dialog->accept();
 
   QTest::qWait(10); // Wait until submodule discarded
 
@@ -231,11 +239,9 @@ void TestFileContextMenu::testDiscardFolder() {
   QCOMPARE(action->isEnabled(), true);
   action->triggered(true);
 
-  auto *msgBox = repoView->findChild<QMessageBox *>();
-  QVERIFY(msgBox);
-  auto *button = msgBox->findChild<QPushButton *>("DiscardButton");
-  QVERIFY(button);
-  emit button->clicked(true);
+  auto *dialog = confirmDialog(repoView);
+  QVERIFY(dialog);
+  dialog->accept();
 
   // original text
   //  {"file.txt", "File.txt\n"},
@@ -554,11 +560,9 @@ void TestFileContextMenu::testRemoveUntrackedFolder() {
   action->triggered(true);
 
   // Click remove in dialog
-  auto *msgBox = repoView->findChild<QMessageBox *>();
-  QVERIFY(msgBox);
-  auto *button = msgBox->findChild<QPushButton *>("RemoveButton");
-  QVERIFY(button);
-  emit button->clicked(true);
+  auto *dialog = confirmDialog(repoView);
+  QVERIFY(dialog);
+  dialog->accept();
 
   // Check that files do not exist anymore
   {

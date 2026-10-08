@@ -8,17 +8,14 @@
 //
 
 #include "CommitList.h"
-#include "Badge.h"
-#include "Location.h"
-#include "MainWindow.h"
-#include "ProgressIndicator.h"
-#include "RepoView.h"
-#include "Debug.h"
+#include "InteractiveRebase.h"
+#include "qml/QmlSupport.h"
 #include "ConfigKeys.h"
+#include "Debug.h"
+#include "RepoView.h"
 #include "app/Application.h"
 #include "conf/Settings.h"
 #include "dialogs/MergeDialog.h"
-#include "index/Index.h"
 #include "git/Branch.h"
 #include "git/Commit.h"
 #include "git/Config.h"
@@ -29,18 +26,29 @@
 #include "git/Signature.h"
 #include "git/TagRef.h"
 #include "git/Tree.h"
+#include "index/Index.h"
 #include "ui/HotkeyManager.h"
 #include <QAbstractListModel>
-#include <QApplication>
 #include <QMenu>
-#include <QPainter>
-#include <QPainterPath>
-#include <QPushButton>
-#include <QStyledItemDelegate>
-#include <QTextLayout>
+#include <QShortcut>
 #include <QtConcurrent>
 
 namespace {
+
+// The branches that are soloed, separated by spaces.
+const QString kSoloKey = "solo.refs";
+// The branches that are hidden, separated by spaces. Names that end with a
+// slash hide the branches of a remote.
+const QString kHiddenKey = "hide.refs";
+
+// Whether 'name' is one of the hidden branches or on a hidden remote.
+bool matchesHidden(const QStringList &hidden, const QString &name) {
+  for (const QString &entry : hidden) {
+    if (entry == name || (entry.endsWith('/') && name.startsWith(entry)))
+      return true;
+  }
+  return false;
+}
 
 // FIXME: Factor out into theme?
 const QColor kTaintedColor = Qt::gray;
@@ -75,6 +83,51 @@ private:
   bool mCanceled = false;
 };
 
+// Data for the QML roles of a commit row.
+QVariant commitData(const git::Commit &commit, int role,
+                    const QMap<git::Id, QVariantList> *refs) {
+  switch (role) {
+    case CommitList::Role::SummaryRole:
+      return commit.summary(git::Commit::SubstituteEmoji);
+
+    case CommitList::Role::AuthorRole:
+      return commit.author().name();
+
+    case CommitList::Role::InitialsRole: {
+      QStringList parts =
+          commit.author().name().split(' ', Qt::SkipEmptyParts);
+      QString initials;
+      if (!parts.isEmpty())
+        initials += parts.first().left(1);
+      if (parts.size() > 1)
+        initials += parts.last().left(1);
+      return initials.toUpper();
+    }
+
+    case CommitList::Role::DateRole: {
+      QDateTime date = commit.committer().date().toLocalTime();
+      return (date.date() == QDate::currentDate())
+                 ? QLocale().toString(date.time(), QLocale::ShortFormat)
+                 : QLocale().toString(date.date(), QLocale::ShortFormat);
+    }
+
+    case CommitList::Role::ShortIdRole:
+      return commit.id().toString().left(kShortIdSize);
+
+    case CommitList::Role::StarredRole:
+      return commit.isStarred();
+
+    case CommitList::Role::RefsRole:
+      return refs ? refs->value(commit.id()) : QVariantList();
+
+    case CommitList::Role::MergeRole:
+      return commit.isMerge();
+
+    default:
+      return QVariant();
+  }
+}
+
 /*!
  * \brief The CommitModel class
  * Model showing all commits as timeline
@@ -83,13 +136,15 @@ class CommitModel : public QAbstractListModel {
   Q_OBJECT
 
 public:
-  CommitModel(const git::Repository &repo, QObject *parent = nullptr)
-      : QAbstractListModel(parent), mRepo(repo) {
+  CommitModel(const git::Repository &repo,
+              const QMap<git::Id, QVariantList> *refs,
+              QObject *parent = nullptr)
+      : QAbstractListModel(parent), mRepo(repo), mRefs(refs) {
     // Connect progress timer.
     connect(&mTimer, &QTimer::timeout, [this] {
       ++mProgress;
       QModelIndex idx = index(0, 0);
-      emit dataChanged(idx, idx, {Qt::DisplayRole});
+      emit dataChanged(idx, idx, {Qt::DisplayRole, CommitList::BusyRole});
     });
 
     // Connect watcher to signal when the status diff finishes.
@@ -140,16 +195,27 @@ public:
 
     // Reload the index before starting the status thread. Allowing
     // it to reload on the thread frequently corrupts the index.
-    mRepo.index().read();
+    git::Index index = mRepo.index();
+    index.read();
+
+    // The thread reads the index of its own: checking out, staging and other
+    // changes of the index can't wait for it.
+    git::Index own = index.reopen();
+    if (!own.isValid())
+      own = index;
 
     // Check for uncommitted changes asynchronously.
     emit loadingChanged(true);
     mProgress = 0;
     mTimer.start(50);
-    mStatus.setFuture(QtConcurrent::run([this] {
-      // Pass the repo's index to suppress reload.
+    mStatus.setFuture(QtConcurrent::run([this, index, own] {
       bool ignoreWhitespace = Settings::instance()->isWhitespaceIgnored();
-      return mRepo.status(mRepo.index(), &mStatusCallbacks, ignoreWhitespace);
+      git::Diff diff = mRepo.status(own, &mStatusCallbacks, ignoreWhitespace);
+
+      // Stage with the index of the repository, which isn't read here.
+      if (diff.isValid())
+        diff.setIndex(index);
+      return diff;
     }));
   }
 
@@ -168,6 +234,24 @@ public:
       return;
 
     mPathspec = pathspec;
+    resetWalker();
+  }
+
+  // Walk only these branches and their upstream branches.
+  void setSolo(const QStringList &solo) {
+    if (solo == mSolo)
+      return;
+
+    mSolo = solo;
+    resetWalker();
+  }
+
+  // Don't walk these branches, unless they are soloed.
+  void setHidden(const QStringList &hidden) {
+    if (hidden == mHidden)
+      return;
+
+    mHidden = hidden;
     resetWalker();
   }
 
@@ -220,8 +304,10 @@ public:
   }
 
   void fetchMore(const QModelIndex &parent) {
-    FetchResult fetched = fetchRows(mWalker, mParents, mRows, mPathspec,
-                                    mGraphVisible, mRefsFilter);
+    FetchResult fetched =
+        fetchRows(mWalker, mParents, mRows, mPathspec, mGraphVisible,
+                  mSolo.isEmpty() ? mRefsFilter
+                                  : CommitList::RefsFilter::AllRefs);
 
     // Update the model.
     if (!fetched.rows.isEmpty()) {
@@ -253,15 +339,6 @@ public:
 
         return mStatus.isFinished() ? tr("Uncommitted changes")
                                     : tr("Checking for uncommitted changes");
-
-      case Qt::FontRole: {
-        if (!status)
-          return QVariant();
-
-        QFont font = static_cast<QWidget *>(QObject::parent())->font();
-        font.setItalic(true);
-        return font;
-      }
 
       case Qt::TextAlignmentRole:
         if (!status)
@@ -311,9 +388,67 @@ public:
 
         return columns;
       }
-    }
 
-    return QVariant();
+      case CommitList::Role::StatusRole:
+        return status;
+
+      case CommitList::Role::BusyRole:
+        return status && !mStatus.isFinished();
+
+      case CommitList::Role::WipRole: {
+        QVariantMap counts;
+        git::Diff diff = status ? this->status() : git::Diff();
+        if (!diff.isValid())
+          return counts;
+
+        int added = 0, modified = 0, deleted = 0;
+        for (int i = 0; i < diff.count(); ++i) {
+          switch (diff.status(i)) {
+            case GIT_DELTA_ADDED:
+            case GIT_DELTA_UNTRACKED:
+              ++added;
+              break;
+            case GIT_DELTA_DELETED:
+              ++deleted;
+              break;
+            default:
+              ++modified;
+              break;
+          }
+        }
+
+        counts.insert("added", added);
+        counts.insert("modified", modified);
+        counts.insert("deleted", deleted);
+        return counts;
+      }
+
+      case CommitList::Role::NodeColorRole: {
+        for (const Column &column : row.columns) {
+          for (const Segment &segment : column) {
+            if (segment.segment == Dot && segment.color.isValid())
+              return segment.color;
+          }
+        }
+
+        return QVariant();
+      }
+
+      default:
+        return status ? QVariant() : commitData(row.commit, role, mRefs);
+    }
+  }
+
+  QHash<int, QByteArray> roleNames() const override {
+    return CommitList::roleNames();
+  }
+
+  // The widest graph row that has been loaded.
+  int laneCount() const {
+    int count = 0;
+    for (const Row &row : mRows)
+      count = qMax(count, static_cast<int>(row.columns.size()));
+    return count;
   }
 
 signals:
@@ -361,6 +496,8 @@ private:
     bool graphVisible;
     bool sortDate;
     CommitList::RefsFilter refsFilter;
+    QStringList solo;
+    QStringList hidden;
     bool showCleanStatus;
     git::Repository repo;
     git::Diff statusDiff;
@@ -473,8 +610,10 @@ private:
     // Add middle section last.
     for (int i = 0; i < count; ++i) {
       const Parent &parent = parents.at(i);
+      // The node belongs to the commit, so it always gets the lane color.
       bool dot = (parent.commit == commit);
-      columns[i] << Segment(dot ? Dot : Middle, parent.taintedColor());
+      columns[i] << Segment(dot ? Dot : Middle,
+                            dot ? parent.color : parent.taintedColor());
     }
 
     return columns;
@@ -573,36 +712,79 @@ private:
   static ResetResult computeReset(const ResetContext &ctx) {
     ResetResult result;
 
-    // Update status row.
+    // Soloed branches are shown alone, with their upstream branches.
+    QList<git::Reference> solo;
+    for (const QString &name : ctx.solo) {
+      git::Reference ref = ctx.repo.lookupRef(name);
+      if (!ref.isValid())
+        continue;
+
+      solo.append(ref);
+      if (ref.isLocalBranch()) {
+        if (git::Branch upstream = git::Branch(ref).upstream())
+          solo.append(upstream);
+      }
+    }
+
+    // The uncommitted changes are shown on top of HEAD, when its branch is
+    // soloed.
+    git::Reference statusRef = ctx.ref;
     bool head = (!ctx.ref.isValid() || ctx.ref.isHead());
+    if (!solo.isEmpty()) {
+      git::Reference repoHead = ctx.repo.head();
+      statusRef = git::Reference();
+      head = false;
+      for (const git::Reference &ref : solo) {
+        if (repoHead.isValid() &&
+            ref.qualifiedName() == repoHead.qualifiedName()) {
+          statusRef = repoHead;
+          head = true;
+        }
+      }
+    }
+
+    // Update status row.
     bool valid = (!ctx.statusCheckFinished || ctx.statusDiff.isValid());
     if (ctx.showCleanStatus && head && valid && ctx.pathspec.isEmpty()) {
       QVector<Column> row;
-      if (ctx.graphVisible && ctx.ref.isValid() && ctx.statusCheckFinished) {
+      if (ctx.graphVisible && statusRef.isValid() && ctx.statusCheckFinished) {
         row.append({Segment(Bottom, kTaintedColor), Segment(Dot, QColor())});
         result.parents.append(
-            Parent(ctx.ref.target(), nextColor(result.parents), true));
+            Parent(statusRef.target(), nextColor(result.parents), true));
       }
       result.rows.append(Row(git::Commit(), row)); // Uncommitted changes
     }
 
+    int sort = GIT_SORT_NONE;
+    if (ctx.graphVisible) {
+      sort |= GIT_SORT_TOPOLOGICAL;
+      if (ctx.sortDate)
+        sort |= GIT_SORT_TIME;
+    } else if (!ctx.sortDate) {
+      sort |= GIT_SORT_TOPOLOGICAL;
+    }
+
     // Begin walking commits.
-    if (ctx.ref.isValid()) {
-      int sort = GIT_SORT_NONE;
-      if (ctx.graphVisible) {
-        sort |= GIT_SORT_TOPOLOGICAL;
-        if (ctx.sortDate)
-          sort |= GIT_SORT_TIME;
-      } else if (!ctx.sortDate) {
-        sort |= GIT_SORT_TOPOLOGICAL;
+    if (!solo.isEmpty()) {
+      result.walker = solo.first().walker(sort);
+      for (int i = 1; i < solo.size(); ++i)
+        result.walker.push(solo.at(i));
+
+      if (head) {
+        // Add merge head.
+        if (git::Reference mergeHead = ctx.repo.lookupRef("MERGE_HEAD"))
+          result.walker.push(mergeHead);
       }
 
+    } else if (ctx.ref.isValid()) {
       result.walker = ctx.ref.walker(
           sort,
           ctx.refsFilter == CommitList::RefsFilter::SelectedRefIgnoreMerge);
       if (ctx.ref.isLocalBranch()) {
         // Add the upstream branch.
-        if (git::Branch upstream = git::Branch(ctx.ref).upstream())
+        git::Branch upstream = git::Branch(ctx.ref).upstream();
+        if (upstream.isValid() &&
+            !matchesHidden(ctx.hidden, upstream.qualifiedName()))
           result.walker.push(upstream);
       }
 
@@ -612,18 +794,21 @@ private:
           result.walker.push(mergeHead);
       }
 
+      // Hidden branches aren't walked, like in GitKraken.
       if (ctx.refsFilter == CommitList::RefsFilter::AllRefs) {
         for (const git::Reference &ref : ctx.repo.refs()) {
-          if (!ref.isStash())
+          if (!ref.isStash() && !matchesHidden(ctx.hidden, ref.qualifiedName()))
             result.walker.push(ref);
         }
       }
     }
 
     if (result.walker.isValid()) {
-      FetchResult fetched =
-          fetchRows(result.walker, result.parents, result.rows, ctx.pathspec,
-                    ctx.graphVisible, ctx.refsFilter);
+      // Soloed branches show all their parents.
+      FetchResult fetched = fetchRows(
+          result.walker, result.parents, result.rows, ctx.pathspec,
+          ctx.graphVisible,
+          solo.isEmpty() ? ctx.refsFilter : CommitList::RefsFilter::AllRefs);
       result.rows.append(fetched.rows);
       if (fetched.exhausted)
         result.walker = git::RevWalk();
@@ -643,6 +828,8 @@ private:
                      mGraphVisible,
                      mSortDate,
                      mRefsFilter,
+                     mSolo,
+                     mHidden,
                      mShowCleanStatus,
                      mRepo,
                      status(),
@@ -676,6 +863,7 @@ private:
   git::Reference mRef;
   git::RevWalk mWalker;
   git::Repository mRepo;
+  const QMap<git::Id, QVariantList> *mRefs;
 
   QList<Row> mRows;
   QList<Parent> mParents;
@@ -683,6 +871,8 @@ private:
   // walker settings
   bool mSuppressResetWalker{false};
   CommitList::RefsFilter mRefsFilter{CommitList::RefsFilter::AllRefs};
+  QStringList mSolo;
+  QStringList mHidden;
   bool mSortDate = true;
   bool mShowCleanStatus = true;
   bool mGraphVisible = true;
@@ -694,7 +884,8 @@ private:
  */
 class ListModel : public QAbstractListModel {
 public:
-  ListModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+  ListModel(const QMap<git::Id, QVariantList> *refs, QObject *parent = nullptr)
+      : QAbstractListModel(parent), mRefs(refs) {}
 
   void setList(const QList<git::Commit> &commits) {
     beginResetModel();
@@ -719,560 +910,23 @@ public:
 
       case CommitList::Role::CommitRole:
         return QVariant::fromValue(mCommits.at(index.row()));
-    }
 
-    return QVariant();
+      case CommitList::Role::StatusRole:
+      case CommitList::Role::BusyRole:
+        return false;
+
+      default:
+        return commitData(mCommits.at(index.row()), role, mRefs);
+    }
+  }
+
+  QHash<int, QByteArray> roleNames() const override {
+    return CommitList::roleNames();
   }
 
 private:
   QList<git::Commit> mCommits;
-};
-
-class CommitDelegate : public QStyledItemDelegate {
-public:
-  CommitDelegate(const git::Repository &repo, QObject *parent = nullptr)
-      : QStyledItemDelegate(parent), mRepo(repo) {
-    updateRefs();
-
-    git::RepositoryNotifier *notifier = repo.notifier();
-    connect(notifier, &git::RepositoryNotifier::referenceUpdated, this,
-            &CommitDelegate::updateRefs);
-    connect(notifier, &git::RepositoryNotifier::referenceAdded, this,
-            &CommitDelegate::updateRefs);
-    connect(notifier, &git::RepositoryNotifier::referenceRemoved, this,
-            &CommitDelegate::updateRefs);
-  }
-
-  void paint(QPainter *painter, const QStyleOptionViewItem &option,
-             const QModelIndex &index) const override {
-    QStyleOptionViewItem opt = option;
-    initStyleOption(&opt, index);
-
-    bool compact = Settings::instance()
-                       ->value(Setting::Id::ShowCommitsInCompactMode)
-                       .toBool();
-    bool showAuthor = Settings::instance()
-                          ->value(Setting::Id::ShowCommitsAuthor, true)
-                          .toBool();
-    bool showDate = Settings::instance()
-                        ->value(Setting::Id::ShowCommitsDate, true)
-                        .toBool();
-    bool showId =
-        Settings::instance()->value(Setting::Id::ShowCommitsId, true).toBool();
-    LayoutConstants constants = layoutConstants(compact);
-
-    bool active = (opt.state & QStyle::State_Active);
-    bool selected = (opt.state & QStyle::State_Selected);
-    auto group = active ? QPalette::Active : QPalette::Inactive;
-    auto textRole = selected ? QPalette::HighlightedText : QPalette::Text;
-    auto brightRole = selected ? QPalette::WindowText : QPalette::BrightText;
-    QPalette palette = Application::theme()->commitList();
-    QColor text = palette.color(group, textRole);
-    QColor bright = palette.color(group, brightRole);
-    QColor highlight = palette.color(group, QPalette::Highlight);
-
-    painter->save();
-    painter->setRenderHints(QPainter::Antialiasing);
-
-    // Draw background.
-    if (selected) {
-      painter->fillRect(opt.rect, highlight);
-    }
-
-    // Draw busy indicator.
-    if (opt.features & QStyleOptionViewItem::HasDecoration) {
-      QRect rect = decorationRect(option, index);
-      int progress = index.data(Qt::DecorationRole).toInt();
-      ProgressIndicator::paint(painter, rect, bright, progress, opt.widget);
-    }
-
-    // Set default foreground color.
-    painter->setPen(text);
-
-    // Use default pen color for dot.
-    QPen dot = painter->pen();
-    dot.setWidth(2);
-
-    // Copy content rect.
-    QRect rect = opt.rect;
-    rect.setX(rect.x() + 2);
-
-    int totalWidth = rect.width();
-
-    // Draw graph.
-    painter->save();
-    QVariantList columns = index.data(CommitList::Role::GraphRole).toList();
-    QVariantList colorColumns =
-        index.data(CommitList::Role::GraphColorRole).toList();
-    for (int i = 0; i < columns.size(); ++i) {
-      int x = rect.x();
-      int y = rect.y();
-      int w = opt.fontMetrics.ascent();
-      int h = opt.rect.height();
-      int h_2 = h / 2;
-      int h_4 = h / 4;
-
-      // radius
-      int r = w / 3;
-
-      // xs
-      int x1 = x + (w / 2);
-      int x2 = x + w;
-
-      // ys
-      int y1 = y + h_2 - r;
-      int y2 = y + h_2;
-      int y3 = y + h_2 + r;
-      int y4 = y + h_2 + h_4;
-      int y5 = y + h;
-
-      QVariantList segments = columns.at(i).toList();
-      QVariantList colors = colorColumns.at(i).toList();
-      for (int j = 0; j < segments.size(); ++j) {
-        QColor color = colors.at(j).value<QColor>();
-        QPen pen(color, 2);
-        if (color == kTaintedColor) {
-          pen.setStyle(Qt::DashLine);
-          pen.setDashPattern({2, 2});
-        }
-
-        painter->setPen(pen);
-        switch (segments.at(j).toInt()) {
-          case Dot:
-            painter->setPen(dot);
-            painter->drawEllipse(QPoint(x1, y2), r, r);
-            break;
-
-          case Top:
-            painter->drawLine(x1, y, x1, y1);
-            break;
-
-          case Middle:
-            painter->drawLine(x1, y1, x1, y3);
-            break;
-
-          case Bottom:
-            painter->drawLine(x1, y3, x1, y5);
-            break;
-
-          case Cross:
-            painter->drawLine(x, y4, x2, y4);
-            break;
-
-          case RightOut: {
-            QPainterPath path;
-            path.moveTo(x1, y3);
-            path.quadTo(x1, y4, x2, y4);
-            painter->drawPath(path);
-            break;
-          }
-
-          case LeftOut: {
-            QPainterPath path;
-            path.moveTo(x1, y3);
-            path.quadTo(x1, y4, x, y4);
-            painter->drawPath(path);
-            break;
-          }
-
-          case RightIn: {
-            QPainterPath path;
-            path.moveTo(x1, y5);
-            path.quadTo(x1, y4, x2, y4);
-            painter->drawPath(path);
-            break;
-          }
-
-          case LeftIn: {
-            QPainterPath path;
-            path.moveTo(x1, y5);
-            path.quadTo(x1, y4, x, y4);
-            painter->drawPath(path);
-            break;
-          }
-        }
-      }
-
-      rect.setX(x + w);
-
-      // Finish early if the graph exceeds one third of the available space.
-      if (rect.x() > opt.rect.width() / 3)
-        break;
-    }
-
-    painter->restore();
-
-    // Adjust margins.
-    rect.setY(rect.y() + constants.vMargin);
-    rect.setX(rect.x() + constants.hMargin);
-
-    // Star has enough padding in compact mode.
-    if (!compact)
-      rect.setWidth(rect.width() - constants.hMargin);
-
-    // Draw content.
-    git::Commit commit =
-        index.data(CommitList::Role::CommitRole).value<git::Commit>();
-    if (!commit.isValid()) {
-      // special case for uncommitted changes
-      QString message = index.model()->data(index).toString();
-      painter->save();
-      QFont italic = opt.font;
-      italic.setItalic(true);
-      painter->setFont(italic);
-      painter->drawText(opt.rect, Qt::AlignCenter, message);
-      painter->restore();
-    } else {
-      const QFontMetrics &fm = opt.fontMetrics;
-      QRect star = rect;
-
-      QDateTime date = commit.committer().date().toLocalTime();
-      QString timestamp =
-          (date.date() == QDate::currentDate())
-              ? QLocale().toString(date.time(), QLocale::ShortFormat)
-              : QLocale().toString(date.date(), QLocale::ShortFormat);
-      int timestampWidth = fm.horizontalAdvance(timestamp);
-
-      if (compact) {
-        int maxWidthRefs = rect.width() * 0.5; // Max 50%
-        const int minWidthRefs = 50;           // At least display the ellipsis
-        const int minWidthDesc = 100;
-        int minDisplayWidthDate = 350;
-
-        // Star always takes up its height on the right side.
-        star.setX(star.x() + star.width() - star.height());
-        star.setY(star.y() - constants.vMargin);
-        rect.setWidth(rect.width() - star.width());
-
-        // Draw commit id.
-        if (showId) {
-          QString id = commit.id().toString().left(kShortIdSize);
-          int idWidth = maxShortIdWidth(fm);
-
-          QRect commitRect = rect;
-          commitRect.setX(commitRect.x() + commitRect.width() - idWidth);
-          painter->save();
-          painter->drawText(commitRect, Qt::AlignLeft, id);
-          painter->restore();
-          rect.setWidth(rect.width() - idWidth - constants.hMargin);
-        }
-
-        // Draw date. Only if it is not the same as previous?
-        if (showDate && rect.width() > minWidthDesc + timestampWidth + 8 &&
-            totalWidth > minDisplayWidthDate) {
-          painter->save();
-          painter->setPen(bright);
-          painter->drawText(rect, Qt::AlignRight, timestamp);
-          painter->restore();
-          rect.setWidth(rect.width() - timestampWidth - constants.hMargin);
-        }
-
-        // Draw Name.
-        if (showAuthor) {
-          QString name = commit.author().name() + "  ";
-          painter->save();
-          QFont bold = opt.font;
-          bold.setBold(true);
-          painter->setFont(bold);
-          painter->drawText(rect, Qt::AlignRight, name);
-          painter->restore();
-          const QFontMetrics boldFm(bold);
-          rect.setWidth(rect.width() - boldFm.horizontalAdvance(name) -
-                        constants.hMargin);
-        }
-
-        // Calculate remaining width for the references.
-        QRect ref = rect;
-        int refsWidth = ref.width() - minWidthDesc;
-        if (maxWidthRefs <= minWidthRefs)
-          maxWidthRefs = minWidthRefs;
-        if (refsWidth < minWidthRefs)
-          refsWidth = minWidthRefs;
-        if (refsWidth > maxWidthRefs)
-          refsWidth = maxWidthRefs;
-        ref.setWidth(refsWidth);
-
-        // Draw references.
-        int badgesWidth = rect.x();
-        QList<Badge::Label> refs = mRefs.value(commit.id());
-        if (!refs.isEmpty())
-          badgesWidth = Badge::paint(painter, refs, ref, &opt, Qt::AlignLeft);
-        rect.setX(badgesWidth); // Comes right after the badges
-
-        // Draw message.
-        painter->save();
-        painter->setPen(bright);
-        QString msg = commit.summary(git::Commit::SubstituteEmoji);
-        QString elidedText = fm.elidedText(msg, Qt::ElideRight, rect.width());
-        painter->drawText(rect, Qt::ElideRight, elidedText);
-        painter->restore();
-
-      } else {
-
-        // Draw Name.
-        QString name = "";
-        if (showAuthor) {
-          name = commit.author().name();
-          painter->save();
-          QFont bold = opt.font;
-          bold.setBold(true);
-          painter->setFont(bold);
-          painter->drawText(rect, Qt::AlignLeft, name);
-          painter->restore();
-        }
-
-        // Draw date.
-        if (showDate &&
-            rect.width() > fm.horizontalAdvance(name) + timestampWidth + 8) {
-          painter->save();
-          painter->setPen(bright);
-          if (showAuthor) {
-            painter->drawText(rect, Qt::AlignRight, timestamp);
-          } else {
-            painter->drawText(rect, Qt::AlignLeft, timestamp);
-          }
-          painter->restore();
-        }
-
-        // Draw id.
-        QString id = "";
-        if (showId) {
-          QRect idRect = rect;
-          if (showAuthor || showDate) {
-            idRect.setY(idRect.y() + constants.lineSpacing + constants.vMargin);
-          }
-          id = commit.shortId();
-          painter->save();
-          painter->drawText(idRect, Qt::AlignLeft, id);
-          painter->restore();
-        }
-
-        // Draw references.
-        QList<Badge::Label> refs = mRefs.value(commit.id());
-        if (!refs.isEmpty()) {
-          QRect refsRect = rect;
-          QString leftText = "";
-
-          if (showDate && showAuthor) {
-            refsRect.setY(refsRect.y() + constants.lineSpacing +
-                          constants.vMargin);
-            if (showId) {
-              leftText = id;
-            }
-          } else {
-            if (showDate) {
-              leftText = timestamp;
-            } else if (showAuthor) {
-              leftText = name;
-            } else if (showId) {
-              leftText = id;
-            }
-          }
-          refsRect.setX(refsRect.x() + fm.boundingRect(leftText).width() + 6);
-          Badge::paint(painter, refs, refsRect, &opt);
-        }
-
-        int numOptional = 0;
-        if (showId)
-          ++numOptional;
-        if (showAuthor)
-          ++numOptional;
-        if (showDate)
-          ++numOptional;
-        if (numOptional > 1) {
-          rect.setY(rect.y() + constants.lineSpacing + constants.vMargin);
-        }
-
-        rect.setY(rect.y() + constants.lineSpacing + constants.vMargin);
-
-        // Divide remaining rectangle.
-        star = rect;
-        star.setX(star.x() + star.width() - star.height());
-        QRect text = rect;
-        text.setWidth(text.width() - star.width());
-
-        // Draw message.
-        painter->save();
-        painter->setPen(bright);
-        QString msg = commit.summary(git::Commit::SubstituteEmoji);
-        QTextLayout layout(msg, painter->font());
-        layout.beginLayout();
-
-        QTextLine line = layout.createLine();
-        if (line.isValid()) {
-          int width = text.width();
-          line.setLineWidth(width);
-          int len = line.textLength();
-          painter->drawText(text, Qt::AlignLeft, msg.left(len));
-
-          if (len < msg.length()) {
-            text.setY(text.y() + constants.lineSpacing);
-            QString elided = fm.elidedText(msg.mid(len), Qt::ElideRight, width);
-            painter->drawText(text, Qt::AlignLeft, elided);
-          }
-        }
-
-        layout.endLayout();
-        painter->restore();
-      }
-
-      // Draw star.
-      bool starred = commit.isStarred();
-      const QAbstractItemView *view =
-          static_cast<const QAbstractItemView *>(opt.widget);
-      QPoint pos = view->viewport()->mapFromGlobal(QCursor::pos());
-      if (starred || (view->underMouse() && view->indexAt(pos) == index)) {
-        painter->save();
-
-        // Calculate outer radius and vertices.
-        qreal r = (star.height() / 2.0) - constants.starPadding;
-        qreal x = star.x() + (star.width() / 2.0);
-        qreal y = star.y() + (star.height() / 2.0);
-        qreal x1 = r * qCos(M_PI / 10.0);
-        qreal y1 = -r * qSin(M_PI / 10.0);
-        qreal x2 = r * qCos(17.0 * M_PI / 10.0);
-        qreal y2 = -r * qSin(17.0 * M_PI / 10.0);
-
-        // Calculate inner radius and vertices.
-        qreal xi = ((y1 + r) * x2) / (y2 + r);
-        qreal ri = qSqrt(qPow(xi, 2.0) + qPow(y1, 2.0));
-        qreal xi1 = ri * qCos(3.0 * M_PI / 10.0);
-        qreal yi1 = -ri * qSin(3.0 * M_PI / 10.0);
-        qreal xi2 = ri * qCos(19.0 * M_PI / 10.0);
-        qreal yi2 = -ri * qSin(19.0 * M_PI / 10.0);
-
-        QPolygonF polygon({QPointF(0, -r), QPointF(xi1, yi1), QPointF(x1, y1),
-                           QPointF(xi2, yi2), QPointF(x2, y2), QPointF(0, ri),
-                           QPointF(-x2, y2), QPointF(-xi2, yi2),
-                           QPointF(-x1, y1), QPointF(-xi1, yi1)});
-
-        if (starred)
-          painter->setBrush(Application::theme()->star());
-
-        painter->setPen(QPen(bright, 1.25));
-        painter->drawPolygon(polygon.translated(x, y));
-        painter->restore();
-      }
-    }
-
-    // Is the next index selected?
-    bool nextSelected = false;
-
-#ifndef Q_OS_WIN
-    // Draw separator between selected indexes.
-    QModelIndex next = index.sibling(index.row() + 1, 0);
-    if (next.isValid()) {
-      const QAbstractItemView *view =
-          static_cast<const QAbstractItemView *>(opt.widget);
-      nextSelected = view->selectionModel()->isSelected(next);
-    }
-#endif
-
-    // Draw separator line.
-    if (!compact && selected == nextSelected) {
-      painter->save();
-      painter->setRenderHints(QPainter::Antialiasing, false);
-      painter->setPen(selected ? text : opt.palette.color(QPalette::Dark));
-      painter->drawLine(rect.bottomLeft(), rect.bottomRight());
-      painter->restore();
-    }
-
-    painter->restore();
-  }
-
-  QSize sizeHint(const QStyleOptionViewItem &option,
-                 const QModelIndex &index) const override {
-    bool compact = Settings::instance()
-                       ->value(Setting::Id::ShowCommitsInCompactMode)
-                       .toBool();
-    LayoutConstants constants = layoutConstants(compact);
-
-    int lineHeight = constants.lineSpacing + constants.vMargin;
-    return QSize(0, lineHeight * (compact ? 1 : 4));
-  }
-
-  QRect decorationRect(const QStyleOptionViewItem &option,
-                       const QModelIndex &index) const {
-    QStyleOptionViewItem opt = option;
-    initStyleOption(&opt, index);
-
-    QStyle *style = opt.widget ? opt.widget->style() : QApplication::style();
-    QStyle::SubElement se = QStyle::SE_ItemViewItemDecoration;
-    return style->subElementRect(se, &opt, opt.widget);
-  }
-
-  QRect starRect(const QStyleOptionViewItem &option,
-                 const QModelIndex &index) const {
-    bool compact = Settings::instance()
-                       ->value(Setting::Id::ShowCommitsInCompactMode)
-                       .toBool();
-    LayoutConstants constants = layoutConstants(compact);
-
-    QRect rect = option.rect;
-    int length = constants.lineSpacing * 2;
-    rect.setX(rect.x() + rect.width() - length);
-    rect.setY(rect.y() + rect.height() - length);
-    rect.setWidth(rect.width() - constants.starPadding);
-    rect.setHeight(rect.height() - constants.starPadding);
-    return rect;
-  }
-
-protected:
-  void initStyleOption(QStyleOptionViewItem *option,
-                       const QModelIndex &index) const override {
-    QStyledItemDelegate::initStyleOption(option, index);
-    if (index.data(Qt::DecorationRole).canConvert<int>())
-      option->decorationSize = ProgressIndicator::size();
-  }
-
-private:
-  struct LayoutConstants {
-    const int starPadding;
-    const int lineSpacing;
-    const int vMargin;
-    const int hMargin;
-  };
-
-  LayoutConstants layoutConstants(bool compact) const {
-    return {compact ? 7 : 8, compact ? 23 : 16, compact ? 5 : 2, 4};
-  }
-
-  void updateRefs() {
-    mRefs.clear();
-
-    if (mRepo.isHeadDetached()) {
-      git::Reference head = mRepo.head();
-      mRefs[head.target().id()].append(
-          {Badge::Label::Type::Ref, head.name(), true});
-    }
-
-    for (const git::Reference &ref : mRepo.refs()) {
-      if (git::Commit target = ref.target())
-        mRefs[target.id()].append(
-            {Badge::Label::Type::Ref, ref.name(), ref.isHead(), ref.isTag()});
-    }
-  }
-
-  int maxShortIdWidth(const QFontMetrics &fm) const {
-    if (mMaxShortIdWidth < 0) {
-      for (char ch = 'a'; ch <= 'f'; ++ch) {
-        int width = fm.boundingRect(QString(kShortIdSize, ch)).width();
-        mMaxShortIdWidth = qMax(mMaxShortIdWidth, width);
-      }
-
-      for (char ch = '0'; ch <= '9'; ++ch) {
-        int width = fm.boundingRect(QString(kShortIdSize, ch)).width();
-        mMaxShortIdWidth = qMax(mMaxShortIdWidth, width);
-      }
-    }
-
-    return mMaxShortIdWidth;
-  }
-
-  git::Repository mRepo;
-  QMap<git::Id, QList<Badge::Label>> mRefs;
-
-  mutable int mMaxShortIdWidth = -1;
+  const QMap<git::Id, QVariantList> *mRefs;
 };
 
 class SelectionModel : public QItemSelectionModel {
@@ -1300,29 +954,27 @@ static Hotkey selectCommitDownHotKey = HotkeyManager::registerHotkey(
 static Hotkey selectCommitUpHotKey = HotkeyManager::registerHotkey(
     "k", "commitList/selectCommitUp", "CommitList/Select Next Commit Up");
 
-CommitList::CommitList(Index *index, QWidget *parent)
-    : QListView(parent), mIndex(index) {
-  Theme *theme = Application::theme();
-  setPalette(theme->commitList());
-
+CommitList::CommitList(Index *index, RepoView *view)
+    : QObject(view), mView(view), mIndex(index) {
   git::Repository repo = index->repo();
-  mList = new ListModel(this);
-  mModel = new CommitModel(repo, this);
+  mList = new ListModel(&mRefs, this);
+  mModel = new CommitModel(repo, &mRefs, this);
 
-  connect(&mTimer, &QTimer::timeout, this, [this] {
-    ++mProgress;
-    if (mLoadingFadein < 1.0f)
-      mLoadingFadein += 0.1;
-    viewport()->update();
-  });
+  // Restore the soloed branches that still exist.
+  QString solo = repo.appConfig().value<QString>(kSoloKey, QString());
+  for (const QString &name : solo.split(' ', Qt::SkipEmptyParts)) {
+    if (repo.lookupRef(name).isValid())
+      mSolo.append(name);
+  }
+  static_cast<CommitModel *>(mModel)->setSolo(mSolo);
 
-  setMouseTracking(true);
-  setUniformItemSizes(true);
-  setAttribute(Qt::WA_MacShowFocusRect, false);
-  setSelectionMode(QAbstractItemView::ExtendedSelection);
+  // Restore the hidden branches.
+  QString hidden = repo.appConfig().value<QString>(kHiddenKey, QString());
+  mHidden = hidden.split(' ', Qt::SkipEmptyParts);
+  static_cast<CommitModel *>(mModel)->setHidden(mHidden);
 
   setModel(mModel);
-  setItemDelegate(new CommitDelegate(repo, this));
+  updateRefs();
 
   connect(mModel, &QAbstractItemModel::modelAboutToBeReset, this,
           &CommitList::storeSelection);
@@ -1333,8 +985,13 @@ CommitList::CommitList(Index *index, QWidget *parent)
   connect(mList, &QAbstractItemModel::modelReset, this,
           &CommitList::restoreSelection);
 
+  connect(mModel, &QAbstractItemModel::modelReset, this,
+          &CommitList::updateLaneCount);
+  connect(mModel, &QAbstractItemModel::rowsInserted, this,
+          &CommitList::updateLaneCount);
+
   CommitModel *model = static_cast<CommitModel *>(mModel);
-  connect(model, &CommitModel::statusFinished, [this](bool visible) {
+  connect(model, &CommitModel::statusFinished, this, [this](bool visible) {
     mRestoreSelection = true; // Reset to default
 
     // Select the first commit if the selection was cleared.
@@ -1348,32 +1005,71 @@ CommitList::CommitList(Index *index, QWidget *parent)
   connect(model, &CommitModel::loadingChanged, this, &CommitList::setLoading);
 
   git::RepositoryNotifier *notifier = repo.notifier();
-  connect(notifier, &git::RepositoryNotifier::referenceUpdated,
+  connect(notifier, &git::RepositoryNotifier::referenceUpdated, this,
           [this](const git::Reference &ref, bool restoreSelection) {
             mRestoreSelection = restoreSelection;
             resetReference(ref);
           });
-  connect(notifier, &git::RepositoryNotifier::workdirChanged, [this] {
+  connect(notifier, &git::RepositoryNotifier::workdirChanged, this, [this] {
     resetReference(static_cast<const CommitModel *>(mModel)->reference());
   });
 
-  connect(this, &CommitList::entered,
-          [this](const QModelIndex &index) { update(index); });
+  connect(notifier, &git::RepositoryNotifier::referenceUpdated, this,
+          &CommitList::updateRefs);
+  connect(notifier, &git::RepositoryNotifier::referenceAdded, this,
+          &CommitList::updateRefs);
+  connect(notifier, &git::RepositoryNotifier::referenceRemoved, this,
+          &CommitList::updateRefs);
 
-  QShortcut *shortcut = new QShortcut(this);
+  // Stop soloing and hiding branches that are gone.
+  connect(notifier, &git::RepositoryNotifier::referenceRemoved, this, [this] {
+    QStringList solo;
+    git::Repository repo = mView->repo();
+    for (const QString &name : mSolo) {
+      if (repo.lookupRef(name).isValid())
+        solo.append(name);
+    }
+    setSolo(solo);
+
+    QStringList hidden;
+    for (const QString &name : mHidden) {
+      if (name.endsWith('/') || repo.lookupRef(name).isValid())
+        hidden.append(name);
+    }
+    setHidden(hidden);
+  });
+
+  QShortcut *shortcut = new QShortcut(view);
   selectCommitDownHotKey.use(shortcut);
-  connect(shortcut, &QShortcut::activated, [this] { selectCommitRelative(1); });
+  connect(shortcut, &QShortcut::activated, this,
+          [this] { selectCommitRelative(1); });
 
-  shortcut = new QShortcut(this);
+  shortcut = new QShortcut(view);
   selectCommitUpHotKey.use(shortcut);
-  connect(shortcut, &QShortcut::activated,
+  connect(shortcut, &QShortcut::activated, this,
           [this] { selectCommitRelative(-1); });
 
-#ifdef Q_OS_MAC
-  QFont font = this->font();
-  font.setPointSize(13);
-  setFont(font);
-#endif
+  // Settings that change how rows are drawn.
+  connect(Settings::instance(), &Settings::settingsChanged, this,
+          &CommitList::settingsChanged);
+}
+
+QHash<int, QByteArray> CommitList::roleNames() {
+  return {{Qt::DisplayRole, "display"},
+          {GraphRole, "graph"},
+          {GraphColorRole, "graphColors"},
+          {StatusRole, "isStatus"},
+          {SummaryRole, "summary"},
+          {AuthorRole, "author"},
+          {InitialsRole, "initials"},
+          {DateRole, "date"},
+          {ShortIdRole, "shortId"},
+          {StarredRole, "starred"},
+          {RefsRole, "refs"},
+          {NodeColorRole, "nodeColor"},
+          {MergeRole, "isMerge"},
+          {BusyRole, "busy"},
+          {WipRole, "wip"}};
 }
 
 git::Diff CommitList::status() const {
@@ -1395,12 +1091,6 @@ QString CommitList::selectedRange() const {
 
 git::Diff CommitList::selectedDiff() const {
   QModelIndexList indexes = sortedIndexes();
-  DebugRefresh("Selected indices count: " << indexes.count());
-  for (const auto &index : indexes) {
-    const auto &id = index.data(CommitRole).value<git::Commit>().shortId();
-    (void)id; // Unused in release builds
-    DebugRefresh("Commit: " << id);
-  }
   if (indexes.isEmpty())
     return git::Diff();
 
@@ -1431,6 +1121,10 @@ QList<git::Commit> CommitList::selectedCommits() const {
   return selectedCommits;
 }
 
+QModelIndexList CommitList::selectedIndexes() const {
+  return mSelection ? mSelection->selectedIndexes() : QModelIndexList();
+}
+
 void CommitList::cancelStatus() {
   static_cast<CommitModel *>(mModel)->cancelStatus();
 }
@@ -1439,7 +1133,6 @@ void CommitList::setReference(const git::Reference &ref) {
   static_cast<CommitModel *>(mModel)->setReference(ref);
   if (!isResetWalkerSuppressed())
     updateModel();
-  setFocus();
 }
 
 void CommitList::setFilter(const QString &filter) {
@@ -1481,11 +1174,6 @@ void CommitList::resetSelection(bool spontaneous) {
 
 void CommitList::selectFirstCommit(bool spontaneous) {
   QModelIndex index = model()->index(0, 0);
-  const auto commit = index.data(CommitRole).value<git::Commit>();
-  if (commit.isValid())
-    DebugRefresh("Commit id: " << commit.shortId());
-  else
-    DebugRefresh("Invalid commit");
   if (index.isValid()) {
     selectIndexes(QItemSelection(index, index), QString(), spontaneous);
   } else {
@@ -1501,16 +1189,24 @@ void CommitList::selectFirstCommit(bool spontaneous) {
 }
 
 void CommitList::selectCommitRelative(int offset) {
-  QModelIndexList indices = selectionModel()->selectedIndexes();
-  QModelIndex index = indices[0];
-  if (!index.isValid()) {
+  QModelIndexList indexes = sortedIndexes();
+  if (indexes.isEmpty())
     return;
-  }
-  QModelIndex new_index = model()->index(index.row() + offset, index.column());
-  if (!new_index.isValid()) {
-    return;
-  }
-  selectIndexes(QItemSelection(new_index, new_index), QString(), true);
+
+  QModelIndex index = (offset < 0) ? indexes.first() : indexes.last();
+  int row = index.row() + offset;
+  if (row >= model()->rowCount() && model()->canFetchMore(QModelIndex()))
+    model()->fetchMore(QModelIndex());
+
+  QModelIndex next = model()->index(row, 0);
+  if (next.isValid())
+    selectIndexes(QItemSelection(next, next), QString(), true);
+}
+
+void CommitList::selectRow(int row) {
+  QModelIndex index = model()->index(row, 0);
+  if (index.isValid())
+    selectIndexes(QItemSelection(index, index), QString(), true);
 }
 
 bool CommitList::selectRange(const QString &range, const QString &file,
@@ -1527,7 +1223,7 @@ bool CommitList::selectRange(const QString &range, const QString &file,
 
   // Invert range.
   bool one = (ids.size() == 1);
-  git::Repository repo = RepoView::parentView(this)->repo();
+  git::Repository repo = mView->repo();
   git::Commit firstCommit = repo.lookupCommit(ids.last());
   git::Commit lastCommit = one ? firstCommit : repo.lookupCommit(ids.first());
 
@@ -1573,41 +1269,95 @@ bool CommitList::isResetWalkerSuppressed() {
 
 void CommitList::resetSettings() {
   static_cast<CommitModel *>(mModel)->resetSettings(true);
+  emit settingsChanged();
 }
 
-void CommitList::setModel(QAbstractItemModel *model) {
-  if (model == this->model())
+bool CommitList::showAuthor() const {
+  return Settings::instance()->value(Setting::Id::ShowCommitsAuthor, true)
+      .toBool();
+}
+
+bool CommitList::showDate() const {
+  return Settings::instance()->value(Setting::Id::ShowCommitsDate, true)
+      .toBool();
+}
+
+bool CommitList::showId() const {
+  return Settings::instance()->value(Setting::Id::ShowCommitsId, true).toBool();
+}
+
+bool CommitList::compact() const {
+  return Settings::instance()
+      ->value(Setting::Id::ShowCommitsInCompactMode)
+      .toBool();
+}
+
+QString CommitList::refsFilterName() const {
+  git::Config config = mView->repo().appConfig();
+  switch (static_cast<RefsFilter>(config.value<int>(
+      ConfigKeys::kRefsKey, static_cast<int>(RefsFilter::AllRefs)))) {
+    case RefsFilter::AllRefs:
+      return tr("All Branches");
+    case RefsFilter::SelectedRef:
+      return tr("Selected Branch");
+    case RefsFilter::SelectedRefIgnoreMerge:
+      return tr("Selected Branch, First Parent");
+  }
+
+  return QString();
+}
+
+QString CommitList::sortName() const {
+  git::Config config = mView->repo().appConfig();
+  return config.value<bool>(ConfigKeys::kSortKey, true) ? tr("By Date")
+                                                        : tr("Topological");
+}
+
+bool CommitList::isSelected(int row) const {
+  return mSelection && mSelection->isSelected(model()->index(row, 0));
+}
+
+void CommitList::click(int row, int modifiers) {
+  QModelIndex index = model()->index(row, 0);
+  if (!index.isValid())
     return;
 
-  storeSelection();
+  // Selecting a second commit selects the range between them.
+  bool extend = modifiers & (Qt::ControlModifier | Qt::ShiftModifier |
+                             Qt::MetaModifier);
+  if (extend && !selectedIndexes().isEmpty()) {
+    if (mSelection->isSelected(index) && selectedIndexes().size() > 1) {
+      mSelection->select(index, QItemSelectionModel::Deselect);
+      return;
+    }
 
-  // Destroy the previous selection model.
-  delete selectionModel();
+    QModelIndex anchor = sortedIndexes().first();
+    QItemSelection selection;
+    selection.select(anchor, anchor);
+    selection.select(index, index);
+    selectIndexes(selection, QString(), true);
+    return;
+  }
 
-  QListView::setModel(model);
+  if (selectedIndexes().size() == 1 && mSelection->isSelected(index))
+    return;
 
-  // Destroy the selection model created by Qt.
-  delete selectionModel();
+  selectIndexes(QItemSelection(index, index), QString(), true);
+}
 
-  SelectionModel *selectionModel = new SelectionModel(model);
-  connect(
-      selectionModel, &QItemSelectionModel::selectionChanged,
-      [this](const QItemSelection &selected, const QItemSelection &deselected) {
-        // Update the index before each selected/deselected range.
-        for (const QItemSelectionRange &range : selected + deselected) {
-          if (int row = range.top())
-            update(this->model()->index(row - 1, 0));
-        }
+void CommitList::toggleStar(int row) {
+  QModelIndex index = model()->index(row, 0);
+  git::Commit commit = index.data(CommitRole).value<git::Commit>();
+  if (!commit.isValid())
+    return;
 
-        // Assume this selection is deliberate
-        mSelectionIsDefault = false;
+  commit.setStarred(!commit.isStarred());
+  emit model()->dataChanged(index, index, {StarredRole});
+}
 
-        notifySelectionChanged();
-      });
-
-  setSelectionModel(selectionModel);
-
-  restoreSelection();
+void CommitList::fetchMore() {
+  if (model()->canFetchMore(QModelIndex()))
+    model()->fetchMore(QModelIndex());
 }
 
 /// @brief Helper function to add a list of items to a menu.
@@ -1628,12 +1378,17 @@ static void addMenuEntries(QMenu &menu, const QString &operation,
   }
 }
 
-void CommitList::contextMenuEvent(QContextMenuEvent *event) {
-  QModelIndex index = indexAt(event->pos());
+void CommitList::showContextMenu(int row, qreal x, qreal y) {
+  QModelIndex index = model()->index(row, 0);
   if (!index.isValid())
     return;
 
-  RepoView *view = RepoView::parentView(this);
+  // Right-clicking outside of the selection selects the row first.
+  if (!mSelection->isSelected(index))
+    selectIndexes(QItemSelection(index, index), QString(), true);
+
+  RepoView *view = mView;
+  QPoint pos = view->mapFromPage(x, y);
   git::Commit commit = index.data(CommitRole).value<git::Commit>();
 
   if (!commit.isValid()) {
@@ -1654,7 +1409,7 @@ void CommitList::contextMenuEvent(QContextMenuEvent *event) {
 
     clean->setEnabled(!untracked.isEmpty());
 
-    menu.exec(event->globalPos());
+    QmlSupport::execMenu(&menu, pos);
     return;
   }
 
@@ -1674,7 +1429,7 @@ void CommitList::contextMenuEvent(QContextMenuEvent *event) {
   } else {
     // multiple selection
     bool anyStarred = false;
-    for (const QModelIndex &index : selectionModel()->selectedIndexes()) {
+    for (const QModelIndex &index : selectedIndexes()) {
       if (index.data(CommitRole).isValid() &&
           index.data(CommitRole).value<git::Commit>().isStarred()) {
         anyStarred = true;
@@ -1683,13 +1438,70 @@ void CommitList::contextMenuEvent(QContextMenuEvent *event) {
     }
 
     menu.addAction(anyStarred ? tr("Unstar") : tr("Star"), [this, anyStarred] {
-      for (const QModelIndex &index : selectionModel()->selectedIndexes())
-        if (index.data(CommitRole).isValid())
+      for (const QModelIndex &index : selectedIndexes()) {
+        if (index.data(CommitRole).isValid()) {
           index.data(CommitRole).value<git::Commit>().setStarred(!anyStarred);
+          emit model()->dataChanged(index, index, {StarredRole});
+        }
+      }
     });
 
+    // Solo the branches of the commit, or stop soloing.
+    QList<git::Reference> branches;
+    for (const git::Reference &ref : view->repo().refs()) {
+      if ((ref.isLocalBranch() || ref.isRemoteBranch()) &&
+          !ref.name().endsWith("/HEAD") && ref.target() == commit)
+        branches.append(ref);
+    }
+
+    if (!branches.isEmpty() || !mSolo.isEmpty())
+      menu.addSeparator();
+
+    if (branches.size() == 1) {
+      QString name = branches.first().qualifiedName();
+      bool soloed = isSoloed(name);
+      QString text = soloed ? tr("Unsolo %1") : tr("Solo %1");
+      menu.addAction(text.arg(branches.first().name()),
+                     [this, name, soloed] { setSoloed(name, !soloed); });
+    } else if (branches.size() > 1) {
+      QMenu *soloMenu = menu.addMenu(tr("Solo"));
+      for (const git::Reference &ref : branches) {
+        QString name = ref.qualifiedName();
+        QAction *action = soloMenu->addAction(
+            ref.name(), [this, name](bool checked) { setSoloed(name, checked); });
+        action->setCheckable(true);
+        action->setChecked(isSoloed(name));
+      }
+    }
+
+    if (!mSolo.isEmpty())
+      menu.addAction(tr("Unsolo All"), [this] { unsoloAll(); });
+
+    // Hide the branches of the commit from the graph, like GitKraken.
+    QList<git::Reference> hideable;
+    for (const git::Reference &ref : branches) {
+      if (!ref.isHead())
+        hideable.append(ref);
+    }
+
+    if (hideable.size() == 1) {
+      QString name = hideable.first().qualifiedName();
+      menu.addAction(tr("Hide %1").arg(hideable.first().name()),
+                     [this, name] { setHidden(name, true); });
+    } else if (hideable.size() > 1) {
+      QMenu *hideMenu = menu.addMenu(tr("Hide"));
+      for (const git::Reference &ref : hideable) {
+        QString name = ref.qualifiedName();
+        hideMenu->addAction(ref.name(),
+                            [this, name] { setHidden(name, true); });
+      }
+    }
+
+    if (!mHidden.isEmpty())
+      menu.addAction(tr("Show All Hidden Branches"), [this] { showAll(); });
+
     // single selection
-    if (selectionModel()->selectedIndexes().size() <= 1) {
+    if (selectedIndexes().size() <= 1) {
       menu.addSeparator();
 
       menu.addAction(tr("Add Tag..."),
@@ -1735,50 +1547,41 @@ void CommitList::contextMenuEvent(QContextMenuEvent *event) {
           std::bind(&RepoView::promptToDeleteTag, view, std::placeholders::_1));
       menu.addSeparator();
 
-      menu.addAction(tr("Merge..."), [view, commit] {
-        MergeDialog *dialog =
-            new MergeDialog(RepoView::Merge, view->repo(), view);
-        connect(dialog, &QDialog::accepted, [view, dialog] {
-          git::AnnotatedCommit upstream;
-          git::Reference ref = dialog->reference();
-          if (!ref.isValid())
-            upstream = dialog->target().annotatedCommit();
-          view->merge(dialog->flags(), ref, upstream);
+      auto addMergeAction = [&menu, view, commit](const QString &text,
+                                                  RepoView::MergeFlag flag) {
+        menu.addAction(text, [view, commit, flag] {
+          MergeDialog *dialog = new MergeDialog(flag, view->repo(), view);
+          connect(dialog, &QDialog::accepted, [view, dialog] {
+            git::AnnotatedCommit upstream;
+            git::Reference ref = dialog->reference();
+            if (!ref.isValid())
+              upstream = dialog->target().annotatedCommit();
+            view->merge(dialog->flags(), ref, upstream);
+          });
+
+          dialog->setCommit(commit);
+          dialog->open();
         });
+      };
 
-        dialog->setCommit(commit);
-        dialog->open();
-      });
+      addMergeAction(tr("Merge..."), RepoView::Merge);
+      addMergeAction(tr("Rebase..."), RepoView::Rebase);
 
-      menu.addAction(tr("Rebase..."), [view, commit] {
-        MergeDialog *dialog =
-            new MergeDialog(RepoView::Rebase, view->repo(), view);
-        connect(dialog, &QDialog::accepted, [view, dialog] {
-          git::AnnotatedCommit upstream;
-          git::Reference ref = dialog->reference();
-          if (!ref.isValid())
-            upstream = dialog->target().annotatedCommit();
-          view->merge(dialog->flags(), ref, upstream);
+      // Pick, reword, squash, drop and reorder the commits of the current
+      // branch after this one, like GitKraken.
+      git::Reference current = view->repo().head();
+      if (current.isValid() && current.isLocalBranch() &&
+          view->interactiveRebase()->canOpen(current.qualifiedName(),
+                                             commit)) {
+        QString text = tr("Interactive Rebase %1 onto %2...")
+                           .arg(current.name(), commit.shortId());
+        menu.addAction(text, [view, current, commit] {
+          view->interactiveRebase()->open(current.qualifiedName(), commit,
+                                          commit.shortId());
         });
+      }
 
-        dialog->setCommit(commit);
-        dialog->open();
-      });
-
-      menu.addAction(tr("Squash..."), [view, commit] {
-        MergeDialog *dialog =
-            new MergeDialog(RepoView::Squash, view->repo(), view);
-        connect(dialog, &QDialog::accepted, [view, dialog] {
-          git::AnnotatedCommit upstream;
-          git::Reference ref = dialog->reference();
-          if (!ref.isValid())
-            upstream = dialog->target().annotatedCommit();
-          view->merge(dialog->flags(), ref, upstream);
-        });
-
-        dialog->setCommit(commit);
-        dialog->open();
-      });
+      addMergeAction(tr("Squash..."), RepoView::Squash);
 
       menu.addSeparator();
 
@@ -1845,64 +1648,206 @@ void CommitList::contextMenuEvent(QContextMenuEvent *event) {
     }
   }
 
-  menu.exec(event->globalPos());
+  QmlSupport::execMenu(&menu, pos);
 }
 
-void CommitList::mouseMoveEvent(QMouseEvent *event) {
-  if (mStar.isValid() || mCancel.isValid())
-    return;
+void CommitList::showRefsFilterMenu(qreal x, qreal y) {
+  git::Config config = mView->repo().appConfig();
+  int current = config.value<int>(ConfigKeys::kRefsKey,
+                                  static_cast<int>(RefsFilter::AllRefs));
 
-  QListView::mouseMoveEvent(event);
-}
-
-void CommitList::mousePressEvent(QMouseEvent *event) {
-  QPoint pos = event->pos();
-  QModelIndex index = indexAt(pos);
-  mStar = isStar(index, pos) ? index : QModelIndex();
-  mCancel = isDecoration(index, pos) ? index : QModelIndex();
-
-  if (mStar.isValid() || mCancel.isValid())
-    return;
-
-  DebugRefresh("time: " << QDateTime::currentDateTime());
-
-  QListView::mousePressEvent(event);
-}
-
-void CommitList::mouseReleaseEvent(QMouseEvent *event) {
-  QPoint pos = event->pos();
-  QModelIndex index = indexAt(pos);
-  if (mStar == index && isStar(index, pos)) {
-    if (git::Commit commit = index.data(CommitRole).value<git::Commit>()) {
-      commit.setStarred(!commit.isStarred());
-      update(index); // FIXME: Add signal?
-    }
-  } else if (mCancel == index && isDecoration(index, pos)) {
-    static_cast<CommitModel *>(model())->cancelStatus();
+  QMenu menu;
+  QList<QPair<QString, RefsFilter>> entries = {
+      {tr("Show All Branches"), RefsFilter::AllRefs},
+      {tr("Show Selected Branch"), RefsFilter::SelectedRef},
+      {tr("Show Selected Branch, First Parent Only"),
+       RefsFilter::SelectedRefIgnoreMerge}};
+  for (const auto &entry : entries) {
+    QAction *action = menu.addAction(entry.first, [this, entry] {
+      setConfigValue(ConfigKeys::kRefsKey, static_cast<int>(entry.second));
+    });
+    action->setCheckable(true);
+    action->setChecked(current == static_cast<int>(entry.second));
   }
 
-  mStar = QModelIndex();
-  mCancel = QModelIndex();
-
-  QListView::mouseReleaseEvent(event);
+  QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
 }
 
-void CommitList::leaveEvent(QEvent *event) {
-  viewport()->update();
-  QListView::leaveEvent(event);
+void CommitList::showSortMenu(qreal x, qreal y) {
+  git::Config config = mView->repo().appConfig();
+  bool date = config.value<bool>(ConfigKeys::kSortKey, true);
+
+  QMenu menu;
+  QAction *byDate = menu.addAction(
+      tr("Sort by Date"), [this] { setConfigValue(ConfigKeys::kSortKey, true); });
+  byDate->setCheckable(true);
+  byDate->setChecked(date);
+
+  QAction *topological =
+      menu.addAction(tr("Sort Topologically"),
+                     [this] { setConfigValue(ConfigKeys::kSortKey, false); });
+  topological->setCheckable(true);
+  topological->setChecked(!date);
+
+  QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
 }
 
-void CommitList::paintEvent(QPaintEvent *event) {
-  QListView::paintEvent(event);
+void CommitList::showSettingsMenu(qreal x, qreal y) {
+  git::Config config = mView->repo().appConfig();
+  Settings *settings = Settings::instance();
 
-  if (mLoading) {
-    QPainter painter(viewport());
-    QRect indicator(QPoint(0, 0), ProgressIndicator::size());
-    indicator.moveCenter(viewport()->rect().center());
-    ProgressIndicator::paint(&painter, indicator,
-                             palette().color(QPalette::WindowText),
-                             mLoadingFadein, mProgress);
+  QMenu menu;
+  QAction *graph = menu.addAction(tr("Show Graph"), [this](bool checked) {
+    setConfigValue(ConfigKeys::kGraphKey, checked);
+  });
+  graph->setCheckable(true);
+  graph->setChecked(config.value<bool>(ConfigKeys::kGraphKey, true));
+
+  QAction *status =
+      menu.addAction(tr("Show Clean Status"), [this](bool checked) {
+        setConfigValue(ConfigKeys::kStatusKey, checked);
+      });
+  status->setCheckable(true);
+  status->setChecked(config.value<bool>(ConfigKeys::kStatusKey, true));
+
+  menu.addSeparator();
+
+  auto addSetting = [this, &menu, settings](const QString &text,
+                                            Setting::Id id, bool defaultValue) {
+    QAction *action = menu.addAction(text, [this, settings, id](bool checked) {
+      settings->setValue(id, checked);
+      resetSettings();
+    });
+    action->setCheckable(true);
+    action->setChecked(settings->value(id, defaultValue).toBool());
+  };
+
+  addSetting(tr("Compact Mode"), Setting::Id::ShowCommitsInCompactMode, false);
+  menu.addSeparator();
+  addSetting(tr("Show Author"), Setting::Id::ShowCommitsAuthor, true);
+  addSetting(tr("Show Date"), Setting::Id::ShowCommitsDate, true);
+  addSetting(tr("Show Id"), Setting::Id::ShowCommitsId, true);
+
+  QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
+}
+
+QString CommitList::soloText() const {
+  if (mSolo.size() == 1)
+    return mView->repo().lookupRef(mSolo.first()).name();
+
+  return tr("%1 branches").arg(mSolo.size());
+}
+
+bool CommitList::isSoloed(const QString &name) const {
+  return mSolo.contains(name);
+}
+
+void CommitList::setSoloed(const QString &name, bool soloed) {
+  QStringList solo = mSolo;
+  if (soloed && !solo.contains(name))
+    solo.append(name);
+  else if (!soloed)
+    solo.removeAll(name);
+
+  setSolo(solo);
+}
+
+void CommitList::unsoloAll() { setSolo(QStringList()); }
+
+QString CommitList::hiddenText() const {
+  if (mHidden.size() == 1) {
+    QString name = mHidden.first();
+    if (name.endsWith('/'))
+      return name.section('/', 2, 2);
+    return mView->repo().lookupRef(name).name();
   }
+
+  return tr("%1 branches").arg(mHidden.size());
+}
+
+bool CommitList::isHidden(const QString &name) const {
+  return matchesHidden(mHidden, name);
+}
+
+bool CommitList::canHide(const QString &name) const {
+  git::Reference head = mView->repo().head();
+  return !head.isValid() || head.qualifiedName() != name;
+}
+
+void CommitList::setHidden(const QString &name, bool hidden) {
+  QStringList list = mHidden;
+  if (hidden && !list.contains(name) && canHide(name)) {
+    list.append(name);
+  } else if (!hidden) {
+    list.removeAll(name);
+  }
+
+  setHidden(list);
+}
+
+void CommitList::showAll() { setHidden(QStringList()); }
+
+void CommitList::setHidden(const QStringList &hidden) {
+  if (hidden == mHidden)
+    return;
+
+  mHidden = hidden;
+  mView->repo().appConfig().setValue(kHiddenKey, hidden.join(' '));
+
+  updateRefs();
+  static_cast<CommitModel *>(mModel)->setHidden(hidden);
+  emit hiddenChanged();
+}
+
+void CommitList::setSolo(const QStringList &solo) {
+  if (solo == mSolo)
+    return;
+
+  mSolo = solo;
+  mView->repo().appConfig().setValue(kSoloKey, solo.join(' '));
+
+  updateRefs();
+  static_cast<CommitModel *>(mModel)->setSolo(solo);
+  emit soloChanged();
+}
+
+void CommitList::setConfigValue(const QString &key, const QVariant &value) {
+  git::Config config = mView->repo().appConfig();
+  if (value.typeId() == QMetaType::Bool) {
+    config.setValue(key, value.toBool());
+  } else {
+    config.setValue(key, value.toInt());
+  }
+
+  resetSettings();
+}
+
+void CommitList::setModel(QAbstractItemModel *model) {
+  if (model == mCurrent)
+    return;
+
+  if (mCurrent)
+    storeSelection();
+
+  // Destroy the previous selection model.
+  delete mSelection;
+
+  mCurrent = model;
+  mSelection = new SelectionModel(model);
+  connect(mSelection, &QItemSelectionModel::selectionChanged, this, [this] {
+    // Assume this selection is deliberate
+    mSelectionIsDefault = false;
+
+    ++mSelectionRevision;
+    emit selectionRevisionChanged();
+
+    notifySelectionChanged();
+  });
+
+  emit modelChanged();
+  updateLaneCount();
+
+  restoreSelection();
 }
 
 void CommitList::setLoading(bool loading) {
@@ -1910,15 +1855,6 @@ void CommitList::setLoading(bool loading) {
     return;
 
   mLoading = loading;
-  if (loading) {
-    mLoadingFadein = 0;
-    mProgress = 0;
-    mTimer.start(50);
-  } else {
-    mTimer.stop();
-  }
-
-  viewport()->update();
   emit loadingChanged(loading);
 }
 
@@ -1929,7 +1865,6 @@ void CommitList::storeSelection() {
   // picks up whatever the new default is
   mSelectedRange = mSelectionIsDefault ? QString() : selectedRange();
   DebugRefresh("Selected Range: " << mSelectedRange);
-  Debug(mSelectedRange);
 }
 
 void CommitList::restoreSelection() {
@@ -1949,6 +1884,10 @@ void CommitList::restoreSelection() {
 
   if (selectedIndexes().isEmpty())
     selectFirstCommit();
+
+  // The rows were replaced, so the selection highlight has to be redrawn.
+  ++mSelectionRevision;
+  emit selectionRevisionChanged();
 }
 
 void CommitList::updateModel() {
@@ -1965,6 +1904,111 @@ void CommitList::updateModel() {
 
   // Reset model.
   setModel(mModel);
+}
+
+void CommitList::updateRefs() {
+  mRefs.clear();
+
+  git::Repository repo = mView->repo();
+  git::Reference head = repo.head();
+  if (repo.isHeadDetached()) {
+    mRefs[head.target().id()].append(QVariantMap{
+        {"name", head.name()}, {"head", true}, {"local", true}});
+  }
+
+  // Only the soloed branches and their upstream branches are shown while
+  // soloing.
+  QSet<QString> solo;
+  for (const QString &name : mSolo) {
+    solo.insert(name);
+    git::Reference ref = repo.lookupRef(name);
+    if (ref.isLocalBranch()) {
+      if (git::Branch upstream = git::Branch(ref).upstream())
+        solo.insert(upstream.qualifiedName());
+    }
+  }
+
+  // Merge local branches with remote branches of the same name, the way
+  // GitKraken shows them.
+  QMap<git::Id, QVariantList> remotes;
+  for (const git::Reference &ref : repo.refs()) {
+    git::Commit target = ref.target();
+    if (!target.isValid() || ref.isStash())
+      continue;
+
+    if (!solo.isEmpty() && (ref.isLocalBranch() || ref.isRemoteBranch()) &&
+        !solo.contains(ref.qualifiedName()))
+      continue;
+
+    // Hidden branches have no labels, unless they are soloed.
+    if (solo.isEmpty() && !ref.isHead() &&
+        matchesHidden(mHidden, ref.qualifiedName()))
+      continue;
+
+    if (ref.isRemoteBranch()) {
+      if (ref.name().endsWith("/HEAD"))
+        continue;
+      remotes[target.id()].append(ref.name());
+      continue;
+    }
+
+    mRefs[target.id()].append(
+        QVariantMap{{"name", ref.name()},
+                    {"qualified", ref.qualifiedName()},
+                    {"head", ref.isHead()},
+                    {"tag", ref.isTag()},
+                    {"local", ref.isLocalBranch()}});
+  }
+
+  for (auto it = remotes.cbegin(); it != remotes.cend(); ++it) {
+    QVariantList &refs = mRefs[it.key()];
+    for (const QVariant &name : it.value()) {
+      QString remote = name.toString();
+      QString local = remote.section('/', 1);
+
+      bool merged = false;
+      for (QVariant &ref : refs) {
+        QVariantMap map = ref.toMap();
+        if (map.value("local").toBool() && map.value("name") == local) {
+          map.insert("remote", true);
+          ref = map;
+          merged = true;
+          break;
+        }
+      }
+
+      if (!merged)
+        refs.append(QVariantMap{{"name", remote},
+                                {"qualified", "refs/remotes/" + remote},
+                                {"remote", true}});
+    }
+  }
+
+  // Show HEAD first.
+  for (QVariantList &refs : mRefs) {
+    std::stable_sort(refs.begin(), refs.end(),
+                     [](const QVariant &lhs, const QVariant &rhs) {
+                       return lhs.toMap().value("head").toBool() &&
+                              !rhs.toMap().value("head").toBool();
+                     });
+  }
+
+  QAbstractItemModel *model = this->model();
+  if (model && model->rowCount() > 0)
+    emit model->dataChanged(model->index(0, 0),
+                            model->index(model->rowCount() - 1, 0),
+                            {RefsRole});
+}
+
+void CommitList::updateLaneCount() {
+  int count = 0;
+  if (mCurrent == mModel)
+    count = static_cast<CommitModel *>(mModel)->laneCount();
+
+  if (count != mLaneCount) {
+    mLaneCount = count;
+    emit laneCountChanged();
+  }
 }
 
 QModelIndexList CommitList::sortedIndexes() const {
@@ -2011,25 +2055,22 @@ void CommitList::selectIndexes(const QItemSelection &selection,
                                const QString &file, bool spontaneous) {
   mFile = file;
   mSpontaneous = spontaneous;
-  selectionModel()->select(selection, QItemSelectionModel::ClearAndSelect);
+  mSelection->select(selection, QItemSelectionModel::ClearAndSelect);
   mSpontaneous = true;
   mFile = QString();
 
   QModelIndexList indexes = selection.indexes();
-  if (!indexes.isEmpty())
-    scrollTo(indexes.first());
+  if (!indexes.isEmpty()) {
+    mSelection->setCurrentIndex(indexes.first(), QItemSelectionModel::NoUpdate);
+    emit scrollRequested(indexes.first().row());
+  }
 }
 
 void CommitList::notifySelectionChanged() {
   // Multiple selection means that the selected parameter
   // could be empty when there are still indexes selected.
-  QModelIndexList indexes = selectedIndexes();
-  if (indexes.isEmpty())
+  if (selectedIndexes().isEmpty())
     return;
-
-  // Redraw all selected indexes. Separators may have changed.
-  for (const QModelIndex &index : indexes)
-    update(index);
 
   dispatchSelectedDiff(mFile, mSpontaneous);
 }
@@ -2090,28 +2131,6 @@ void CommitList::dispatchSelectedDiff(const QString &file, bool spontaneous) {
     diff.findSimilar();
     return diff;
   }));
-}
-
-bool CommitList::isDecoration(const QModelIndex &index, const QPoint &pos) {
-  if (!index.isValid())
-    return false;
-
-  CommitDelegate *delegate = static_cast<CommitDelegate *>(itemDelegate());
-  QStyleOptionViewItem options;
-  initViewItemOption(&options);
-  options.rect = visualRect(index);
-  return delegate->decorationRect(options, index).contains(pos);
-}
-
-bool CommitList::isStar(const QModelIndex &index, const QPoint &pos) {
-  if (!index.isValid() || !index.data(CommitRole).isValid())
-    return false;
-
-  CommitDelegate *delegate = static_cast<CommitDelegate *>(itemDelegate());
-  QStyleOptionViewItem options;
-  initViewItemOption(&options);
-  options.rect = visualRect(index);
-  return delegate->starRect(options, index).contains(pos);
 }
 
 #include "CommitList.moc"

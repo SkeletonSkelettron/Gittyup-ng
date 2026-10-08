@@ -8,48 +8,18 @@
 //
 
 #include "DownloadDialog.h"
-#include "dialogs/IconLabel.h"
 #include <QCoreApplication>
-#include <QDialogButtonBox>
-#include <QIcon>
-#include <QLabel>
 #include <QNetworkReply>
-#include <QProgressBar>
-#include <QPushButton>
-#include <QVBoxLayout>
 
 DownloadDialog::DownloadDialog(const Updater::DownloadRef &download,
                                QWidget *parent)
-    : QDialog(parent) {
+    : QmlDialog(parent),
+      mText(tr("Downloading %1...").arg(download->name())) {
   setAttribute(Qt::WA_DeleteOnClose);
   setWindowTitle(tr("Update %1").arg(QCoreApplication::applicationName()));
 
-  QIcon icon(":/Gittyup.iconset/icon_128x128.png");
-  IconLabel *iconLabel = new IconLabel(icon, 64, 64, this);
-
-  QVBoxLayout *iconLayout = new QVBoxLayout;
-  iconLayout->addWidget(iconLabel);
-  iconLayout->addStretch();
-
-  QLabel *label = new QLabel(tr("Downloading %1...").arg(download->name()));
-  QProgressBar *progress = new QProgressBar(this);
-
-  QDialogButtonBox *buttons =
-      new QDialogButtonBox(QDialogButtonBox::Cancel, this);
-  connect(buttons, &QDialogButtonBox::rejected, this, &DownloadDialog::reject);
-  connect(buttons, &QDialogButtonBox::accepted, this, &DownloadDialog::accept);
-
-  QVBoxLayout *content = new QVBoxLayout;
-  content->addWidget(label);
-  content->addWidget(progress);
-  content->addWidget(buttons);
-
-  QHBoxLayout *layout = new QHBoxLayout(this);
-  layout->addLayout(iconLayout);
-  layout->addLayout(content);
-
   QNetworkReply *reply = download->reply();
-  connect(reply, &QNetworkReply::finished, [this, label, buttons, reply] {
+  connect(reply, &QNetworkReply::finished, this, [this, reply] {
     // The download was aborted.
     if (reply->error() != QNetworkReply::NoError || !reply->isOpen()) {
       close();
@@ -57,10 +27,10 @@ DownloadDialog::DownloadDialog(const Updater::DownloadRef &download,
     }
 
     // Adjust interface for installation.
-    label->setText(tr("Download Complete!"));
-    QPushButton *install = buttons->addButton(tr("Install and Restart"),
-                                              QDialogButtonBox::AcceptRole);
-    install->setDefault(true);
+    mText = tr("Download Complete!");
+    mProgress = 1;
+    mComplete = true;
+    emit changed();
 
     // Now connect reject to the cancel signal.
     connect(this, &DownloadDialog::rejected, Updater::instance(),
@@ -73,9 +43,11 @@ DownloadDialog::DownloadDialog(const Updater::DownloadRef &download,
           [download] { Updater::instance()->install(download); });
 
   // Show download progress.
-  connect(reply, &QNetworkReply::downloadProgress,
-          [progress](int current, int total) {
-            progress->setMaximum(total);
-            progress->setValue(current);
+  connect(reply, &QNetworkReply::downloadProgress, this,
+          [this](qint64 current, qint64 total) {
+            mProgress = total > 0 ? qreal(current) / total : 0;
+            emit changed();
           });
+
+  setContent("DownloadDialog");
 }

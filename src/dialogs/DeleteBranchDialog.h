@@ -10,13 +10,13 @@
 #ifndef DELETEBRANCHDIALOG_H
 #define DELETEBRANCHDIALOG_H
 
-#include <QMessageBox>
+#include "ConfirmDialog.h"
 
 namespace git {
 class Branch;
 }
 
-class DeleteBranchDialog : public QMessageBox {
+class DeleteBranchDialog : public ConfirmDialog {
   Q_OBJECT
 
 public:

@@ -40,7 +40,8 @@ elseif(NOT USE_SYSTEM_LUA)
     ${LUA_DIR}/loslib.c
     ${LUA_DIR}/lstring.c
     ${LUA_DIR}/ltablib.c
-    ${LUA_DIR}/lua.c
+    # Not lua.c: its main() of the interpreter would replace the main() of
+    # executables of MinGW, since Qt renames theirs to qMain().
     ${LUA_DIR}/lvm.c)
 
   target_include_directories(lua

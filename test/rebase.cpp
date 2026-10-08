@@ -10,13 +10,9 @@
 #include "Test.h"
 #include "ui/RepoView.h"
 #include "ui/DetailView.h"
-#include "ui/DoubleTreeWidget.h"
-#include "ui/DiffView/DiffView.h"
 
 #include "ui/MainWindow.h"
 #include "ui/DetailView.h"
-#include "ui/DiffView/FileWidget.h"
-#include "ui/DiffView/HunkWidget.h"
 
 #include "git/Reference.h"
 #include "git/Diff.h"
@@ -28,8 +24,6 @@
 #include "log/LogEntry.h"
 
 #include <QStackedWidget>
-#include <QTextEdit>
-#include <QPushButton>
 
 #define INIT_REPO(repoPath)                                                    \
   QString path = Test::extractRepository(repoPath);                            \
@@ -163,13 +157,8 @@ void TestRebase::withoutConflicts() {
 
   auto *detailview = repoView->findChild<DetailView *>();
   QVERIFY(detailview);
-  auto *abortRebaseButton = detailview->findChild<QPushButton *>("AbortRebase");
-  QVERIFY(abortRebaseButton);
-  auto *continueRebaseButton =
-      detailview->findChild<QPushButton *>("ContinueRebase");
-  QVERIFY(continueRebaseButton);
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 }
 
 void TestRebase::conflictingRebase() {
@@ -177,13 +166,8 @@ void TestRebase::conflictingRebase() {
 
   auto *detailview = repoView->findChild<DetailView *>();
   QVERIFY(detailview);
-  auto *abortRebaseButton = detailview->findChild<QPushButton *>("AbortRebase");
-  QVERIFY(abortRebaseButton);
-  auto *continueRebaseButton =
-      detailview->findChild<QPushButton *>("ContinueRebase");
-  QVERIFY(continueRebaseButton);
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 
   int rebaseFinished = 0;
   int rebaseAboutToRebase = 0;
@@ -251,8 +235,8 @@ void TestRebase::conflictingRebase() {
 
   // Check that buttons are visible
   QTest::qWait(100);
-  QCOMPARE(continueRebaseButton->isVisible(), true);
-  QCOMPARE(abortRebaseButton->isVisible(), true);
+  QCOMPARE(detailview->isRebaseContinueVisible(), true);
+  QCOMPARE(detailview->isRebaseAbortVisible(), true);
 
   // Resolve conflicts
   diff = mRepo.status(mRepo.index(), nullptr, false);
@@ -274,10 +258,8 @@ void TestRebase::conflictingRebase() {
   QTest::qWait(100); // Wait until refresh is done
 
   // Staging the file
-  auto filewidgets = repoView->findChildren<FileWidget *>();
-  QCOMPARE(filewidgets.length(), 1);
-  filewidgets.at(0)->stageStateChanged(filewidgets.at(0)->modelIndex(),
-                                       git::Index::StagedState::Staged);
+  QCOMPARE(detailview->unstagedFiles()->rowCount(), 1);
+  detailview->stageFiles(DetailView::UnstagedFiles, 0, true);
 
   refreshTriggered = 0;
   rebaseConflict = 0;
@@ -299,8 +281,8 @@ void TestRebase::conflictingRebase() {
   QTest::qWait(100); // Wait until refresh finished
 
   // Check that buttons are visible
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 
   // Check call counters
   QCOMPARE(rebaseFinished, 1);
@@ -314,13 +296,8 @@ void TestRebase::conflictingRebaseCustomMessage() {
 
   auto *detailview = repoView->findChild<DetailView *>();
   QVERIFY(detailview);
-  auto *abortRebaseButton = detailview->findChild<QPushButton *>("AbortRebase");
-  QVERIFY(abortRebaseButton);
-  auto *continueRebaseButton =
-      detailview->findChild<QPushButton *>("ContinueRebase");
-  QVERIFY(continueRebaseButton);
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 
   const QString rebaseBranchName = "refs/heads/singleCommitConflict";
 
@@ -362,14 +339,10 @@ void TestRebase::conflictingRebaseCustomMessage() {
   QTest::qWait(100); // Wait until refresh is done
 
   // Staging the file
-  auto filewidgets = repoView->findChildren<FileWidget *>();
-  QCOMPARE(filewidgets.length(), 1);
-  filewidgets.at(0)->stageStateChanged(filewidgets.at(0)->modelIndex(),
-                                       git::Index::StagedState::Staged);
+  QCOMPARE(detailview->unstagedFiles()->rowCount(), 1);
+  detailview->stageFiles(DetailView::UnstagedFiles, 0, true);
 
-  QTextEdit *editor = repoView->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-  editor->setText("Test message"); // modify message
+  detailview->setCommitMessage("Test message"); // modify message
 
   repoView->continueRebase();
 
@@ -388,8 +361,8 @@ void TestRebase::conflictingRebaseCustomMessage() {
   QTest::qWait(100); // Wait until refresh finished
 
   // Check that buttons are visible
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 }
 
 void TestRebase::continueExternalStartedRebase() {
@@ -686,13 +659,8 @@ void TestRebase::abortMR() {
 
   auto *detailview = repoView->findChild<DetailView *>();
   QVERIFY(detailview);
-  auto *abortRebaseButton = detailview->findChild<QPushButton *>("AbortRebase");
-  QVERIFY(abortRebaseButton);
-  auto *continueRebaseButton =
-      detailview->findChild<QPushButton *>("ContinueRebase");
-  QVERIFY(continueRebaseButton);
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 
   int rebaseFinished = 0;
   int rebaseAboutToRebase = 0;
@@ -757,8 +725,8 @@ void TestRebase::abortMR() {
 
   // Check that buttons are visible
   QTest::qWait(100);
-  QCOMPARE(continueRebaseButton->isVisible(), true);
-  QCOMPARE(abortRebaseButton->isVisible(), true);
+  QCOMPARE(detailview->isRebaseContinueVisible(), true);
+  QCOMPARE(detailview->isRebaseAbortVisible(), true);
 
   refreshTriggered = 0;
   rebaseConflict = 0;
@@ -772,8 +740,8 @@ void TestRebase::abortMR() {
                       // status is finished
 
   // Check that buttons are visible
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 
   // Check call counters
   QCOMPARE(rebaseFinished, 0);
@@ -794,13 +762,8 @@ void TestRebase::commitDuringRebase() {
 
   auto *detailview = repoView->findChild<DetailView *>();
   QVERIFY(detailview);
-  auto *abortRebaseButton = detailview->findChild<QPushButton *>("AbortRebase");
-  QVERIFY(abortRebaseButton);
-  auto *continueRebaseButton =
-      detailview->findChild<QPushButton *>("ContinueRebase");
-  QVERIFY(continueRebaseButton);
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 
   int rebaseFinished = 0;
   int rebaseAboutToRebase = 0;
@@ -865,8 +828,8 @@ void TestRebase::commitDuringRebase() {
 
   // Check that buttons are visible
   QTest::qWait(100);
-  QCOMPARE(continueRebaseButton->isVisible(), true);
-  QCOMPARE(abortRebaseButton->isVisible(), true);
+  QCOMPARE(detailview->isRebaseContinueVisible(), true);
+  QCOMPARE(detailview->isRebaseAbortVisible(), true);
 
   // Resolve conflicts
   diff = mRepo.status(mRepo.index(), nullptr, false);
@@ -881,14 +844,10 @@ void TestRebase::commitDuringRebase() {
   Test::refresh(repoView);
 
   // stage file otherwise it is not possible to continue
-  auto filewidgets = repoView->findChildren<FileWidget *>();
-  QCOMPARE(filewidgets.length(), 1);
-  filewidgets.at(0)->stageStateChanged(filewidgets.at(0)->modelIndex(),
-                                       git::Index::StagedState::Staged);
+  QCOMPARE(detailview->unstagedFiles()->rowCount(), 1);
+  detailview->stageFiles(DetailView::UnstagedFiles, 0, true);
 
-  QTextEdit *editor = repoView->findChild<QTextEdit *>("MessageEditor");
-  QVERIFY(editor);
-  editor->setText("Test message");
+  detailview->setCommitMessage("Test message");
 
   // Do commit before going on
   // So the user can commit between the rebase to split up the changes
@@ -916,8 +875,8 @@ void TestRebase::commitDuringRebase() {
   QTest::qWait(10); // Wait until refresh is finished
 
   // Check that buttons are visible
-  QCOMPARE(continueRebaseButton->isVisible(), false);
-  QCOMPARE(abortRebaseButton->isVisible(), false);
+  QCOMPARE(detailview->isRebaseContinueVisible(), false);
+  QCOMPARE(detailview->isRebaseAbortVisible(), false);
 
   // Check call counters
   QCOMPARE(rebaseFinished, 1);
