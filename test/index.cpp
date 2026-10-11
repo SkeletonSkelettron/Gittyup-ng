@@ -9,6 +9,7 @@
 
 #include "qtsupport.h"
 #include "Test.h"
+#include "dialogs/ConfirmDialog.h"
 #include "ui/ChangedFilesModel.h"
 #include "ui/DetailView.h"
 #include "ui/MainWindow.h"
@@ -25,6 +26,15 @@ static git::Index::StagedState stageState(QAbstractItemModel *model, int row) {
       model->index(row, 0).data(ChangedFilesModel::StageStateRole).toInt());
 }
 
+// The visible confirmation dialog of the view.
+static ConfirmDialog *confirmDialog(QWidget *parent) {
+  for (ConfirmDialog *dialog : parent->findChildren<ConfirmDialog *>()) {
+    if (dialog->isVisible())
+      return dialog;
+  }
+  return nullptr;
+}
+
 class TestIndex : public QObject {
   Q_OBJECT
 
@@ -33,6 +43,7 @@ private slots:
   void stageAddition();
   void stageDeletion();
   void stageDirectory();
+  void discardUntracked();
   void cleanupTestCase();
 
 private:
@@ -158,6 +169,41 @@ void TestIndex::stageDirectory() {
   // Check that they're staged now.
   QCOMPARE(stageState(stagedModel, 1), git::Index::Staged);
   QCOMPARE(stageState(stagedModel, 2), git::Index::Staged);
+}
+
+// Discarding an untracked file removes it, from the diff and from the list.
+void TestIndex::discardUntracked() {
+  QDir dir = mRepo->workdir();
+  for (const QString &name : {"untracked1", "untracked2"}) {
+    QFile file(dir.filePath(name));
+    QVERIFY(file.open(QFile::WriteOnly));
+    QTextStream(&file) << "This is a test." << Qt::endl;
+  }
+
+  RepoView *view = mWindow->currentView();
+  refresh(view);
+
+  auto details = view->findChild<DetailView *>();
+  QVERIFY(details);
+
+  // The button above the diff.
+  details->discardFile("untracked1");
+  ConfirmDialog *dialog = confirmDialog(view);
+  QVERIFY(dialog);
+  dialog->accept();
+  QVERIFY(!dir.exists("untracked1"));
+
+  // The button in the row of the list.
+  refresh(view);
+  auto unstagedModel =
+      static_cast<ChangedFilesModel *>(details->unstagedFiles());
+  int row = unstagedModel->rowOf("untracked2");
+  QVERIFY(row >= 0);
+  details->discardFiles(DetailView::UnstagedFiles, row);
+  dialog = confirmDialog(view);
+  QVERIFY(dialog);
+  dialog->accept();
+  QVERIFY(!dir.exists("untracked2"));
 }
 
 void TestIndex::cleanupTestCase() { mWindow->close(); }

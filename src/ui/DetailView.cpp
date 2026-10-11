@@ -81,6 +81,17 @@ QString reflow(const QString &text) {
   return result;
 }
 
+// Discard the changes of the files. Untracked files have no changes to
+// discard, so they're removed, as the context menu offers.
+void discard(RepoView *view, const QStringList &files) {
+  FileContextMenu menu(view, files, git::Index());
+  QAction *action = menu.discardAction();
+  if (!action || !action->isEnabled())
+    action = menu.findChild<QAction *>("RemoveAction");
+  if (action && action->isEnabled())
+    action->trigger();
+}
+
 } // namespace
 
 DetailView::DetailView(const git::Repository &repo, RepoView *view)
@@ -781,21 +792,13 @@ void DetailView::stageFiles(int list, int row, bool staged) {
 
 void DetailView::discardFiles(int list, int row) {
   QStringList files = model(list)->files(row);
-  if (files.isEmpty())
-    return;
-
-  FileContextMenu menu(mView, files, git::Index());
-  if (QAction *discard = menu.discardAction())
-    discard->trigger();
+  if (!files.isEmpty())
+    discard(mView, files);
 }
 
 void DetailView::discardFile(const QString &path) {
-  if (path.isEmpty())
-    return;
-
-  FileContextMenu menu(mView, {path}, git::Index());
-  if (QAction *discard = menu.discardAction())
-    discard->trigger();
+  if (!path.isEmpty())
+    discard(mView, {path});
 }
 
 void DetailView::editFile(const QString &path) {
