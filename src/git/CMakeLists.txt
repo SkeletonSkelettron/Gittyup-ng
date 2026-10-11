@@ -4,6 +4,7 @@ add_library(
   Blame.cpp
   Blob.cpp
   Branch.cpp
+  Cli.cpp
   Command.cpp
   Commit.cpp
   Config.cpp
