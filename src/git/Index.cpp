@@ -14,13 +14,10 @@
 #include "Signature.h"
 #include "Submodule.h"
 #include "Tree.h"
-#include "git2/commit.h"
-#include "git2/ignore.h"
-#include "git2/refs.h"
+#include "git/Cli.h"
+#include "git/RunResult.h"
 #include "git2/repository.h"
-#include "git2/status.h"
 #include "git2/tree.h"
-#include "git2/attr.h"
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -143,63 +140,18 @@ void Index::setStaged(const QStringList &files, bool staged, bool yieldFocus) {
   QStringList changedFiles;
   Repository repo(git_index_owner(d->index));
   RepositoryNotifier *notifier = repo.notifier();
-  for (const QString &file : files) {
-    QByteArray path = file.toUtf8();
 
-    // Get the id and mode of the file in the HEAD commit.
-    Id fileId;
+  QStringList pathList;
+  QStringList subPathList;
+  git::Cli cli(repo.workdir().path());
+  for (const QString &file : files) {
     bool fileExists = false;
-    uint32_t fileMode = GIT_FILEMODE_UNREADABLE;
-    if (staged) {
+    if (staged)
       fileExists = repo.workdir().exists(file);
-    } else {
-      // Lookup HEAD commit.
-      fileId = headId(file, &fileMode);
-      fileExists = !fileId.isNull();
-    }
 
     // submodule
-    if (Submodule submodule = repo.lookupSubmodule(file)) {
-      if (staged) {
-        if (git_submodule_add_to_index(submodule, false))
-          continue;
-      } else {
-        if (fileExists) {
-          // Reset to HEAD id.
-          Id headId = submodule.headId();
-
-          git_index_entry entry;
-          memset(&entry, 0, sizeof(git_index_entry));
-
-          entry.path = path;
-          entry.mode = fileMode;
-          git_oid_cpy(&entry.id, headId);
-
-          // Set timestamps.
-          Repository smRepo = submodule.open();
-          if (!smRepo.isValid())
-            continue;
-
-          Commit smHead = smRepo.lookupCommit(headId);
-          if (!smHead.isValid())
-            continue;
-
-          git_time_t time = smHead.committer().date().toSecsSinceEpoch();
-          entry.ctime.seconds = time;
-          entry.ctime.nanoseconds = 0;
-          entry.mtime.seconds = time;
-          entry.mtime.nanoseconds = 0;
-
-          if (git_index_add(d->index, &entry))
-            continue;
-        } else {
-          // Remove from index.
-          if (git_index_remove_bypath(d->index, path))
-            continue;
-        }
-      }
-
-      repo.invalidateSubmoduleCache();
+    if (repo.lookupSubmodule(file)) {
+      subPathList.append(file);
       changedFiles.append(file);
       continue;
     }
@@ -210,23 +162,15 @@ void Index::setStaged(const QStringList &files, bool staged, bool yieldFocus) {
         QDir dir = repo.workdir();
         QFileInfo info(dir.filePath(file));
         if (!info.isSymLink() && info.isDir()) {
-          // FIXME: This is a workaround.
-          QString current = QDir::currentPath();
-          QDir::setCurrent(dir.path());
 
           int count = 0;
           bool allow = true;
-          countDirectoryEntries(file, count);
+          countDirectoryEntries(dir.filePath(file), count);
           emit notifier->directoryAboutToBeStaged(file, count, allow);
-          bool added = (allow && addDirectory(file));
-
-          QDir::setCurrent(current);
-
-          if (!added)
+          if (!allow)
             continue;
-
+          pathList.append(file);
           dirAdded = true;
-
         } else {
           bool allow = false;
           if (repo.lfsIsInitialized()) {
@@ -246,41 +190,16 @@ void Index::setStaged(const QStringList &files, bool staged, bool yieldFocus) {
           if (!allow)
             continue;
 
-          if (git_index_add_bypath(d->index, path)) {
-            emit notifier->indexStageError(file);
-            continue;
-          }
+          pathList.append(file);
         }
 
       } else {
-        // Remove from index.
-        if (git_index_remove_bypath(d->index, path)) {
-          emit notifier->indexStageError(file);
-          continue;
-        }
+        // This is staging delete file op
+        pathList.append(file);
       }
 
     } else {
-      if (fileExists) {
-        // Reset to HEAD tree entry.
-        git_index_entry entry;
-        memset(&entry, 0, sizeof(git_index_entry));
-
-        entry.path = path;
-        entry.mode = fileMode;
-        git_oid_cpy(&entry.id, fileId);
-
-        if (git_index_add(d->index, &entry)) {
-          emit notifier->indexStageError(file);
-          continue;
-        }
-      } else {
-        // Remove from index.
-        if (git_index_remove_bypath(d->index, path)) {
-          emit notifier->indexStageError(file);
-          continue;
-        }
-      }
+      pathList.append(file);
     }
 
     changedFiles.append(file);
@@ -288,6 +207,28 @@ void Index::setStaged(const QStringList &files, bool staged, bool yieldFocus) {
 
   if (!changedFiles.isEmpty()) {
     git_index_write(d->index);
+    pathList += subPathList;
+    if (!pathList.isEmpty()) {
+      QByteArray input;
+      for (const QString &file : pathList) {
+        input += file.toUtf8();
+        input += '\0';
+      }
+      const QStringList args{"--literal-pathspecs",
+                             "-c",
+                             "core.splitindex=false",
+                             staged ? "add" : "reset",
+                             staged ? "--ignore-errors" : "-q",
+                             "--pathspec-from-file=-",
+                             "--pathspec-file-nul"};
+      RunResult result = cli.run(args, input);
+      git_index_read(d->index, true);
+      if (!subPathList.isEmpty())
+        repo.invalidateSubmoduleCache();
+      if (result.exitCode != 0)
+        emit notifier->indexStageError(staged,
+                                       QString::fromUtf8(result.errors));
+    }
     for (const QString &changedFile : changedFiles)
       d->stagedCache.remove(changedFile);
     emit notifier->indexChanged(changedFiles, yieldFocus);
@@ -363,30 +304,6 @@ Index Index::create() {
 
 const git_index_entry *Index::entry(const QString &path, int stage) const {
   return git_index_get_bypath(d->index, path.toUtf8(), stage);
-}
-
-bool Index::addDirectory(const QString &file) const {
-  QDir dir(file);
-  git_repository *repo = git_index_owner(d->index);
-  auto filters = QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot;
-  for (const QString &entry : dir.entryList(filters)) {
-    QString file = dir.filePath(entry);
-    if (QFileInfo(file).isDir()) {
-      if (!addDirectory(file))
-        return false;
-      continue;
-    }
-
-    int ignored = 0;
-    QByteArray path = file.toUtf8();
-    if (git_ignore_path_is_ignored(&ignored, repo, path) || ignored)
-      continue;
-
-    if (git_index_add_bypath(d->index, path))
-      return false;
-  }
-
-  return true;
 }
 
 Id Index::headId(const QString &path, uint32_t *mode) const {

@@ -81,8 +81,6 @@ private:
 
   const git_index_entry *entry(const QString &path, int stage = 0) const;
 
-  bool addDirectory(const QString &path) const;
-
   Id headId(const QString &path, uint32_t *mode = nullptr) const;
   Id indexId(const QString &path, uint32_t *mode = nullptr) const;
   std::optional<Id> workdirId(const QString &path,

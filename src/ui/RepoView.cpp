@@ -228,8 +228,7 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
 
   // Create reference panel.
   mRefs = new RefsPanel(repo, this);
-  connect(mRefs, &RefsPanel::referenceChanged, menuBar,
-          &MenuBar::updateBranch);
+  connect(mRefs, &RefsPanel::referenceChanged, menuBar, &MenuBar::updateBranch);
 
   // Select HEAD branch when it changes.
   connect(notifier, &git::RepositoryNotifier::referenceUpdated, this,
@@ -281,7 +280,6 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
           &CommitList::setFilter);
   connect(mIndex, &Index::indexReset, this,
           [this, searchField] { mCommits->setFilter(searchField->text()); });
-
 
   mDetails = new DetailView(repo, this);
 
@@ -408,7 +406,17 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
   connect(&mLogTimer, &QTimer::timeout, this, [this] { setLogVisible(false); });
 
   connect(notifier, &git::RepositoryNotifier::indexStageError, this,
-          [this] { error(mLogRoot, tr("stage")); });
+          [this](bool staged, const QString &errors) {
+            QStringList lines = errors.trimmed().split('\n');
+            QString text = staged ? tr("Unable to stage - %1")
+                                  : tr("Unable to unstage - %1");
+            LogEntry *entry = mLogRoot->addEntry(LogEntry::Error,
+                                                 text.arg(lines.takeFirst()));
+            for (const QString &line : lines)
+              entry->addEntry(line.startsWith("hint:") ? LogEntry::Hint
+                                                       : LogEntry::File,
+                              line);
+          });
 
   QObject *context = new QObject(this);
   connect(notifier, &git::RepositoryNotifier::lfsNotFound, context,
@@ -2641,8 +2649,8 @@ bool RepoView::openSubmodule(const git::Submodule &submodule) {
     QString text =
         tr("The submodule '%1' doesn't have a valid repository. You may need "
            "to init and/or update the submodule to check out a repository.");
-    ConfirmDialog *dialog = ConfirmDialog::information(
-        this, title, text.arg(submodule.name()));
+    ConfirmDialog *dialog =
+        ConfirmDialog::information(this, title, text.arg(submodule.name()));
     dialog->setDanger(true);
     dialog->open();
     return false;

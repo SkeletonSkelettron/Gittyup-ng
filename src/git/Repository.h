@@ -343,7 +343,7 @@ signals:
   void directoryAboutToBeStaged(const QString &dir, int count, bool &allow);
   void largeFileAboutToBeStaged(const QString &path, int size, bool &allow);
   void indexChanged(const QStringList &paths, bool yieldFocus = true);
-  void indexStageError(const QString &path);
+  void indexStageError(bool staged, const QString &errors);
 
   void rebaseInitError();
   void rebaseCommitInvalid(const Rebase rebase);
