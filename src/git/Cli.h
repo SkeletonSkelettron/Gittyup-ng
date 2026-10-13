@@ -9,6 +9,7 @@
 #define CLI_H
 
 #include <QByteArray>
+#include <QMap>
 #include <QString>
 #include <QStringList>
 #include "RunResult.h"
@@ -17,7 +18,9 @@ namespace git {
 
 class Cli {
 public:
-  RunResult run(const QStringList &arguments, const QByteArray &input = {});
+  RunResult run(const QStringList &arguments, const QByteArray &input = {},
+                const QMap<QString, QString> &envs = {});
+
   explicit Cli(const QString &repositoryPath);
   static bool isAvailable();
 

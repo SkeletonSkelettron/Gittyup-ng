@@ -5,11 +5,11 @@
 // Author: Misha Sulikashvili
 //
 
-#include "Cli.h"
-#include <QStandardPaths>
 #include <QDebug>
 #include <QFileInfo>
 #include <QProcess>
+#include <QStandardPaths>
+#include "Cli.h"
 
 namespace git {
 
@@ -38,12 +38,15 @@ QString Cli::gitPath() {
 
 Cli::Cli(const QString &repositoryPath) : mRepositoryPath(repositoryPath) {}
 
-RunResult Cli::run(const QStringList &arguments, const QByteArray &input) {
+RunResult Cli::run(const QStringList &arguments, const QByteArray &input,
+                   const QMap<QString, QString> &envs) {
   RunResult result;
   QProcess process;
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
   env.insert("GIT_TERMINAL_PROMPT", "0");
   env.insert("LC_ALL", "C");
+  for (const auto &[key, value] : envs.asKeyValueRange())
+    env.insert(key, value);
   process.setProcessEnvironment(env);
   process.setWorkingDirectory(mRepositoryPath);
   process.start(gitPath(), arguments);
