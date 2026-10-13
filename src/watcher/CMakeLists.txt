@@ -9,8 +9,8 @@ else()
   set(WATCHER_IMPL_FILE RepositoryWatcher_qt.cpp)
 endif()
 
-add_library(watcher RepositoryWatcher.cpp ${WATCHER_IMPL_FILE})
 
+add_library(watcher PathFilter.cpp RepositoryWatcher.cpp ${WATCHER_IMPL_FILE})
 target_include_directories(watcher PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 target_link_libraries(watcher git Qt6::Core ${WATCHER_IMPL_LIBS})

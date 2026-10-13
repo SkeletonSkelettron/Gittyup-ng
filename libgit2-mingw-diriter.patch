@@ -1,0 +1,26 @@
+diff --git a/src/util/fs_path.c b/src/util/fs_path.c
+index e24836bec..f6001c102 100644
+--- a/src/util/fs_path.c
++++ b/src/util/fs_path.c
+@@ -1198,7 +1198,7 @@ int git_fs_path_direach(
+ 	return error;
+ }
+ 
+-#if defined(GIT_WIN32) && !defined(__MINGW32__)
++#if defined(GIT_WIN32)
+ 
+ /* Using _FIND_FIRST_EX_LARGE_FETCH may increase performance in Windows 7
+  * and better.
+diff --git a/src/util/fs_path.h b/src/util/fs_path.h
+index 78b4c3dc0..aa0e8588b 100644
+--- a/src/util/fs_path.h
++++ b/src/util/fs_path.h
+@@ -480,7 +480,7 @@ extern bool git_fs_path_does_decompose_unicode(const char *root);
+ 
+ typedef struct git_fs_path_diriter git_fs_path_diriter;
+ 
+-#if defined(GIT_WIN32) && !defined(__MINGW32__)
++#if defined(GIT_WIN32)
+ 
+ struct git_fs_path_diriter
+ {
