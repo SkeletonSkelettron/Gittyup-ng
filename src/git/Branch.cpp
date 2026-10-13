@@ -11,16 +11,14 @@
 #include "Branch.h"
 #include "Commit.h"
 #include "Config.h"
-#include "Diff.h"
 #include "Remote.h"
 #include "Repository.h"
 #include "RevWalk.h"
+#include "Cli.h"
 #include "git2/buffer.h"
 #include "git2/branch.h"
-#include "git2/merge.h"
 #include "git2/refs.h"
 #include "git2/remote.h"
-#include "git2/signature.h"
 
 namespace git {
 
@@ -101,15 +99,18 @@ Remote Branch::remote() const {
 Branch Branch::rename(const QString &name) {
   Q_ASSERT(isLocalBranch());
 
-  git_reference *ref = nullptr;
-  if (git_branch_move(&ref, d.data(), name.toUtf8(), false))
-    return Branch();
+  Repository repo = this->repo();
 
+  git::Cli cli(repo.workdir().path());
+  RunResult result = cli.run({"branch", "-m", this->name(), name});
+
+  if (result.exitCode != 0)
+    return Branch();
   // Invalidate this branch.
   d.clear();
 
-  Branch branch(ref);
-  emit branch.repo().notifier()->referenceUpdated(branch);
+  Branch branch = repo.lookupBranch(name, GIT_BRANCH_LOCAL);
+  emit repo.notifier()->referenceUpdated(branch);
   return branch;
 }
 
