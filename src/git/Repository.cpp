@@ -12,7 +12,7 @@
 #include "AnnotatedCommit.h"
 #include "Blame.h"
 #include "Branch.h"
-#include "Command.h"
+#include "Cli.h"
 #include "Commit.h"
 #include "Config.h"
 #include "Filter.h"
@@ -487,12 +487,24 @@ Branch Repository::createBranch(const QString &name, const Commit &target,
 
   emit d->notifier->referenceAboutToBeAdded(name);
 
-  git_reference *ref = nullptr;
-  git_branch_create(&ref, d->repo, name.toUtf8(), commit, force);
+  QStringList args = {"branch", name};
 
-  // We have to notify even if creation failed and the branch is invalid.
-  // Clients can check the argument to see if a branch was really added.
-  Branch branch(ref);
+  if (force)
+    args.append("-f");
+
+  args.append(commit.id().toString());
+
+  git::Cli cli(workdir().path());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    emit notifier()->gitCommandFailed(tr("create branch"),
+                                      QString::fromUtf8(result.errors));
+    return Branch();
+  }
+
+  Branch branch = lookupBranch(name, GIT_BRANCH_LOCAL);
   emit d->notifier->referenceAdded(branch);
 
   return branch;
