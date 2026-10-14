@@ -783,19 +783,21 @@ int Repository::submoduleStatus(const QString &name) const {
 }
 
 Remote Repository::addRemote(const QString &name, const QString &url) {
-  // FIXME: Validate name?
 
   emit d->notifier->remoteAboutToBeAdded(name);
 
-  git_remote *remote = nullptr;
-  git_remote_create(&remote, d->repo, name.toUtf8(), url.toUtf8());
+  git::Cli cli(workdir().path());
+  RunResult result = cli.run({"remote", "add", name, url});
 
-  // We have to notify even if creation failed and the remote is invalid.
-  // Clients can check the argument to see if a branch was really added.
-  Remote result(remote);
-  emit d->notifier->remoteAdded(result);
+  if (result.exitCode != 0) {
+    emit d->notifier->gitCommandFailed(tr("add remote"),
+                                       QString::fromUtf8(result.errors));
+    return Remote();
+  }
 
-  return result;
+  Remote remote = lookupRemote(name);
+  emit d->notifier->remoteAdded(remote);
+  return remote;
 }
 
 void Repository::deleteRemote(const QString &name) {
