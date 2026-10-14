@@ -104,8 +104,12 @@ Branch Branch::rename(const QString &name) {
   git::Cli cli(repo.workdir().path());
   RunResult result = cli.run({"branch", "-m", this->name(), name});
 
-  if (result.exitCode != 0)
+  if (result.exitCode != 0) {
+    emit repo.notifier()->gitCommandFailed(tr("rename branch"),
+                                           QString::fromUtf8(result.errors));
     return Branch();
+  }
+
   // Invalidate this branch.
   d.clear();
 
@@ -114,14 +118,24 @@ Branch Branch::rename(const QString &name) {
   return branch;
 }
 
-void Branch::remove(bool force) {
+void Branch::remove() {
   // Remember name.
   QString name = this->name();
 
   Repository repo = this->repo();
   emit repo.notifier()->referenceAboutToBeRemoved(*this);
 
-  if (force ? git_reference_delete(d.data()) : git_branch_delete(d.data()))
+  git::Cli cli(repo.workdir().path());
+  QStringList args = {"branch", "-D"};
+  if (!isLocalBranch())
+    args += "-r";
+
+  args += name;
+  RunResult result = cli.run(args);
+  if (result.exitCode != 0)
+    emit repo.notifier()->gitCommandFailed(tr("delete branch"),
+                                           QString::fromUtf8(result.errors));
+  else
     d.clear(); // Invalidate this branch.
 
   // We have to notify even if removal failed and the branch is still valid.

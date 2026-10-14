@@ -345,6 +345,8 @@ signals:
   void indexChanged(const QStringList &paths, bool yieldFocus = true);
   void indexStageError(bool staged, const QString &errors);
 
+  void gitCommandFailed(const QString &action, const QString &errors);
+
   void rebaseInitError();
   void rebaseCommitInvalid(const Rebase rebase);
   void rebaseAboutToRebase(const Rebase rebase, const Commit before, int count);

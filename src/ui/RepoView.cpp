@@ -417,6 +417,16 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
                                                        : LogEntry::File,
                               line);
           });
+  connect(
+      notifier, &git::RepositoryNotifier::gitCommandFailed, this,
+      [this](const QString &action, const QString &errors) {
+        QStringList lines = errors.trimmed().split('\n');
+        LogEntry *entry =
+            mLogRoot->addEntry(LogEntry::Error, tr("Unable to %1").arg(action));
+        for (const QString &line : lines)
+          entry->addEntry(
+              line.startsWith("hint:") ? LogEntry::Hint : LogEntry::File, line);
+      });
 
   QObject *context = new QObject(this);
   connect(notifier, &git::RepositoryNotifier::lfsNotFound, context,
