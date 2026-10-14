@@ -29,6 +29,8 @@ class Id;
 class Reference;
 
 class Remote {
+  Q_DECLARE_TR_FUNCTIONS(Remote)
+
 public:
   struct PushUpdate {
     QByteArray srcName;

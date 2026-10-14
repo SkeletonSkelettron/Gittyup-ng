@@ -9,6 +9,7 @@
 
 #include "Remote.h"
 #include "Branch.h"
+#include "Cli.h"
 #include "Config.h"
 #include "Id.h"
 #include "qtsupport.h"
@@ -528,21 +529,33 @@ QString Remote::name() const {
 }
 
 void Remote::setName(const QString &name) {
-  git_strarray problems;
-  const char *current = git_remote_name(d.data());
-  git_repository *repo = git_remote_owner(d.data());
-  if (git_remote_rename(&problems, repo, current, name.toUtf8()))
-    return;
+  Repository repo(git_remote_owner(d.data()));
 
-  // FIXME: Report problems?
-  git_strarray_dispose(&problems);
+  QStringList args = {"remote", "rename", this->name(), name};
+
+  git::Cli cli(repo.workdir().path());
+  RunResult result = cli.run(args);
+
+  if (result.exitCode == 0)
+    d.clear();
+  else
+    emit repo.notifier()->gitCommandFailed(tr("rename remote"),
+                                           QString::fromUtf8(result.errors));
 }
 
 QString Remote::url() const { return git_remote_url(d.data()); }
 
 void Remote::setUrl(const QString &url) {
-  git_repository *repo = git_remote_owner(d.data());
-  git_remote_set_url(repo, git_remote_name(d.data()), url.toUtf8());
+  Repository repo(git_remote_owner(d.data()));
+
+  QStringList args = {"remote", "set-url", name(), url};
+
+  git::Cli cli(repo.workdir().path());
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0)
+    emit repo.notifier()->gitCommandFailed(tr("change remote URL"),
+                                           QString::fromUtf8(result.errors));
 }
 
 Result Remote::fetch(Callbacks *callbacks, bool tags, bool prune) {
