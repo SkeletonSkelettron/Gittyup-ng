@@ -51,14 +51,30 @@ Branch Branch::upstream() const {
 void Branch::setUpstream(const Branch &upstream) {
   Q_ASSERT(isLocalBranch());
 
-  QByteArray buffer;
+  if (!upstream.isValid() && !this->upstream().isValid())
+    return;
+
+  QStringList args = {"branch"};
+
   if (upstream.isValid())
-    buffer = upstream.name().toUtf8();
+    args.append("--set-upstream-to=" + upstream.qualifiedName());
+  else
+    args.append("--unset-upstream");
 
-  const char *name = !buffer.isEmpty() ? buffer.constData() : nullptr;
-  git_branch_set_upstream(d.data(), name);
+  args.append(name());
+  Repository repo = this->repo();
+  git::Cli cli(repo.workdir().path());
 
-  emit repo().notifier()->referenceUpdated(*this);
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    emit repo.notifier()->gitCommandFailed(
+        upstream.isValid() ? tr("set upstream") : tr("unset upstream"),
+        QString::fromUtf8(result.errors));
+    return;
+  }
+
+  emit repo.notifier()->referenceUpdated(*this);
 }
 
 bool Branch::isMerged() const {
