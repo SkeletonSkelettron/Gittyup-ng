@@ -13,10 +13,8 @@
 #include "Id.h"
 #include "qtsupport.h"
 #include "TagRef.h"
-#include "git2/buffer.h"
 #include "git2/clone.h"
 #include "git2/remote.h"
-#include "git2/signature.h"
 #include "git2/sys/errors.h"
 #include <libssh2.h>
 #include <QCoreApplication>

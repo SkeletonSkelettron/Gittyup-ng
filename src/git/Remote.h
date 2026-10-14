@@ -12,7 +12,6 @@
 
 #include "Repository.h"
 #include "Result.h"
-#include "git2/net.h"
 #include "git2/proxy.h"
 #include <QSet>
 #include <QStringList>
