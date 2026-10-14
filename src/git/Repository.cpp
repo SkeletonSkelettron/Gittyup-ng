@@ -553,24 +553,40 @@ TagRef Repository::createTag(const Commit &target, const QString &name,
                              const QString &message, bool force,
                              const QString &overrideUser,
                              const QString &overrideEmail) {
-  Signature signature;
-  if (!message.isEmpty()) {
-    signature = defaultSignature(nullptr, overrideUser, overrideEmail);
-    if (!signature.isValid())
-      return TagRef();
-  }
-
   emit d->notifier->referenceAboutToBeAdded(name);
 
-  git_oid id;
-  if (signature.isValid()) {
-    git_tag_create(&id, d->repo, name.toUtf8(), target, signature,
-                   message.toUtf8(), force);
+  QStringList args = {"tag"};
+
+  if (!message.isEmpty()) {
+    args.append("-a");
+    args.append("-m");
+    args.append(message);
   } else {
-    git_tag_create_lightweight(&id, d->repo, name.toUtf8(), target, force);
+    args.append("--no-sign");
+  }
+  args.append(name);
+  args.append(target.id().toString());
+
+  if (force)
+    args.append("-f");
+
+  QMap<QString, QString> envs;
+
+  // Tag as the author chosen in the commit panel.
+  if (!overrideUser.isEmpty())
+    envs.insert("GIT_COMMITTER_NAME", overrideUser);
+  if (!overrideEmail.isEmpty())
+    envs.insert("GIT_COMMITTER_EMAIL", overrideEmail);
+
+  git::Cli cli(workdir().path());
+  RunResult result = cli.run(args, {}, envs);
+
+  if (result.exitCode != 0) {
+    emit notifier()->gitCommandFailed(tr("create tag"),
+                                      QString::fromUtf8(result.errors));
+    return TagRef();
   }
 
-  // FIXME: Tagging functions should pass out the new reference?
   TagRef tag = lookupTag(name);
   emit d->notifier->referenceAdded(tag);
 
