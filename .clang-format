@@ -162,6 +162,7 @@ BitFieldColonSpacing: Both
 Standard:        Latest
 StatementAttributeLikeMacros:
   - Q_EMIT
+  - emit
 StatementMacros:
   - Q_UNUSED
   - QT_REQUIRE_VERSION
