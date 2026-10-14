@@ -68,10 +68,6 @@ DeleteTagDialog::DeleteTagDialog(const git::TagRef &tag, QWidget *parent)
               });
     }
 
-    if (!git::TagRef(tag).remove()) {
-      LogEntry *parent = view->addLogEntry(name, tr("Delete Tag"));
-      view->error(parent, tr("delete tag"), name);
-      return;
-    }
+    git::TagRef(tag).remove();
   });
 }

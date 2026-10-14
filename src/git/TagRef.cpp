@@ -7,6 +7,7 @@
 // Author: Jason Haslam
 //
 
+#include "Cli.h"
 #include "Repository.h"
 #include "TagRef.h"
 #include "Tag.h"
@@ -31,21 +32,31 @@ Tag TagRef::tag() const {
 }
 
 bool TagRef::remove() {
+  if (!isValid())
+    return false;
+
   // Remember name.
   QString name = this->name();
 
   Repository repo(git_reference_owner(d.data()));
   emit repo.notifier()->referenceAboutToBeRemoved(*this);
 
-  int error = git_reference_delete(d.data());
-  if (!error)
-    d.clear(); // Invalidate this branch.
+  QStringList args = {"tag", "-d", name};
+
+  git::Cli cli(repo.workdir().path());
+  RunResult result = cli.run(args);
+
+  if (result.exitCode == 0)
+    d.clear(); // Invalidate this tag.
+  else
+    emit repo.notifier()->gitCommandFailed(tr("delete tag"),
+                                           QString::fromUtf8(result.errors));
 
   // We have to notify even if removal failed and the tag is still valid.
   // Clients can check this tag to see if the tag was really removed.
   emit repo.notifier()->referenceRemoved(name);
 
-  return !error;
+  return result.exitCode == 0;
 }
 
 } // namespace git
