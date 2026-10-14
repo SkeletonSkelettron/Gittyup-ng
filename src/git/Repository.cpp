@@ -783,7 +783,6 @@ int Repository::submoduleStatus(const QString &name) const {
 }
 
 Remote Repository::addRemote(const QString &name, const QString &url) {
-
   emit d->notifier->remoteAboutToBeAdded(name);
 
   git::Cli cli(workdir().path());
@@ -801,16 +800,20 @@ Remote Repository::addRemote(const QString &name, const QString &url) {
 }
 
 void Repository::deleteRemote(const QString &name) {
-  git_remote *remote = nullptr;
-  if (git_remote_lookup(&remote, d->repo, name.toUtf8()))
+  Remote remote = lookupRemote(name);
+  if (!remote.isValid())
     return;
 
-  emit d->notifier->remoteAboutToBeRemoved(Remote(remote));
+  emit d->notifier->remoteAboutToBeRemoved(remote);
 
-  git_remote_delete(d->repo, name.toUtf8());
+  git::Cli cli(workdir().path());
+  RunResult result = cli.run({"remote", "remove", name});
 
-  // We have to notify even if removal failed and the remote still exists.
-  // Clients can lookup the remote by name to see if it was really removed.
+  if (result.exitCode != 0) {
+    emit d->notifier->gitCommandFailed(tr("delete remote"),
+                                       QString::fromUtf8(result.errors));
+  }
+
   emit d->notifier->remoteRemoved(name);
 }
 
