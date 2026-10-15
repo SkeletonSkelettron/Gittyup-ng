@@ -2202,12 +2202,8 @@ void RepoView::applyStash(int index) {
   Q_ASSERT(index >= 0 && index < stashes.size());
 
   git::Commit commit = stashes.at(index);
-  LogEntry *entry = addLogEntry(msg(commit), tr("Apply Stash"));
-  if (!mRepo.applyStash(index)) {
-    error(entry, tr("apply stash"), commit.link());
-    return;
-  }
-
+  addLogEntry(msg(commit), tr("Apply Stash"));
+  mRepo.applyStash(index);
   refresh(false);
 }
 

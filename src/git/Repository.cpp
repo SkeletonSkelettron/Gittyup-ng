@@ -905,8 +905,20 @@ Commit Repository::stash(const QString &message) {
 }
 
 bool Repository::applyStash(int index) {
-  git_stash_apply_options opts = GIT_STASH_APPLY_OPTIONS_INIT;
-  return !git_stash_apply(d->repo, index, &opts);
+
+  QStringList args = {"stash", "apply", QString("stash@{%1}").arg(index)};
+
+  git::Cli cli(workdir().path());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    QByteArray text = result.errors.isEmpty() ? result.output : result.errors;
+    emit d->notifier->gitCommandFailed(tr("apply stash"),
+                                       QString::fromUtf8(text));
+    return false;
+  }
+  return true;
 }
 
 bool Repository::dropStash(int index) {
