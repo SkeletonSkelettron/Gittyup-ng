@@ -926,9 +926,21 @@ bool Repository::dropStash(int index) {
   // Signal that the previous saved reference changed instead.
   Reference ref = stashRef();
 
-  int error = git_stash_drop(d->repo, index);
+  QStringList args = {"stash", "drop", QString("stash@{%1}").arg(index)};
+
+  git::Cli cli(workdir().path());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    QByteArray text = result.errors.isEmpty() ? result.output : result.errors;
+    emit d->notifier->gitCommandFailed(tr("drop stash"),
+                                       QString::fromUtf8(text));
+    return false;
+  }
+
   emit d->notifier->referenceUpdated(ref);
-  return !error;
+  return true;
 }
 
 bool Repository::popStash(int index) {

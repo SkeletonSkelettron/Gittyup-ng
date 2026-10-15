@@ -2212,9 +2212,8 @@ void RepoView::dropStash(int index) {
   Q_ASSERT(index >= 0 && index < stashes.size());
 
   git::Commit commit = stashes.at(index);
-  LogEntry *entry = addLogEntry(msg(commit), tr("Drop Stash"));
-  if (!mRepo.dropStash(index))
-    error(entry, tr("drop stash"), commit.link());
+  addLogEntry(msg(commit), tr("Drop Stash"));
+  mRepo.dropStash(index);
 
   if (mRepo.stashes().size() == 0) {
     // switch back to head when there are no stashes left
