@@ -2190,7 +2190,6 @@ void RepoView::stash(const QString &message) {
 
   git::Commit commit = mRepo.stash(message);
   if (!commit.isValid()) {
-    error(entry, tr("stash"), text);
     return;
   }
 

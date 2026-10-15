@@ -873,20 +873,35 @@ QList<Commit> Repository::stashes() const {
 }
 
 Commit Repository::stash(const QString &message) {
-  Signature signature = defaultSignature();
-  if (!signature.isValid())
-    return Commit();
+  Id before = stashRef().target().id();
+  QStringList args = {"stash", "push"};
 
-  git_oid id;
-  QByteArray buffer = message.toUtf8();
-  const char *msg = !buffer.isEmpty() ? buffer.constData() : nullptr;
-  if (git_stash_save(&id, d->repo, signature, msg, GIT_STASH_DEFAULT))
-    return Commit();
+  if (!message.isEmpty()) {
+    args.append("-m");
+    args.append(message);
+  }
 
-  git_commit *commit = nullptr;
-  git_commit_lookup(&commit, d->repo, &id);
+  git::Cli cli(workdir().path());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    emit d->notifier->gitCommandFailed(tr("stash"),
+                                       QString::fromUtf8(result.errors));
+    return Commit();
+  }
+
+  Commit commit = stashRef().target();
+
+  if (commit.id() == before) {
+    // "No local changes to save"
+    emit d->notifier->gitCommandFailed(tr("stash"),
+                                       QString::fromUtf8(result.output));
+    return Commit();
+  }
+
   emit d->notifier->referenceUpdated(stashRef());
-  return Commit(commit);
+  return commit;
 }
 
 bool Repository::applyStash(int index) {
