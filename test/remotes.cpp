@@ -4,6 +4,8 @@
 // This software is licensed under the MIT License. The LICENSE.md file
 // describes the conditions under which this software may be distributed.
 //
+// Author: Claude Opus 5.5, an AI model by Anthropic
+//
 
 #include "Test.h"
 #include "git/Branch.h"
