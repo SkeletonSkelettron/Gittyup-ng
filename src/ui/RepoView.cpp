@@ -2228,11 +2228,9 @@ void RepoView::popStash(int index) {
   Q_ASSERT(index >= 0 && index < stashes.size());
 
   git::Commit commit = stashes.at(index);
-  LogEntry *entry = addLogEntry(msg(commit), tr("Pop Stash"));
-  if (!mRepo.popStash(index)) {
-    error(entry, tr("pop stash"), commit.link());
-    return;
-  }
+  addLogEntry(msg(commit), tr("Pop Stash"));
+  mRepo.popStash(index); // A conflict applies the stash too, and keeps it.
+
   // switch back to head
   selectReference(mRepo.head());
   selectFirstCommit();

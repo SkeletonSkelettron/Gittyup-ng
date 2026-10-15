@@ -948,10 +948,21 @@ bool Repository::popStash(int index) {
   // Signal that the previous saved reference changed instead.
   Reference ref = stashRef();
 
-  git_stash_apply_options opts = GIT_STASH_APPLY_OPTIONS_INIT;
-  int error = git_stash_pop(d->repo, index, &opts);
+  QStringList args = {"stash", "pop", QString("stash@{%1}").arg(index)};
+
+  git::Cli cli(workdir().path());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    QByteArray text = result.errors.isEmpty() ? result.output : result.errors;
+    emit d->notifier->gitCommandFailed(tr("pop stash"),
+                                       QString::fromUtf8(text));
+    return false;
+  }
+
   emit d->notifier->referenceUpdated(ref);
-  return !error;
+  return true;
 }
 
 Blame Repository::blame(const QString &name, const Commit &from,
