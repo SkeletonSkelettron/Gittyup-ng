@@ -1622,10 +1622,8 @@ void RepoView::revert(const git::Commit &commit) {
   LogEntry *parent = addLogEntry(link, tr("Revert"));
 
   // FIXME: Report which files conflicted?
-  if (!commit.revert()) {
-    error(parent, tr("revert"), link);
+  if (!commit.revert())
     return;
-  }
 
   // Check for conflicts.
   if (checkForConflicts(parent, tr("revert")))

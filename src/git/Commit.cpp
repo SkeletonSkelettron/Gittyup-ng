@@ -9,6 +9,7 @@
 
 #include "Commit.h"
 #include "Signing.h"
+#include "Cli.h"
 #include "Diff.h"
 #include "Patch.h"
 #include "Reference.h"
@@ -254,12 +255,22 @@ int Commit::difference(const Commit &commit) const {
 bool Commit::revert() const {
   Repository repo = this->repo();
   int state = repo.state();
-  git_revert_options opts = GIT_REVERT_OPTIONS_INIT;
-  int error = git_revert(git_object_owner(d.data()), *this, &opts);
+
+  git::Cli cli(repo.workdir().path());
+  RunResult result = cli.run({"revert", "--no-commit", id().toString()});
+
   if (repo.state() != state)
     emit repo.notifier()->stateChanged();
 
-  return !error;
+  // Conflicts are left for the view to report, as with libgit2.
+  repo.index().read();
+  if (result.exitCode != 0 && !repo.index().hasConflicts()) {
+    emit repo.notifier()->gitCommandFailed(tr("revert commit"),
+                                           QString::fromUtf8(result.errors));
+    return false;
+  }
+
+  return true;
 }
 
 QString Commit::signatureKind() const {

@@ -16,6 +16,7 @@
 #include "git2/reset.h"
 #include "Blob.h"
 #include <QStringList>
+#include <QCoreApplication>
 
 class QDateTime;
 
@@ -29,6 +30,8 @@ class Signature;
 class Tree;
 
 class Commit : public Object {
+  Q_DECLARE_TR_FUNCTIONS(Commit)
+
 public:
   enum MessageOption { NoMessageOption = 0x0, SubstituteEmoji = 0x1 };
 
