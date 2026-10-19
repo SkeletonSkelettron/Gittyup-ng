@@ -82,6 +82,65 @@ bool gitAccepts(const QString &path) {
          process.exitCode() == 0;
 }
 
+// Collects the paths that differ between the index and the workdir, as
+// 'git status' lists them. git checks the workdir much faster than libgit2
+// does on Windows, where it caches file system data (core.fscache). Returns
+// false if git can't tell.
+bool workdirChanges(const QString &workdir, bool untracked,
+                    QStringList &paths) {
+  // Don't refresh the index: that would race with Gittyup's own writes.
+  QStringList args = {"--no-optional-locks", "status", "--porcelain=v2", "-z"};
+  args.append(untracked ? "--untracked-files=all" : "--untracked-files=no");
+
+  RunResult result = Cli(workdir).run(args);
+  if (result.exitCode != 0)
+    return false;
+
+  const QList<QByteArray> records = result.output.split('\0');
+  for (int i = 0; i < records.size(); ++i) {
+    const QByteArray &record = records.at(i);
+    if (record.size() < 3)
+      continue;
+
+    // The path follows a number of fields, which depends on the kind of entry.
+    int fields = 0;
+    switch (record.at(0)) {
+      case '1': // changed
+        fields = 8;
+        break;
+      case '2': // renamed or copied
+        fields = 9;
+        ++i; // The next record is the original path.
+        break;
+      case 'u': // unmerged
+        fields = 10;
+        break;
+      case '?': // untracked
+        fields = 1;
+        break;
+      default: // ignored
+        continue;
+    }
+
+    // Changed, renamed and copied entries may differ only in the index.
+    if ((record.at(0) == '1' || record.at(0) == '2') &&
+        (record.size() < 4 || record.at(3) == '.'))
+      continue;
+
+    qsizetype pos = 0;
+    for (int field = 0; field < fields && pos >= 0; ++field) {
+      pos = record.indexOf(' ', pos);
+      if (pos >= 0)
+        ++pos;
+    }
+
+    if (pos > 0)
+      paths.append(QString::fromUtf8(record.mid(pos)));
+  }
+
+  return true;
+}
+
 const QString kConfigDir = "gittyup";
 const QString kConfigFile = "config";
 const QString kStarFile = "starred";
@@ -335,11 +394,23 @@ Diff Repository::status(const Index &index, Diff::Callbacks *callbacks,
   }
 
   Diff diff = diffTreeToIndex(tree, index, ignoreWhitespace);
-  Diff workdir = diffIndexToWorkdir(index, callbacks, ignoreWhitespace);
-  if (!diff.isValid() || !workdir.isValid())
+  if (!diff.isValid())
     return Diff();
 
-  diff.merge(workdir);
+  // Let git find the changes in the workdir, and diff only those. Diff the
+  // whole workdir if git can't tell.
+  QStringList paths;
+  bool untracked = !appConfig().value<bool>("untracked.hide", false);
+  bool listed = workdirChanges(this->workdir().path(), untracked, paths);
+  if (!listed || !paths.isEmpty()) {
+    Diff workdir =
+        diffIndexToWorkdir(index, callbacks, ignoreWhitespace, paths);
+    if (!workdir.isValid())
+      return Diff();
+
+    diff.merge(workdir);
+  }
+
   diff.setIndex(index);
 
   return diff.count() ? diff : Diff();
@@ -363,12 +434,30 @@ Diff Repository::diffTreeToIndex(const Tree &tree, const Index &index,
 
 Diff Repository::diffIndexToWorkdir(const Index &index,
                                     Diff::Callbacks *callbacks,
-                                    bool ignoreWhitespace) const {
+                                    bool ignoreWhitespace,
+                                    const QStringList &paths) const {
   git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
   opts.flags |= GIT_DIFF_INCLUDE_TYPECHANGE;
 #ifndef USE_SYSTEM_LIBGIT2
   opts.flags |= GIT_DIFF_DISABLE_MMAP;
 #endif
+
+  // libgit2 doesn't even look at other paths when they're matched exactly.
+  QVector<QByteArray> storage;
+  QVector<char *> rawPaths;
+  if (!paths.isEmpty()) {
+    storage.reserve(paths.size());
+    for (const QString &path : paths)
+      storage.append(path.toUtf8());
+
+    rawPaths.reserve(storage.size());
+    for (QByteArray &path : storage)
+      rawPaths.append(path.data());
+
+    opts.flags |= GIT_DIFF_DISABLE_PATHSPEC_MATCH;
+    opts.pathspec.count = rawPaths.size();
+    opts.pathspec.strings = rawPaths.data();
+  }
 
   if (!appConfig().value<bool>("untracked.hide", false))
     opts.flags |= GIT_DIFF_INCLUDE_UNTRACKED | GIT_DIFF_RECURSE_UNTRACKED_DIRS;

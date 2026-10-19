@@ -112,9 +112,11 @@ public:
               bool ignoreWhitespace = false) const;
   Diff diffTreeToIndex(const Tree &tree, const Index &index = Index(),
                        bool ignoreWhitespace = false) const;
+  // Diffs only the given paths, matched exactly, unless there are none.
   Diff diffIndexToWorkdir(const Index &index = Index(),
                           Diff::Callbacks *callbacks = nullptr,
-                          bool ignoreWhitespace = false) const;
+                          bool ignoreWhitespace = false,
+                          const QStringList &paths = QStringList()) const;
 
   // refs
   QList<Reference> refs() const;
