@@ -22,7 +22,6 @@
 #include "git2/config.h"
 #include "git2/diff.h"
 #include "git2/refs.h"
-#include "git2/revert.h"
 #include "git2/commit.h"
 #include <QDateTime>
 #include <QJsonArray>
@@ -320,25 +319,55 @@ bool Commit::amend(const Signature &author, const Signature &committer,
 
 bool Commit::reset(git_reset_t type, const QStringList &paths,
                    bool triggerReferenceUpdated) const {
-  QVector<char *> rawPaths;
-  QVector<QByteArray> storage;
-  git_checkout_options opts = GIT_CHECKOUT_OPTIONS_INIT;
+  QByteArray files;
+  QStringList args = {"reset"};
+
   if (!paths.isEmpty()) {
     // Paths are assumed to be exact matches.
-    opts.checkout_strategy |= GIT_CHECKOUT_DISABLE_PATHSPEC_MATCH;
 
     for (const QString &path : paths) {
-      storage.append(path.toUtf8());
-      rawPaths.append(storage.last().data());
+      files.append(path.toUtf8());
+      files.append('\0');
     }
-
-    opts.paths.count = rawPaths.size();
-    opts.paths.strings = rawPaths.data();
   }
+
+  if (type == GIT_RESET_SOFT) {
+    args.append("--soft");
+  } else if (type == GIT_RESET_MIXED) {
+    args.append("--mixed");
+  } else if (type == GIT_RESET_HARD) {
+    args.append("--hard");
+  }
+
+  args.append("-q");
+  args.append(id().toString());
 
   Repository repo = this->repo();
   int state = repo.state();
-  int error = git_reset(repo, d.data(), type, &opts);
+
+  git::Cli cli(repo.workdir().path());
+  RunResult result;
+
+  if (type == GIT_RESET_HARD && !paths.isEmpty()) {
+    // Only these files in the workdir, but the whole index and HEAD.
+    result = cli.run({"--literal-pathspecs", "restore",
+                      "--source=" + id().toString(), "--staged", "--worktree",
+                      "--pathspec-from-file=-", "--pathspec-file-nul"},
+                     files);
+    if (result.exitCode == 0)
+      result = cli.run({"reset", "-q", id().toString()});
+  } else {
+    result = cli.run(args);
+  }
+
+  if (result.exitCode != 0) {
+    emit repo.notifier()->gitCommandFailed(tr("reset commit"),
+                                           QString::fromUtf8(result.errors));
+    return false;
+  }
+
+  repo.index().read();
+
   if (triggerReferenceUpdated)
     emit repo.notifier()->referenceUpdated(repo.head(),
                                            type == git_reset_t::GIT_RESET_HARD);
@@ -347,7 +376,7 @@ bool Commit::reset(git_reset_t type, const QStringList &paths,
     emit repo.notifier()->stateChanged();
   }
 
-  return !error;
+  return true;
 }
 
 bool Commit::isStarred() const { return repo().isCommitStarred(id()); }
