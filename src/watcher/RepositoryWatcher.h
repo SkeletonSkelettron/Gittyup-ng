@@ -28,6 +28,7 @@ private:
   void notifyChanged();
 
   QTimer mTimer;
+  int mDroppedQueues = 0;
   RepositoryWatcherPrivate *d;
 };
 
