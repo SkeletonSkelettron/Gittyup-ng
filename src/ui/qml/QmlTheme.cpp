@@ -121,6 +121,13 @@ QmlTheme::QmlTheme() : mProvisional(!Application::theme()) {
       mDark = ui.value("dark").toBool();
   }
 
+  // Failures stand out in the red of the theme unless it chose a color.
+  if (!mColors.contains("alert"))
+    mColors.insert("alert",
+                   mix(color("panel"), color("deleted"), mDark ? 0.45 : 0.2));
+  if (!mColors.contains("alert_text"))
+    mColors.insert("alert_text", color("text"));
+
   mMonoFont = QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
   updateCodeFont();
   connect(Settings::instance(), &Settings::settingsChanged, this,

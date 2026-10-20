@@ -225,6 +225,8 @@ Rectangle {
             icon: "log"
             enabled: toolbar.hasView
             checked: toolbar.logVisible
+            // Errors that weren't acknowledged yet.
+            badge: toolbar.logAlerts
             tip: toolbar.logVisible ? qsTr("Hide Log") : qsTr("Show Log")
             onClicked: toolbar.toggleLog()
         }

@@ -589,6 +589,12 @@ Result Remote::push(Callbacks *callbacks, const QStringList &refspecs) {
   // Tell the callbacks about the updated references like libgit2 does.
   bool rejected = false;
   if (callbacks) {
+    // What the remote said, like why a hook declined the push.
+    for (const QByteArray &line : result.errors.split('\n')) {
+      if (line.startsWith("remote: ") && !line.mid(8).trimmed().isEmpty())
+        callbacks->sideband(QString::fromUtf8(line.mid(8)) + '\n');
+    }
+
     callbacks->transfer(0, 0, 0);
     for (const QByteArray &line : result.output.split('\n')) {
       // "<flag>\t<src>:<dst>\t<summary>", the flag may be a space.

@@ -18,6 +18,18 @@ namespace {
 const QString kTitleFmt = "<b>%1</b> - %2";
 const QString kTimeFmt = "<span style='color: #808080'>%1</span> - %2";
 
+bool failed(const LogEntry *entry) {
+  if (entry->kind() == LogEntry::Error)
+    return true;
+
+  for (const LogEntry *child : entry->entries()) {
+    if (failed(child))
+      return true;
+  }
+
+  return false;
+}
+
 } // namespace
 
 LogModel::LogModel(LogEntry *root, QStyle *style, QObject *parent)
@@ -36,6 +48,15 @@ LogModel::LogModel(LogEntry *root, QStyle *style, QObject *parent)
   connect(root, &LogEntry::dataChanged, [this](LogEntry *entry) {
     QModelIndex index = this->index(entry);
     emit dataChanged(index, index);
+  });
+
+  // The entries that contain the error failed now.
+  connect(root, &LogEntry::errorInserted, [this](LogEntry *entry) {
+    for (LogEntry *parent = entry->parentEntry(); parent && parent != mRoot;
+         parent = parent->parentEntry()) {
+      QModelIndex index = this->index(parent);
+      emit dataChanged(index, index, {FailedRole});
+    }
   });
 }
 
@@ -123,6 +144,9 @@ QVariant LogModel::data(const QModelIndex &index, int role) const {
 
     case StatusRole:
       return entry->status() ? QString(QChar(entry->status())) : QString();
+
+    case FailedRole:
+      return failed(entry);
   }
 
   return QVariant();
@@ -132,6 +156,7 @@ QHash<int, QByteArray> LogModel::roleNames() const {
   return {{Qt::DisplayRole, "display"},
           {KindRole, "kind"},
           {ProgressRole, "progress"},
+          {FailedRole, "failed"},
           {StatusRole, "status"}};
 }
 

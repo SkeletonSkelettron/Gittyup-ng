@@ -75,6 +75,17 @@ Rectangle {
                     tree.collapse(row)
             })
         }
+
+        // Show a failed entry.
+        function onRevealRequested(index) {
+            Qt.callLater(() => {
+                tree.expandToIndex(index)
+                tree.forceLayout()
+                const row = tree.rowAtIndex(index)
+                if (row >= 0)
+                    tree.positionViewAtRow(row, TableView.Contain)
+            })
+        }
     }
 
     ColumnLayout {
@@ -169,8 +180,12 @@ Rectangle {
                 required property int kind
                 required property int progress
                 required property string status
+                required property bool failed
 
                 readonly property bool busy: kind === root.entryKind && progress >= 0
+                // Mark collapsed entries that hide an error.
+                readonly property bool hidesError: kind === root.entryKind && failed
+                                                   && hasChildren && !expanded && !busy
 
                 implicitWidth: treeView.width
                 implicitHeight: Math.max(24, label.implicitHeight + 8)
@@ -240,7 +255,7 @@ Rectangle {
                     y: 4
                     width: visible ? 16 : 0
                     height: 16
-                    visible: entry.busy || entry.kind !== root.entryKind
+                    visible: entry.busy || entry.kind !== root.entryKind || entry.hidesError
 
                     Spinner {
                         anchors.centerIn: parent
@@ -291,7 +306,7 @@ Rectangle {
 
                     Icon {
                         anchors.centerIn: parent
-                        visible: entry.kind === root.errorKind
+                        visible: entry.kind === root.errorKind || entry.hidesError
                         name: "alert"
                         size: 14
                         color: Theme.deleted
@@ -310,7 +325,8 @@ Rectangle {
                     wrapMode: Text.Wrap
                     text: "<style>a { color: " + Theme.accent + "; text-decoration: none; }</style>"
                           + entry.display
-                    color: entry.kind === root.errorKind ? Theme.deleted : Theme.text
+                    color: entry.kind === root.errorKind || entry.hidesError ? Theme.deleted
+                                                                             : Theme.text
                     font.pixelSize: 12
                     onLinkActivated: (link) => {
                         if (link === "expand")

@@ -282,6 +282,7 @@ void ToolBar::updateView() {
   MainWindow *window = static_cast<MainWindow *>(parent());
   mState.sidebarVisible = window->isSideBarVisible();
   mState.logVisible = view && view->isLogVisible();
+  mState.logAlerts = view ? view->logAlertCount() : 0;
   if (view)
     mState.viewMode = view->viewMode();
   mRepoConfigAction->setEnabled(view);

@@ -395,7 +395,20 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
   connect(mCommits, &CommitList::statusChanged, watcher,
           &RepositoryWatcher::cancelPendingNotification);
 
-  connect(mLogRoot, &LogEntry::errorInserted, this, &RepoView::suspendLogTimer);
+  // Make failures visible: open the log at the failed entry, and alert on the
+  // page and the log button until the user acknowledges them.
+  connect(mLogRoot, &LogEntry::errorInserted, this, [this](LogEntry *error) {
+    suspendLogTimer();
+    setLogVisible(true);
+    mLogPanel->reveal(error);
+    mLogPanel->addAlert(error);
+  });
+  connect(mLogPanel, &LogPanel::showRequested, this, [this] {
+    suspendLogTimer();
+    setLogVisible(true);
+  });
+  connect(mLogPanel, &LogPanel::alertChanged, this,
+          [this] { this->toolBar()->updateView(); });
   connect(mLogPanel, &LogPanel::linkActivated, this, &RepoView::visitLink);
   connect(mLogPanel, &LogPanel::operationCanceled, this,
           &RepoView::cancelRemoteTransfer);
@@ -891,6 +904,8 @@ void RepoView::cancelIndexing() {
 }
 
 bool RepoView::isLogVisible() const { return mIsLogVisible; }
+
+int RepoView::logAlertCount() const { return mLogPanel->alertCount(); }
 
 void RepoView::setLogVisible(bool visible) {
   if (visible == mIsLogVisible)

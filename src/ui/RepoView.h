@@ -165,6 +165,8 @@ public:
   // log window
   bool isLogVisible() const;
   void setLogVisible(bool visible);
+  // The errors of the log that the user didn't acknowledge yet.
+  int logAlertCount() const;
 
   /*!
    * \brief addLogEntry

@@ -42,6 +42,7 @@ class ToolBar : public QObject {
   Q_PROPERTY(int ahead READ ahead NOTIFY stateChanged)
   Q_PROPERTY(int behind READ behind NOTIFY stateChanged)
   Q_PROPERTY(bool logVisible READ logVisible NOTIFY stateChanged)
+  Q_PROPERTY(int logAlerts READ logAlerts NOTIFY stateChanged)
   Q_PROPERTY(int viewMode READ viewMode NOTIFY stateChanged)
   Q_PROPERTY(bool starred READ starred NOTIFY stateChanged)
   Q_PROPERTY(bool pullRequestAvailable READ pullRequestAvailable CONSTANT)
@@ -74,6 +75,7 @@ public:
   int ahead() const { return mState.ahead; }
   int behind() const { return mState.behind; }
   bool logVisible() const { return mState.logVisible; }
+  int logAlerts() const { return mState.logAlerts; }
   int viewMode() const { return mState.viewMode; }
   bool starred() const { return mState.starred; }
   bool pullRequestAvailable() const { return mPullRequestAvailable; }
@@ -125,6 +127,7 @@ private:
     int ahead = 0;
     int behind = 0;
     bool logVisible = false;
+    int logAlerts = 0;
     int viewMode = 0;
     bool starred = false;
   };

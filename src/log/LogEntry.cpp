@@ -58,10 +58,14 @@ void LogEntry::insertEntries(int row, const QList<LogEntry *> &entries) {
     LogEntry *entry = entries.at(i);
     entry->setParent(this);
     mEntries.insert(row + i, entry);
-    if (entry->kind() == Error)
-      emit root->errorInserted();
   }
   emit root->entriesInserted();
+
+  // Report errors once they are in the model.
+  for (LogEntry *entry : entries) {
+    if (entry->kind() == Error)
+      emit root->errorInserted(entry);
+  }
 }
 
 LogEntry *LogEntry::insertEntry(int row, Kind kind, const QString &text,

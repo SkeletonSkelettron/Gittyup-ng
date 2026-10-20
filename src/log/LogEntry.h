@@ -57,7 +57,7 @@ signals:
   void dataChanged(LogEntry *entry);
   void entriesAboutToBeInserted(LogEntry *entry, int row, int count = 1);
   void entriesInserted();
-  void errorInserted();
+  void errorInserted(LogEntry *entry);
 
 private:
   Kind mKind = Entry;

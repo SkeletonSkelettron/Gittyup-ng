@@ -18,7 +18,13 @@ class QStyle;
 
 class LogModel : public QAbstractItemModel {
 public:
-  enum Role { EntryRole = Qt::UserRole, KindRole, ProgressRole, StatusRole };
+  enum Role {
+    EntryRole = Qt::UserRole,
+    KindRole,
+    ProgressRole,
+    StatusRole,
+    FailedRole // The entry or one of its entries is an error.
+  };
 
   LogModel(LogEntry *root, QStyle *style, QObject *parent = nullptr);
 

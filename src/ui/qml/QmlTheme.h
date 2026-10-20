@@ -48,6 +48,9 @@ class QmlTheme : public QObject {
   Q_PROPERTY(QColor added READ added CONSTANT)
   Q_PROPERTY(QColor modified READ modified CONSTANT)
   Q_PROPERTY(QColor deleted READ deleted CONSTANT)
+  // The background and text of failures, like the banner of a failed push.
+  Q_PROPERTY(QColor alert READ alert CONSTANT)
+  Q_PROPERTY(QColor alertText READ alertText CONSTANT)
 
   Q_PROPERTY(QColor diffAddition READ diffAddition CONSTANT)
   Q_PROPERTY(QColor diffDeletion READ diffDeletion CONSTANT)
@@ -94,6 +97,8 @@ public:
   QColor added() const { return color("added"); }
   QColor modified() const { return color("modified"); }
   QColor deleted() const { return color("deleted"); }
+  QColor alert() const { return color("alert"); }
+  QColor alertText() const { return color("alert_text"); }
 
   QColor diffAddition() const { return color("diff_addition"); }
   QColor diffDeletion() const { return color("diff_deletion"); }

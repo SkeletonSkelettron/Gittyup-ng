@@ -16,6 +16,7 @@
 #include <QMetaMethod>
 #include <QMimeData>
 #include <QRegularExpression>
+#include <QTextDocumentFragment>
 
 namespace {
 
@@ -41,6 +42,10 @@ void LogPanel::setVisible(bool visible) {
 
   mVisible = visible;
   emit visibleChanged();
+
+  // Hiding the log acknowledges its errors.
+  if (!visible)
+    dismissAlert();
 }
 
 void LogPanel::setCollapseEnabled(bool collapse) {
@@ -53,6 +58,45 @@ void LogPanel::setCollapseEnabled(bool collapse) {
 
 void LogPanel::setEntryExpanded(LogEntry *entry, bool expanded) {
   emit expandRequested(mModel->index(entry), expanded);
+}
+
+void LogPanel::reveal(LogEntry *entry) {
+  emit revealRequested(mModel->index(entry));
+}
+
+void LogPanel::addAlert(LogEntry *error) {
+  // Name the operation that failed, like "Push failed: ...".
+  LogEntry *operation = error;
+  while (operation->parentEntry() && operation->parentEntry()->parentEntry())
+    operation = operation->parentEntry();
+
+  QString text = QTextDocumentFragment::fromHtml(error->text()).toPlainText();
+  text.replace(QChar::ParagraphSeparator, '\n');
+  text.replace(QChar::LineSeparator, '\n');
+  text = text.trimmed().section('\n', 0, 0);
+
+  QString title = operation->title();
+  mAlert = title.isEmpty() ? text : tr("%1 failed: %2").arg(title, text);
+  mAlertEntry = error;
+  ++mAlertCount;
+  emit alertChanged();
+}
+
+void LogPanel::showAlert() {
+  emit showRequested();
+  if (mAlertEntry)
+    reveal(mAlertEntry);
+  dismissAlert();
+}
+
+void LogPanel::dismissAlert() {
+  if (mAlert.isEmpty() && mAlertCount == 0)
+    return;
+
+  mAlert.clear();
+  mAlertCount = 0;
+  mAlertEntry.clear();
+  emit alertChanged();
 }
 
 bool LogPanel::hasProblems(const QModelIndex &index) const {

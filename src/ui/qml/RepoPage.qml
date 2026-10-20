@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic as Controls
+import QtQuick.Layouts
 import Gittyup
 
 // The repository page: references on the left, the commit graph or the diff
@@ -137,6 +138,79 @@ FocusScope {
                 const y = mapToItem(root, event.x, event.y).y
                 root.logHeight = Math.max(80, Math.min(root.height - 160,
                                                        startHeight + startY - y))
+            }
+        }
+    }
+
+    // The last failure, until the user shows or dismisses it.
+    Rectangle {
+        id: alertBanner
+
+        readonly property bool shown: logPanel.alert !== ""
+        // Keep the text while the banner slides out.
+        property string message
+
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: shown ? 12 : -height - 12
+        z: 50
+        visible: y > -height - 12
+        width: Math.min(parent.width - 32, alertRow.implicitWidth + 20)
+        height: 40
+        radius: 8
+        color: Theme.alert
+        border.color: Theme.deleted
+
+        Behavior on y {
+            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+        }
+
+        Connections {
+            target: logPanel
+
+            function onAlertChanged() {
+                if (logPanel.alert !== "")
+                    alertBanner.message = logPanel.alert
+            }
+        }
+
+        RowLayout {
+            id: alertRow
+
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 8
+            spacing: 8
+
+            Icon {
+                name: "alert"
+                size: 16
+                color: Theme.alertText
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.maximumWidth: 640
+                text: alertBanner.message
+                elide: Text.ElideRight
+                color: Theme.alertText
+                font.pixelSize: 12
+                font.weight: Font.Medium
+            }
+
+            PushButton {
+                implicitHeight: 26
+                text: qsTr("Show Details")
+                onClicked: logPanel.showAlert()
+            }
+
+            ActionButton {
+                compact: true
+                implicitWidth: 24
+                implicitHeight: 24
+                icon: "close"
+                foregroundOverride: Theme.alertText
+                tip: qsTr("Dismiss")
+                onClicked: logPanel.dismissAlert()
             }
         }
     }
