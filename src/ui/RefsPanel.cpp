@@ -21,6 +21,8 @@
 #include "git/Config.h"
 #include "git/Remote.h"
 #include "git/Submodule.h"
+#include <QApplication>
+#include <QClipboard>
 #include <QMenu>
 #include <QSettings>
 
@@ -694,6 +696,10 @@ void RefsPanel::showContextMenu(int row, qreal x, qreal y) {
       QAction *checkout =
           menu.addAction(tr("Checkout"), [view, ref] { view->checkout(ref); });
       checkout->setEnabled(!item.head && !mRepo.isBare());
+
+      QString name = ref.name();
+      menu.addAction(ref.isTag() ? tr("Copy Tag Name") : tr("Copy Branch Name"),
+                     [name] { QApplication::clipboard()->setText(name); });
 
       menu.addSeparator();
 
