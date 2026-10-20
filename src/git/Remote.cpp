@@ -559,32 +559,43 @@ void Remote::setUrl(const QString &url) {
 }
 
 Result Remote::fetch(Callbacks *callbacks, bool tags, bool prune) {
-  git_fetch_options opts = GIT_FETCH_OPTIONS_INIT;
-#ifndef USE_SYSTEM_LIBGIT2
-  opts.callbacks.connected = &Remote::Callbacks::connected;
-  opts.callbacks.about_to_disconnect = &Remote::Callbacks::about_to_disconnect;
-#endif
-  opts.callbacks.sideband_progress = &Remote::Callbacks::sideband;
-  opts.callbacks.credentials = &Remote::Callbacks::credentials;
-  opts.callbacks.certificate_check = &Remote::Callbacks::certificate;
-  opts.callbacks.transfer_progress = &Remote::Callbacks::transfer;
-  opts.callbacks.update_tips = &Remote::Callbacks::update;
-  opts.callbacks.remote_ready = &Remote::Callbacks::remoteReady;
-  opts.callbacks.payload = callbacks;
+  Repository repo(git_remote_owner(d.data()));
 
-  QByteArray proxy = proxyUrl(url(), opts.proxy_opts.type);
-  opts.proxy_opts.url = proxy;
-
-  if (tags)
-    opts.download_tags = GIT_REMOTE_DOWNLOAD_TAGS_ALL;
+  QStringList args = {"fetch", "--porcelain"};
 
   if (prune)
-    opts.prune = GIT_FETCH_PRUNE;
+    args.append("--prune");
 
-  // Write reflog message.
-  QString msg = QString("fetch: %1").arg(name());
+  if (tags)
+    args.append("--tags");
+  args.append(name());
 
-  return git_remote_fetch(d.data(), nullptr, &opts, msg.toUtf8());
+  git::Cli cli(repo.workdir().path());
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0)
+    return Result(-1, QString::fromUtf8(result.errors).trimmed());
+
+  // Tell the callbacks about the updated references like libgit2 does.
+  if (callbacks) {
+    callbacks->transfer(0, 0, 0);
+    for (const QByteArray &line : result.output.split('\n')) {
+      // "<flag> <old id> <new id> <local ref>", the flag may be a space.
+      if (line.size() < 2 || line.at(0) == '!')
+        continue;
+
+      QList<QByteArray> fields = line.mid(2).split(' ');
+      if (fields.size() != 3)
+        continue;
+
+      git_oid_t type = repo.oidType();
+      Id a(QByteArray::fromHex(fields.at(0)), type);
+      Id b(QByteArray::fromHex(fields.at(1)), type);
+      callbacks->update(QString::fromUtf8(fields.at(2)), a, b);
+    }
+  }
+
+  return 0;
 }
 
 Result Remote::push(Callbacks *callbacks, const QStringList &refspecs) {
