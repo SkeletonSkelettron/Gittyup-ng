@@ -172,6 +172,9 @@ signals:
   // Emitted whenever isLoading() changes.
   void loadingChanged(bool loading);
 
+  // Emitted when the status of the workdir starts to be read again.
+  void statusStarted();
+
   void modelChanged();
   void selectionRevisionChanged();
   void laneCountChanged();

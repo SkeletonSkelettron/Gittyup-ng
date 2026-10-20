@@ -157,8 +157,12 @@ public:
     connect(&mReset, &QFutureWatcher<ResetResult>::finished, [this] {
       ResetResult result = mReset.result();
       bool emitStatusFinished = result.emitStatusFinished;
+      bool current = (result.status == mStatusCount);
       applyResetResult(std::move(result));
-      if (emitStatusFinished)
+
+      // A status that started since is the current one. It finishes later,
+      // and the views wait for it instead of taking this one for it.
+      if (emitStatusFinished && current)
         emit statusFinished(!mRows.isEmpty() &&
                             !mRows.first().commit.isValid());
     });
@@ -190,6 +194,11 @@ public:
   }
 
   void startStatus() {
+    ++mStatusCount;
+
+    // The status sees the workdir as it is from now on.
+    emit statusStarted();
+
     // Cancel existing status diff.
     cancelStatus();
 
@@ -452,6 +461,7 @@ public:
   }
 
 signals:
+  void statusStarted();
   void statusFinished(bool visible);
   void loadingChanged(bool loading);
 
@@ -503,8 +513,9 @@ private:
     git::Diff statusDiff;
     bool statusCheckFinished;
 
-    // Carried straight through to ResetResult; see its field for why.
+    // Carried straight through to ResetResult; see its fields for why.
     bool emitStatusFinished;
+    int status;
   };
 
   struct ResetResult {
@@ -515,6 +526,9 @@ private:
     // Whether this particular reset was triggered by the status check
     // finishing, and should therefore emit statusFinished() once applied.
     bool emitStatusFinished = false;
+
+    // The number of the status that was current when the reset started.
+    int status = 0;
   };
 
   struct FetchResult {
@@ -815,6 +829,7 @@ private:
     }
 
     result.emitStatusFinished = ctx.emitStatusFinished;
+    result.status = ctx.status;
     return result;
   }
 
@@ -834,7 +849,8 @@ private:
                      mRepo,
                      status(),
                      mStatus.isFinished(),
-                     emitStatusFinishedAfter};
+                     emitStatusFinishedAfter,
+                     mStatusCount};
 
     emit loadingChanged(true);
     mReset.setFuture(QtConcurrent::run([ctx] { return computeReset(ctx); }));
@@ -853,6 +869,9 @@ private:
 
   QTimer mTimer;
   int mProgress = 0;
+
+  // The number of statuses that were started.
+  int mStatusCount = 0;
 
   DiffCallbacks mStatusCallbacks;
   QFutureWatcher<git::Diff> mStatus;
@@ -1003,6 +1022,7 @@ CommitList::CommitList(Index *index, RepoView *view)
   });
 
   connect(model, &CommitModel::loadingChanged, this, &CommitList::setLoading);
+  connect(model, &CommitModel::statusStarted, this, &CommitList::statusStarted);
 
   git::RepositoryNotifier *notifier = repo.notifier();
   connect(notifier, &git::RepositoryNotifier::referenceUpdated, this,

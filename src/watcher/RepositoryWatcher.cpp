@@ -17,14 +17,16 @@ void RepositoryWatcher::init(const git::Repository &repo) {
           &git::RepositoryNotifier::workdirChanged);
 }
 
+// Called when a status starts. It reads the workdir after the changes that
+// were notified so far, so they don't need another refresh.
 void RepositoryWatcher::cancelPendingNotification() {
   mTimer.stop();
 
   // Drop the notifications that are already queued too. They come from
   // changes made while the main thread was busy, mostly by an operation that
-  // ran on it, like a merge. The refresh that follows sees them anyway, and
-  // another one would restart its status. Queued calls run in order: all of
-  // them run before this one.
+  // ran on it, like a merge, and another refresh would restart the status.
+  // Queued calls run in order: all of them run before this one. Changes made
+  // while the status runs are notified after it, and refresh again.
   ++mDroppedQueues;
   QMetaObject::invokeMethod(
       this, [this] { --mDroppedQueues; }, Qt::QueuedConnection);
