@@ -128,6 +128,7 @@ test(NAME workdir_refresh)
 test(NAME tags)
 test(NAME remotes)
 test(NAME stashes)
+test(NAME revert)
 
 # Test case not compatible with Windows
 if(NOT WIN32)

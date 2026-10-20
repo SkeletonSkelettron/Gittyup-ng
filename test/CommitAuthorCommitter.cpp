@@ -112,6 +112,10 @@ void TestCommitAuthorCommitter::testRevertAuthorEmailPreservance() {
   git::Signature signature = repo.defaultSignature();
   QCOMPARE(c.committer().email(), signature.email());
   QCOMPARE(c.committer().name(), signature.name());
+
+  // Only the revert is committed, on top of the commit that it reverts.
+  QCOMPARE(c.parents().size(), 1);
+  QCOMPARE(c.parents().first().id(), commit.id());
 }
 
 TEST_MAIN(TestCommitAuthorCommitter)

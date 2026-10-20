@@ -19,8 +19,7 @@ const QString kConfigFile = "config";
 } // namespace
 
 Config::Entry::Entry(git_config_entry *entry, bool owned)
-    : d(
-          entry, owned ? git_config_entry_free : [](git_config_entry *) {}) {}
+    : d(entry, owned ? git_config_entry_free : [](git_config_entry *) {}) {}
 
 QString Config::Entry::name() const { return d->name; }
 
