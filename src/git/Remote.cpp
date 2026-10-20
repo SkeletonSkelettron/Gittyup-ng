@@ -78,48 +78,6 @@ QUrl parseUrl(const QString &url) {
   return res;
 }
 
-int pack_progress(int stage, unsigned int current, unsigned int total,
-                  void *payload) {
-  Remote::Callbacks *cbs = reinterpret_cast<Remote::Callbacks *>(payload);
-  if (stage == GIT_PACKBUILDER_ADDING_OBJECTS) {
-    cbs->add(total, current);
-  } else if (stage == GIT_PACKBUILDER_DELTAFICATION) {
-    cbs->delta(total, current);
-  }
-
-  return 0;
-}
-
-int push_transfer_progress(unsigned int current, unsigned int total,
-                           size_t bytes, void *payload) {
-  Remote::Callbacks *cbs = reinterpret_cast<Remote::Callbacks *>(payload);
-  if (cbs->state() == Remote::Callbacks::Transfer) {
-    if (!cbs->transfer(total, current, bytes))
-      return -1;
-  }
-
-  return 0;
-}
-
-int push_update_reference(const char *name, const char *status, void *payload) {
-  if (status)
-    reinterpret_cast<Remote::Callbacks *>(payload)->rejected(name, status);
-  return 0;
-}
-
-int push_negotiation(const git_push_update **updates, size_t len,
-                     void *payload) {
-  QList<Remote::PushUpdate> list;
-  for (size_t i = 0; i < len; ++i) {
-    const git_push_update *update = updates[i];
-    list.append(
-        {update->src_refname, update->dst_refname, update->src, update->dst});
-  }
-
-  Remote::Callbacks *cbs = reinterpret_cast<Remote::Callbacks *>(payload);
-  return cbs->negotiation(list) ? 0 : -1;
-}
-
 class ConfigFile {
 public:
   struct Host {
@@ -599,37 +557,65 @@ Result Remote::fetch(Callbacks *callbacks, bool tags, bool prune) {
 }
 
 Result Remote::push(Callbacks *callbacks, const QStringList &refspecs) {
-  git_push_options opts = GIT_PUSH_OPTIONS_INIT;
-#ifndef USE_SYSTEM_LIBGIT2
-  opts.callbacks.connected = &Remote::Callbacks::connected;
-  opts.callbacks.about_to_disconnect = &Remote::Callbacks::about_to_disconnect;
-#endif
-  opts.callbacks.sideband_progress = &Remote::Callbacks::sideband;
-  opts.callbacks.credentials = &Remote::Callbacks::credentials;
-  opts.callbacks.certificate_check = &Remote::Callbacks::certificate;
-  opts.callbacks.transfer_progress = &Remote::Callbacks::transfer;
-  opts.callbacks.update_tips = &Remote::Callbacks::update;
-  opts.callbacks.remote_ready = &Remote::Callbacks::remoteReady;
-  opts.callbacks.pack_progress = &pack_progress;
-  opts.callbacks.push_transfer_progress = &push_transfer_progress;
-  opts.callbacks.push_update_reference = &push_update_reference;
-  opts.callbacks.push_negotiation = &push_negotiation;
-  opts.callbacks.payload = callbacks;
+  Repository repo(git_remote_owner(d.data()));
 
-  QByteArray proxy = proxyUrl(url(), opts.proxy_opts.type);
-  opts.proxy_opts.url = proxy;
+  // refs/heads/x on the remote is refs/remotes/<remote>/x here.
+  auto tracking = [this](const QString &ref) {
+    return ref.startsWith("refs/heads/")
+               ? QString("refs/remotes/%1/%2").arg(name(), ref.mid(11))
+               : QString();
+  };
+  auto target = [&repo](const QString &name) {
+    Reference ref = repo.lookupRef(name);
+    return ref.isValid() ? ref.target().id() : Id();
+  };
 
-  QVector<char *> raw;
-  QVector<QByteArray> storage;
-  for (const QString &refspec : refspecs) {
-    storage.append(refspec.toUtf8());
-    raw.append(storage.last().data());
+  // git moves the remote-tracking branches, remember where they were.
+  QMap<QString, Id> before;
+  for (QString refspec : refspecs) {
+    if (refspec.startsWith('+'))
+      refspec.remove(0, 1);
+    QString name = tracking(refspec.section(':', -1));
+    if (!name.isEmpty())
+      before.insert(name, target(name));
   }
 
-  git_strarray array;
-  array.strings = raw.data();
-  array.count = raw.size();
-  return git_remote_push(d.data(), &array, &opts);
+  QStringList args = {"push", "--porcelain", name()};
+  args += refspecs;
+
+  git::Cli cli(repo.workdir().path());
+  RunResult result = cli.run(args);
+
+  // Tell the callbacks about the updated references like libgit2 does.
+  bool rejected = false;
+  if (callbacks) {
+    callbacks->transfer(0, 0, 0);
+    for (const QByteArray &line : result.output.split('\n')) {
+      // "<flag>\t<src>:<dst>\t<summary>", the flag may be a space.
+      QList<QByteArray> fields = line.split('\t');
+      if (fields.size() != 3 || fields.at(0).isEmpty())
+        continue;
+
+      QString dst = QString::fromUtf8(fields.at(1)).section(':', -1);
+      if (fields.at(0).at(0) == '!') {
+        rejected = true;
+        callbacks->rejected(dst, QString::fromUtf8(fields.at(2)));
+        continue;
+      }
+
+      // Skip refs that are up to date and tags.
+      QString name = tracking(dst);
+      if (fields.at(0).at(0) == '=' || name.isEmpty())
+        continue;
+
+      callbacks->update(name, before.value(name), target(name));
+    }
+  }
+
+  if (result.exitCode != 0 && !rejected)
+    return Result(-1, QString::fromUtf8(result.errors).trimmed());
+
+  return 0;
 }
 
 Result Remote::push(Callbacks *callbacks, const Reference &src,
