@@ -327,6 +327,12 @@ QAction *execMenu(QMenu *menu, const QPoint &pos) {
     return menu->exec(pos);
   }
 
+  // The item that was clicked to show the menu keeps the mouse until its
+  // click handler returns, after the menu closes. Release it, or the
+  // entries of the menu aren't hovered until the menu is clicked.
+  if (QQuickItem *grabber = view->quickWindow()->mouseGrabberItem())
+    grabber->ungrabMouse();
+
   // Wait until the menu closes, like a native menu.
   QEventLoop loop;
   QObject::connect(popup, SIGNAL(closed()), &loop, SLOT(quit()));
