@@ -1837,7 +1837,8 @@ void RepoView::push(const git::Remote &rmt, const git::Reference &src,
   mWatcher = new QFutureWatcher<git::Result>(this);
   connect(
       mWatcher, &QFutureWatcher<git::Result>::finished, mWatcher,
-      [this, src, ref, setUpstream, remote, entry, remoteBranchName] {
+      [this, src, ref, dst, setUpstream, force, tags, remote, entry,
+       remoteBranchName] {
         entry->setBusy(false);
 
         git::Result result = mWatcher->result();
@@ -1875,6 +1876,35 @@ void RepoView::push(const git::Remote &rmt, const git::Reference &src,
                       .arg(remote.name());
               errorEntry->addEntry(LogEntry::Hint, hint1);
               errorEntry->addEntry(LogEntry::Warning, hint2);
+
+              // Offer to pull or to force push, like GitKraken.
+              if (!force) {
+                ConfirmDialog *dialog = new ConfirmDialog(this);
+                dialog->setAttribute(Qt::WA_DeleteOnClose);
+                dialog->setTitle(tr("Push Rejected"));
+                dialog->setText(tr("'%1' has commits that '%2' doesn't have.")
+                                    .arg(remoteBranchName, ref.name()));
+                dialog->setInformativeText(
+                    tr("Pull to integrate them, or force push to replace "
+                       "them. Force pushing drops the commits of the remote "
+                       "branch that aren't in yours."));
+                dialog->setAcceptText(tr("Force Push"));
+                dialog->setDanger(true);
+
+                git::Branch branch = ref;
+                if (branch.isLocalBranch()) {
+                  dialog->addButton(tr("Pull (Fast-Forward If Possible)"));
+                  connect(dialog, &ConfirmDialog::buttonClicked, this,
+                          [this, branch] { pullBranch(branch); });
+                }
+
+                connect(dialog, &QDialog::accepted, this,
+                        [this, remote, src, dst, setUpstream, tags] {
+                          push(remote, src, dst, setUpstream, true, tags);
+                        });
+
+                dialog->open();
+              }
             }
           }
         } else {

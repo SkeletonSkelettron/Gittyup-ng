@@ -586,37 +586,60 @@ Result Remote::push(Callbacks *callbacks, const QStringList &refspecs) {
   git::Cli cli(repo.workdir().path());
   RunResult result = cli.run(args);
 
-  // Tell the callbacks about the updated references like libgit2 does.
-  bool rejected = false;
+  // What the remote said, like why a hook declined the push.
   if (callbacks) {
-    // What the remote said, like why a hook declined the push.
     for (const QByteArray &line : result.errors.split('\n')) {
       if (line.startsWith("remote: ") && !line.mid(8).trimmed().isEmpty())
         callbacks->sideband(QString::fromUtf8(line.mid(8)) + '\n');
     }
 
     callbacks->transfer(0, 0, 0);
-    for (const QByteArray &line : result.output.split('\n')) {
-      // "<flag>\t<src>:<dst>\t<summary>", the flag may be a space.
-      QList<QByteArray> fields = line.split('\t');
-      if (fields.size() != 3 || fields.at(0).isEmpty())
-        continue;
+  }
 
-      QString dst = QString::fromUtf8(fields.at(1)).section(':', -1);
-      if (fields.at(0).at(0) == '!') {
-        rejected = true;
-        callbacks->rejected(dst, QString::fromUtf8(fields.at(2)));
+  // Tell the callbacks about the updated references like libgit2 does.
+  bool rejected = false;
+  QString notFastForward;
+  for (const QByteArray &line : result.output.split('\n')) {
+    // "<flag>\t<src>:<dst>\t<summary>", the flag may be a space.
+    QList<QByteArray> fields = line.split('\t');
+    if (fields.size() != 3 || fields.at(0).isEmpty())
+      continue;
+
+    QString dst = QString::fromUtf8(fields.at(1)).section(':', -1);
+    if (fields.at(0).at(0) == '!') {
+      // "[rejected] (fetch first)" or "[remote rejected] (<reason>)".
+      QString summary = QString::fromUtf8(fields.at(2));
+      QRegularExpressionMatch match =
+          QRegularExpression("\\((.*)\\)$").match(summary);
+      QString reason = match.hasMatch() ? match.captured(1) : summary;
+
+      // Only forcing updates a reference that has commits we don't have.
+      if (summary.startsWith("[rejected]") &&
+          (reason == "non-fast-forward" || reason == "fetch first" ||
+           reason == "already exists")) {
+        notFastForward = reason;
         continue;
       }
 
-      // Skip refs that are up to date and tags.
-      QString name = tracking(dst);
-      if (fields.at(0).at(0) == '=' || name.isEmpty())
-        continue;
-
-      callbacks->update(name, before.value(name), target(name));
+      rejected = true;
+      if (callbacks)
+        callbacks->rejected(dst, reason);
+      continue;
     }
+
+    // Skip refs that are up to date and tags.
+    QString name = tracking(dst);
+    if (!callbacks || fields.at(0).at(0) == '=' || name.isEmpty())
+      continue;
+
+    callbacks->update(name, before.value(name), target(name));
   }
+
+  if (notFastForward == "already exists")
+    return Result(GIT_ENONFASTFORWARD, "The tag already exists in the remote.");
+  if (!notFastForward.isEmpty())
+    return Result(GIT_ENONFASTFORWARD,
+                  "The remote contains commits that you don't have locally.");
 
   if (result.exitCode != 0 && !rejected)
     return Result(-1, QString::fromUtf8(result.errors).trimmed());
