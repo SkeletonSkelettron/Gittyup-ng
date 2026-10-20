@@ -14,12 +14,16 @@ Controls.Menu {
     readonly property bool hasChecks: items.some((item) => item.checkable === true)
     // The id of the triggered action, also from a submenu.
     property int chosen: -1
+    // Whether the menu is the submenu of another one.
+    property bool submenu: false
 
     signal activated(int id)
 
     onActivated: (id) => chosen = id
 
-    modal: true
+    // A click outside of the menu only closes it. A modal submenu would also
+    // block the entries of its menu, so they wouldn't be hovered anymore.
+    modal: !submenu
     dim: false
     padding: 4
     margins: 8
@@ -131,7 +135,8 @@ Controls.Menu {
                 const component = Qt.createComponent("ContextMenu.qml")
                 const menu = component.createObject(null, {
                     title: item.text,
-                    items: item.submenu
+                    items: item.submenu,
+                    submenu: true
                 })
                 menu.activated.connect(root.activated)
                 root.addMenu(menu)

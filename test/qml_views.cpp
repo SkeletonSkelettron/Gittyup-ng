@@ -58,6 +58,7 @@
 #include <QProcess>
 #include <QQuickItem>
 #include <QQuickWidget>
+#include <QStyleHints>
 
 using namespace Test;
 using namespace QTest;
@@ -90,6 +91,7 @@ private slots:
   void settings();
   void search();
   void menu();
+  void submenu();
   void solo();
   void hide();
   void palette();
@@ -319,6 +321,100 @@ void TestQmlViews::menu() {
   QCOMPARE(QmlSupport::execMenu(&menu, pos), first);
   QVERIFY(!toolTipShown);
   QVERIFY(triggered);
+  QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
+}
+
+// The entries of a menu are still hovered while its submenu is open, and
+// hovering another one closes the submenu.
+void TestQmlViews::submenu() {
+  QMenu menu;
+  menu.addAction("First");
+  QMenu *more = menu.addMenu("More");
+  QAction *second = more->addAction("Second");
+
+  QQuickWidget *view = mWindow->quickView();
+  QPoint pos = view->mapToGlobal(QPoint(300, 300));
+
+  // The offscreen platform turns hovering off, so the entries of new menus
+  // wouldn't be hovered.
+  QStyleHints *hints = QGuiApplication::styleHints();
+  bool hoverEffects = hints->useHoverEffects();
+  hints->setUseHoverEffects(true);
+
+  // The entry of the open menus with the text.
+  auto entry = [view](const QString &text) -> QQuickItem * {
+    QList<QQuickItem *> items = {view->quickWindow()->contentItem()};
+    while (!items.isEmpty()) {
+      QQuickItem *item = items.takeFirst();
+      if (item->inherits("QQuickMenuItem") && item->isVisible() &&
+          item->property("text").toString() == text)
+        return item;
+      items.append(item->childItems());
+    }
+    return nullptr;
+  };
+
+  // Send a mouse event to the center of the item.
+  auto send = [view](QQuickItem *item, QEvent::Type type,
+                     Qt::MouseButton button, Qt::MouseButtons buttons) {
+    QPointF center(item->width() / 2, item->height() / 2);
+    QPointF local = item->mapToScene(center);
+    QMouseEvent event(type, local, view->mapToGlobal(local), button, buttons,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(view, &event);
+  };
+
+  auto hover = [send](QQuickItem *item) {
+    send(item, QEvent::MouseMove, Qt::NoButton, Qt::NoButton);
+  };
+
+  bool submenuOpened = false;
+  bool firstHovered = false;
+  bool submenuClosed = false;
+  QTimer::singleShot(200, [&] {
+    QQuickItem *moreEntry = entry("More");
+    QQuickItem *firstEntry = entry("First");
+    if (!moreEntry || !firstEntry) {
+      keyClick(view, Qt::Key_Escape);
+      return;
+    }
+
+    QObject *rootMenu = firstEntry->property("menu").value<QObject *>();
+    QObject *subMenu = moreEntry->property("subMenu").value<QObject *>();
+
+    hover(moreEntry);
+    submenuOpened =
+        qWaitFor([&] { return subMenu->property("opened").toBool(); });
+
+    hover(firstEntry);
+    firstHovered =
+        qWaitFor([&] { return firstEntry->property("highlighted").toBool(); });
+    submenuClosed =
+        qWaitFor([&] { return !subMenu->property("opened").toBool(); });
+
+    // The entries of the submenu are still clicked.
+    hover(moreEntry);
+    bool reopened =
+        qWaitFor([&] { return subMenu->property("opened").toBool(); });
+    if (QQuickItem *secondEntry = reopened ? entry("Second") : nullptr) {
+      hover(secondEntry);
+      send(secondEntry, QEvent::MouseButtonPress, Qt::LeftButton,
+           Qt::LeftButton);
+      send(secondEntry, QEvent::MouseButtonRelease, Qt::LeftButton,
+           Qt::NoButton);
+    }
+
+    if (!qWaitFor([&] { return !rootMenu->property("opened").toBool(); }))
+      QMetaObject::invokeMethod(rootMenu, "close");
+  });
+
+  QAction *chosen = QmlSupport::execMenu(&menu, pos);
+  hints->setUseHoverEffects(hoverEffects);
+
+  QCOMPARE(chosen, second);
+  QVERIFY(submenuOpened);
+  QVERIFY(firstHovered);
+  QVERIFY(submenuClosed);
   QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
 }
 
