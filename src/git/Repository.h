@@ -85,6 +85,11 @@ public:
   Config gitConfig() const;
   Config appConfig() const;
 
+  // Whether to write conflicts in the diff3 style because the user didn't
+  // choose a style. The default style splits conflicts at lines that both
+  // sides happen to share.
+  bool forcesDiff3Conflicts() const;
+
   // OID type
   git_oid_t oidType() const;
 

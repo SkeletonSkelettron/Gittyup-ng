@@ -255,8 +255,12 @@ bool Commit::revert() const {
   Repository repo = this->repo();
   int state = repo.state();
 
+  QStringList args = {"revert", "--no-commit", id().toString()};
+  if (repo.forcesDiff3Conflicts())
+    args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
+
   git::Cli cli(repo.workdir().path());
-  RunResult result = cli.run({"revert", "--no-commit", id().toString()});
+  RunResult result = cli.run(args);
 
   if (repo.state() != state)
     emit repo.notifier()->stateChanged();

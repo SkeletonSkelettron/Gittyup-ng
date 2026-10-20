@@ -284,6 +284,10 @@ Config Repository::appConfig() const {
   return config;
 }
 
+bool Repository::forcesDiff3Conflicts() const {
+  return gitConfig().value<QString>("merge.conflictStyle").isEmpty();
+}
+
 git_oid_t Repository::oidType() const {
   return git_repository_oid_type(d->repo);
 }
@@ -996,6 +1000,8 @@ Commit Repository::stash(const QString &message) {
 bool Repository::applyStash(int index) {
 
   QStringList args = {"stash", "apply", QString("stash@{%1}").arg(index)};
+  if (forcesDiff3Conflicts())
+    args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
 
   git::Cli cli(workdir().path());
 
@@ -1038,6 +1044,8 @@ bool Repository::popStash(int index) {
   Reference ref = stashRef();
 
   QStringList args = {"stash", "pop", QString("stash@{%1}").arg(index)};
+  if (forcesDiff3Conflicts())
+    args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
 
   git::Cli cli(workdir().path());
 
@@ -1093,6 +1101,8 @@ bool Repository::merge(const AnnotatedCommit &mergeHead) {
   git_merge_options mergeOpts = GIT_MERGE_OPTIONS_INIT;
   git_checkout_options checkoutOpts = GIT_CHECKOUT_OPTIONS_INIT;
   checkoutOpts.checkout_strategy = GIT_CHECKOUT_SAFE;
+  if (forcesDiff3Conflicts())
+    checkoutOpts.checkout_strategy |= GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
   int error = git_merge(d->repo, &head, 1, &mergeOpts, &checkoutOpts);
   if (state() != current)
     emit d->notifier->stateChanged();
@@ -1112,6 +1122,9 @@ Rebase Repository::rebaseOpen() {
   // Sign the commits when the configuration asks for it.
   opts.commit_create_cb = Signing::createRebaseCommit;
   opts.payload = d->repo;
+  if (forcesDiff3Conflicts())
+    opts.checkout_options.checkout_strategy |=
+        GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
   git_rebase_open(&rebase, d->repo, &opts);
   return Rebase(d->repo, rebase);
 }
@@ -1132,6 +1145,9 @@ void Repository::rebase(const AnnotatedCommit &mergeHead,
   git_rebase_options opts = GIT_REBASE_OPTIONS_INIT;
   opts.commit_create_cb = Signing::createRebaseCommit;
   opts.payload = d->repo;
+  if (forcesDiff3Conflicts())
+    opts.checkout_options.checkout_strategy |=
+        GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
   git_rebase_init(&r, d->repo, nullptr, mergeHead, nullptr, &opts);
   auto rebase = git::Rebase(d->repo, r, overrideUser, overrideEmail);
 
@@ -1204,7 +1220,12 @@ bool Repository::rebaseOngoing() {
 
 bool Repository::cherryPick(const Commit &commit) {
   int current = state();
-  int error = git_cherrypick(d->repo, commit, nullptr);
+  // libgit2 only allows conflicts by default when no strategy is given.
+  git_cherrypick_options opts = GIT_CHERRYPICK_OPTIONS_INIT;
+  opts.checkout_opts.checkout_strategy = GIT_CHECKOUT_ALLOW_CONFLICTS;
+  if (forcesDiff3Conflicts())
+    opts.checkout_opts.checkout_strategy |= GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
+  int error = git_cherrypick(d->repo, commit, &opts);
   if (state() != current)
     emit d->notifier->stateChanged();
 
