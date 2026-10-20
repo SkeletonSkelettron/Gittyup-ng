@@ -24,10 +24,64 @@ Rectangle {
     // Row of the last line that was clicked, to stage ranges with Shift.
     property int anchorRow: -1
 
+    // The code selected with the mouse, from where it was pressed to where
+    // it is, in rows and columns of the lines as they're shown.
+    property int selectionAnchorRow: -1
+    property int selectionAnchorColumn: 0
+    property int selectionRow: -1
+    property int selectionColumn: 0
+
+    readonly property bool hasSelection: selectionAnchorRow >= 0
+        && (selectionAnchorRow !== selectionRow || selectionAnchorColumn !== selectionColumn)
+    readonly property bool selectionForward: selectionAnchorRow < selectionRow
+        || (selectionAnchorRow === selectionRow && selectionAnchorColumn <= selectionColumn)
+    readonly property int selectionFirstRow: selectionForward ? selectionAnchorRow : selectionRow
+    readonly property int selectionFirstColumn: selectionForward ? selectionAnchorColumn
+                                                                 : selectionColumn
+    readonly property int selectionLastRow: selectionForward ? selectionRow : selectionAnchorRow
+    readonly property int selectionLastColumn: selectionForward ? selectionColumn
+                                                                : selectionAnchorColumn
+
+    function copySelection() {
+        if (hasSelection)
+            diff.copy(selectionFirstRow, selectionFirstColumn, selectionLastRow, selectionLastColumn)
+    }
+
+    function selectAll() {
+        selectionAnchorRow = 0
+        selectionAnchorColumn = 0
+        selectionRow = listView.count - 1
+        selectionColumn = diff.maxLineLength
+    }
+
     color: Theme.base
     focus: visible
 
     Keys.onEscapePressed: detailView.closeFile()
+
+    // Take copy and select all from the menu bar while the diff has the focus.
+    Keys.onShortcutOverride: (event) => {
+        event.accepted = (event.matches(StandardKey.Copy) && root.hasSelection)
+                         || event.matches(StandardKey.SelectAll)
+    }
+
+    Keys.onPressed: (event) => {
+        if (event.matches(StandardKey.Copy)) {
+            root.copySelection()
+            event.accepted = true
+        } else if (event.matches(StandardKey.SelectAll)) {
+            root.selectAll()
+            event.accepted = true
+        }
+    }
+
+    Connections {
+        target: root.diff
+
+        function onDiffChanged() {
+            root.selectionAnchorRow = -1
+        }
+    }
 
     FontMetrics {
         id: metrics
@@ -325,9 +379,13 @@ Rectangle {
             contentWidth: Math.max(width, root.gutterWidth
                                           + root.diff.maxLineLength * root.charWidth + 40)
 
-            Controls.ScrollBar.vertical: ThinScrollBar {}
+            Controls.ScrollBar.vertical: ThinScrollBar {
+                id: verticalBar
+            }
 
-            Controls.ScrollBar.horizontal: ThinScrollBar {}
+            Controls.ScrollBar.horizontal: ThinScrollBar {
+                id: horizontalBar
+            }
 
             delegate: Item {
                 id: row
@@ -459,6 +517,17 @@ Rectangle {
                     color: row.background
                     opacity: row.chosen ? 1 : 0.35
 
+                    // The code can be selected.
+                    Item {
+                        x: root.gutterWidth
+                        width: parent.width - x
+                        height: parent.height
+
+                        HoverHandler {
+                            cursorShape: Qt.IBeamCursor
+                        }
+                    }
+
                     Row {
                         anchors.fill: parent
 
@@ -587,6 +656,22 @@ Rectangle {
                             width: codeText.implicitWidth
                             height: parent.height
 
+                            // The selected part of the line.
+                            Rectangle {
+                                readonly property int first: row.index === root.selectionFirstRow
+                                                             ? root.selectionFirstColumn : 0
+
+                                visible: root.hasSelection && row.index >= root.selectionFirstRow
+                                         && row.index <= root.selectionLastRow
+                                x: first * root.charWidth
+                                width: row.index === root.selectionLastRow
+                                       ? (root.selectionLastColumn - first) * root.charWidth
+                                       : Math.max(0, codeText.implicitWidth - x) + root.charWidth
+                                height: parent.height
+                                color: Theme.accent
+                                opacity: 0.3
+                            }
+
                             FindMatches {
                                 matches: row.matches
                                 charWidth: root.charWidth
@@ -607,6 +692,81 @@ Rectangle {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Select the code with the mouse. It lies over the code of the list, so
+    // the gutter, the hunk headers and the scroll bars keep their own mouse.
+    MouseArea {
+        id: selectionMouse
+
+        // Where the mouse is, to extend the selection while scrolling.
+        property point last
+
+        // The row and column at 'x', 'y'. Rows above and below the list are
+        // the first and last visible ones until it scrolls to them.
+        function position(x, y) {
+            const p = mapToItem(listView.contentItem, x, Math.max(0, Math.min(y, height - 1)))
+            let row = listView.indexAt(0, p.y)
+            if (row < 0)
+                row = listView.count - 1
+            const column = Math.max(0, Math.round((p.x - root.gutterWidth) / root.charWidth))
+            return { row: row, column: column }
+        }
+
+        function extend() {
+            const p = position(last.x, last.y)
+            root.selectionRow = p.row
+            root.selectionColumn = p.column
+        }
+
+        x: listView.x + Math.max(0, root.gutterWidth - listView.contentX)
+        y: listView.y
+        width: listView.x + listView.width - x - verticalBar.width
+        height: listView.height - horizontalBar.height
+        visible: listView.visible
+
+        onPressed: (mouse) => {
+            const p = position(mouse.x, mouse.y)
+            const item = listView.itemAtIndex(p.row)
+            if (!item || item.isHunk) {
+                mouse.accepted = false
+                return
+            }
+
+            root.forceActiveFocus()
+            if (!(mouse.modifiers & Qt.ShiftModifier) || root.selectionAnchorRow < 0) {
+                root.selectionAnchorRow = p.row
+                root.selectionAnchorColumn = p.column
+            }
+
+            last = Qt.point(mouse.x, mouse.y)
+            extend()
+        }
+
+        onPositionChanged: (mouse) => {
+            last = Qt.point(mouse.x, mouse.y)
+            extend()
+            autoScroll.running = mouse.y < 0 || mouse.y > height
+        }
+
+        onReleased: autoScroll.stop()
+        onCanceled: autoScroll.stop()
+
+        // Scroll while the mouse is above or below the list.
+        Timer {
+            id: autoScroll
+
+            interval: 30
+            repeat: true
+            onTriggered: {
+                const y = selectionMouse.last.y
+                const step = (y < 0 ? y : y - selectionMouse.height) / 2
+                const bottom = listView.originY + listView.contentHeight - listView.height
+                listView.contentY = Math.max(listView.originY,
+                                             Math.min(listView.contentY + step, bottom))
+                selectionMouse.extend()
             }
         }
     }

@@ -21,9 +21,11 @@
 #include "git/Repository.h"
 #include "git/Tree.h"
 #include "git2/diff.h"
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QImage>
 #include <QLocale>
 #include <QMenu>
@@ -848,6 +850,25 @@ QString DiffModel::findRowText(int row) const {
   const DiffLines::Line &line = mHunks.at(current.hunk).at(current.line);
   return SyntaxHighlighter::expandTabs(
       mView->repo().decode(chomp(line.content)));
+}
+
+void DiffModel::copy(int firstRow, int firstColumn, int lastRow,
+                     int lastColumn) const {
+  QStringList lines;
+  for (int row = qMax(0, firstRow); row <= lastRow && row < mRows.size();
+       ++row) {
+    if (mRows.at(row).kind != LineRow)
+      continue;
+
+    QString text = findRowText(row);
+    if (row == lastRow)
+      text.truncate(lastColumn);
+    if (row == firstRow)
+      text.remove(0, firstColumn);
+    lines.append(text);
+  }
+
+  QGuiApplication::clipboard()->setText(lines.join('\n'));
 }
 
 void DiffModel::setFindState(const QString &text, int row, int start) {

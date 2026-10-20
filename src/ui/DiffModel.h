@@ -112,6 +112,10 @@ public:
   Q_INVOKABLE void showEditMenu(int hunk, qreal x, qreal y);
   Q_INVOKABLE void chooseConflict(int hunk, int resolution);
   Q_INVOKABLE void saveConflict(int hunk);
+  // Copy the lines from 'firstColumn' of 'firstRow' to 'lastColumn' of
+  // 'lastRow' as they're shown, without the hunk headers.
+  Q_INVOKABLE void copy(int firstRow, int firstColumn, int lastRow,
+                        int lastColumn) const;
 
   int rowCount(const QModelIndex &parent = QModelIndex()) const override;
   QVariant data(const QModelIndex &index,
