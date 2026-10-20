@@ -342,13 +342,10 @@ QAction *execMenu(QMenu *menu, const QPoint &pos) {
   if (chosen < 0 || chosen >= actions.size())
     return nullptr;
 
-  // Trigger the action like the menu would.
+  // Trigger the action like the menu would. QMenu emits triggered() for it
+  // and its parent menus.
   QAction *action = actions.at(chosen);
   action->activate(QAction::Trigger);
-  for (QMenu *shown : menus) {
-    if (shown->actions().contains(action) || shown == menu)
-      emit shown->triggered(action);
-  }
 
   return action;
 }
