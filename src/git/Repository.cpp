@@ -51,6 +51,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
+#include <QPair>
 #include <QProcess>
 #include <QSaveFile>
 #include <QSet>
@@ -151,31 +152,6 @@ int blame_progress(const git_oid *suspect, void *payload) {
   return reinterpret_cast<Blame::Callbacks *>(payload)->progress() ? 0 : -1;
 }
 #endif
-
-int checkout_notify(git_checkout_notify_t why, const char *path,
-                    const git_diff_file *baseline, const git_diff_file *target,
-                    const git_diff_file *workdir, void *payload) {
-  char status = 'M';
-  if (why == GIT_CHECKOUT_NOTIFY_CONFLICT) {
-    status = '!';
-  } else if (!baseline) {
-    status = 'A';
-  } else if (!target) {
-    status = 'D';
-  } else if (strcmp(baseline->path, target->path)) {
-    // FIXME: Checkout doesn't actually do rename detection.
-    status = 'R';
-  }
-
-  auto *cbs = reinterpret_cast<Repository::CheckoutCallbacks *>(payload);
-  return cbs->notify(status, path) ? 0 : -1;
-}
-
-void checkout_progress(const char *path, size_t current, size_t total,
-                       void *payload) {
-  auto *cbs = reinterpret_cast<Repository::CheckoutCallbacks *>(payload);
-  cbs->progress(path, current, total);
-}
 
 int insert_stash_id(size_t index, const char *message, const git_oid *id,
                     void *payload) {
@@ -1235,24 +1211,77 @@ bool Repository::cherryPick(const Commit &commit) {
 
 bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
                           const QStringList &paths, int strategy) {
-  // Checking out the whole tree switches branches, which needs git switch in
-  // the callers: keep libgit2 for it until then.
+  // git read-tree checks out a whole tree like git_checkout_tree: it updates
+  // the index and the workdir, but not HEAD.
   if (paths.isEmpty()) {
-    git_checkout_options opts = GIT_CHECKOUT_OPTIONS_INIT;
-    opts.checkout_strategy = strategy;
+    bool force = strategy & GIT_CHECKOUT_FORCE;
+    Q_ASSERT(!(strategy & ~GIT_CHECKOUT_FORCE));
 
-    if (callbacks) {
-      opts.notify_flags = callbacks->flags();
-      opts.notify_cb = checkout_notify;
-      opts.notify_payload = callbacks;
+    Cli cli(workdir().path());
+    QString target = commit.isValid() ? commit.id().toString() : "HEAD";
+    int flags = callbacks ? callbacks->flags() : GIT_CHECKOUT_NOTIFY_NONE;
 
-      opts.progress_cb = checkout_progress;
-      opts.progress_payload = callbacks;
+    // The files that change, like libgit2 reports the updated ones.
+    QList<QPair<char, QString>> files;
+    if ((flags & GIT_CHECKOUT_NOTIFY_UPDATED) && !isHeadUnborn()) {
+      RunResult result =
+          cli.run({"diff-tree", "-r", "-z", "--name-status", "HEAD", target});
+      QList<QByteArray> fields = result.output.split('\0');
+      for (int i = 0; i + 1 < fields.size(); i += 2) {
+        char status = fields.at(i).isEmpty() ? 'M' : fields.at(i).at(0);
+        if (status != 'A' && status != 'D')
+          status = 'M';
+        files.append({status, QString::fromUtf8(fields.at(i + 1))});
+      }
     }
 
-    git_commit *tmp = commit;
-    git_object *obj = reinterpret_cast<git_object *>(tmp);
-    return !git_checkout_tree(d->repo, obj, &opts);
+    QStringList args = {"read-tree", "-u"};
+    if (force) {
+      args << "--reset" << target;
+    } else if (isHeadUnborn()) {
+      args << "-m" << target;
+    } else {
+      args << "-m"
+           << "HEAD" << target;
+    }
+
+    RunResult result = cli.run(args);
+    if (result.exitCode != 0) {
+      // "error: Entry 'path' not uptodate. Cannot merge." and the like.
+      if (callbacks) {
+        for (const QByteArray &line : result.errors.split('\n')) {
+          qsizetype begin = line.indexOf('\'');
+          qsizetype end = line.lastIndexOf('\'');
+          if (line.startsWith("error: ") && begin >= 0 && end > begin) {
+            QByteArray path = line.mid(begin + 1, end - begin - 1);
+            callbacks->notify('!', QString::fromUtf8(path));
+          }
+        }
+      }
+
+      return false;
+    }
+
+    index().read();
+
+    if (callbacks) {
+      // The local changes that are kept, like libgit2 reports the dirty files.
+      if (flags & GIT_CHECKOUT_NOTIFY_DIRTY) {
+        RunResult dirty =
+            cli.run({"--no-optional-locks", "diff", "--name-only", "-z"});
+        for (const QByteArray &path : dirty.output.split('\0')) {
+          if (!path.isEmpty())
+            files.append({'M', QString::fromUtf8(path)});
+        }
+      }
+
+      // The callbacks log the files at the end.
+      for (const QPair<char, QString> &file : files)
+        callbacks->notify(file.first, file.second);
+      callbacks->progress(QString(), files.size(), files.size());
+    }
+
+    return true;
   }
 
   // SAFE is 0: it is the absence of FORCE.
