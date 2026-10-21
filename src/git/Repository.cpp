@@ -53,6 +53,7 @@
 #include <QMap>
 #include <QProcess>
 #include <QSaveFile>
+#include <QSet>
 #include <QStandardPaths>
 #include <QVector>
 
@@ -1234,39 +1235,87 @@ bool Repository::cherryPick(const Commit &commit) {
 
 bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
                           const QStringList &paths, int strategy) {
-  git_checkout_options opts = GIT_CHECKOUT_OPTIONS_INIT;
-  opts.checkout_strategy = strategy;
+  // Checking out the whole tree switches branches, which needs git switch in
+  // the callers: keep libgit2 for it until then.
+  if (paths.isEmpty()) {
+    git_checkout_options opts = GIT_CHECKOUT_OPTIONS_INIT;
+    opts.checkout_strategy = strategy;
 
-  if (callbacks) {
-    opts.notify_flags = callbacks->flags();
-    opts.notify_cb = checkout_notify;
-    opts.notify_payload = callbacks;
+    if (callbacks) {
+      opts.notify_flags = callbacks->flags();
+      opts.notify_cb = checkout_notify;
+      opts.notify_payload = callbacks;
 
-    opts.progress_cb = checkout_progress;
-    opts.progress_payload = callbacks;
-  }
-
-  QVector<char *> rawPaths;
-  QVector<QByteArray> storage;
-  if (!paths.isEmpty()) {
-    // Paths are assumed to be exact matches.
-    opts.checkout_strategy |=
-        GIT_CHECKOUT_DISABLE_PATHSPEC_MATCH |
-        GIT_CHECKOUT_UPDATE_SUBMODULES; // GIT_CHECKOUT_UPDATE_SUBMODULES is not
-                                        // yet implemented from libgit2
-
-    for (const QString &path : paths) {
-      storage.append(path.toUtf8());
-      rawPaths.append(storage.last().data());
+      opts.progress_cb = checkout_progress;
+      opts.progress_payload = callbacks;
     }
 
-    opts.paths.count = rawPaths.size();
-    opts.paths.strings = rawPaths.data();
+    git_commit *tmp = commit;
+    git_object *obj = reinterpret_cast<git_object *>(tmp);
+    return !git_checkout_tree(d->repo, obj, &opts);
   }
 
-  git_commit *tmp = commit;
-  git_object *obj = reinterpret_cast<git_object *>(tmp);
-  return !git_checkout_tree(d->repo, obj, &opts);
+  // SAFE is 0: it is the absence of FORCE.
+  bool force = strategy & GIT_CHECKOUT_FORCE;
+  bool updateIndex = !(strategy & GIT_CHECKOUT_DONT_UPDATE_INDEX);
+  Q_ASSERT(
+      !(strategy & ~(GIT_CHECKOUT_FORCE | GIT_CHECKOUT_DONT_UPDATE_INDEX)));
+
+  Cli cli(workdir().path());
+
+  // git restore overwrites local changes, libgit2 refuses unless forced.
+  if (!force) {
+    RunResult result = cli.run({"diff", "--name-only", "-z"});
+    if (result.exitCode != 0)
+      return false;
+
+    QSet<QString> changed;
+    for (const QByteArray &path : result.output.split('\0'))
+      changed.insert(QString::fromUtf8(path));
+
+    bool conflicts = false;
+    for (const QString &path : paths) {
+      if (changed.contains(path)) {
+        conflicts = true;
+        if (callbacks)
+          callbacks->notify('!', path);
+      }
+    }
+
+    if (conflicts)
+      return false;
+  }
+
+  QByteArray input;
+  for (const QString &path : paths) {
+    input.append(path.toUtf8());
+    input.append('\0');
+  }
+
+  // Paths are matched exactly.
+  QString source = commit.isValid() ? commit.id().toString() : "HEAD";
+  QStringList args = {"--literal-pathspecs", "restore", "--source=" + source,
+                      "--worktree"};
+  if (updateIndex)
+    args << "--staged";
+  args << "--pathspec-from-file=-"
+       << "--pathspec-file-nul";
+
+  RunResult result = cli.run(args, input);
+  if (result.exitCode != 0)
+    return false;
+
+  if (updateIndex)
+    index().read();
+
+  // Report the files like libgit2 does: the callbacks log them at the end.
+  if (callbacks) {
+    for (const QString &path : paths)
+      callbacks->notify('M', path);
+    callbacks->progress(QString(), paths.size(), paths.size());
+  }
+
+  return true;
 }
 
 int Repository::state() const { return git_repository_state(d->repo); }
