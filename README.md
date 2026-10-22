@@ -11,6 +11,9 @@ develops it, partly with Claude. See [what Gittyup-ng changes](#what-gittyup-ng-
 
 Gittyup is a continuation of the [GitAhead](https://github.com/gitahead/gitahead) client.
 
+GitKraken and GitHub are trademarks of their owners. Gittyup-ng is not affiliated with, endorsed by or sponsored
+by them: it names them only to describe what its interface and themes resemble.
+
 Table of contents
 =================
 <!--ts-->
@@ -37,7 +40,8 @@ Gittyup-ng starts from the master branch of Gittyup of 24 September 2026. On top
 
 ### A new interface in QML
 
-* The Qt Widgets interface is replaced by QML, in a style like GitKraken's, with dark and light Kraken themes.
+* The Qt Widgets interface is replaced by QML, in a style like GitKraken's, with dark and light Teal themes
+  (called Kraken before 0.0.4).
   The main window is a single QML scene: the tool bar, the sidebar with branches, remotes, tags and pull requests,
   repository tabs that are reordered by dragging, the welcome page, the commit graph, the details of commits,
   the diff, the activity log, the menu bar, the context menus and the tool tips.
