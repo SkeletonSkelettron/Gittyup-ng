@@ -143,6 +143,15 @@ bool workdirChanges(const QString &workdir, bool untracked,
   return true;
 }
 
+// The reflog message of moving HEAD to 'to', which 'git checkout -' looks for.
+QString checkoutMessage(const Repository &repo, const QString &to) {
+  Reference head = repo.head();
+  QString from = !head.isValid()        ? repo.unbornHeadName()
+                 : head.isLocalBranch() ? head.name()
+                                        : head.target().id().toString();
+  return QString("checkout: moving from %1 to %2").arg(from, to);
+}
+
 const QString kConfigDir = "gittyup";
 const QString kConfigFile = "config";
 const QString kStarFile = "starred";
@@ -485,14 +494,8 @@ bool Repository::setHead(const Reference &ref) {
   // Like git_repository_set_head: detach HEAD at anything but a branch.
   if (!ref.isLocalBranch())
     return setHeadDetached(ref.target());
-  // The reflog entry 'git checkout -' looks for.
 
-  Reference current = head();
-  QString from = !current.isValid()        ? unbornHeadName()
-                 : current.isLocalBranch() ? current.name()
-                                           : current.target().id().toString();
-  QString msg = QString("checkout: moving from %1 to %2").arg(from, ref.name());
-
+  QString msg = checkoutMessage(*this, ref.name());
   QStringList args = {"symbolic-ref", "-m", msg, "HEAD", ref.qualifiedName()};
 
   git::Cli cli(workdir().path());
@@ -510,9 +513,25 @@ bool Repository::setHead(const Reference &ref) {
 }
 
 bool Repository::setHeadDetached(const Commit &commit) {
-  int error = git_repository_set_head_detached(d->repo, commit);
+  // A null id would delete HEAD.
+  if (!commit.isValid())
+    return false;
+
+  QString sha = commit.id().toString();
+  QString msg = checkoutMessage(*this, sha);
+  QStringList args = {"update-ref", "--no-deref", "-m", msg, "HEAD", sha};
+  git::Cli cli(workdir().path());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    emit notifier()->gitCommandFailed(tr("set head detached"),
+                                      QString::fromUtf8(result.errors));
+    return false;
+  }
+
   emit d->notifier->referenceUpdated(head());
-  return !error;
+  return true;
 }
 
 QList<Reference> Repository::refs() const {
