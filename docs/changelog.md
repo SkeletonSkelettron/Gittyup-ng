@@ -1,3 +1,31 @@
+### v0.0.3 - 2026-10-22
+
+Gittyup-ng now runs git for the operations that change a repository, so git has to be installed: Git for Windows on Windows.
+
+#### Added
+
+* OneNord, Palenight and GitHub (Light Default, Dark Default and Dark Dimmed) themes
+* Select the lines of a diff by dragging over them, and copy them with Ctrl+C
+* Copy Branch Name and Copy Tag Name in the context menu of references
+* Pull or force push when a push is rejected because the remote has new commits
+* Failed operations open the log at the error, show the reason in a red banner and count the errors on the log button
+* A splash screen while the windows load
+
+#### Changed
+
+* Staging, checking out, resetting, reverting, stashes, branches, tags, remotes, fetch and push run git instead of libgit2, and the errors of git are shown in the log
+* git status lists the changed files of the workdir, which is faster in large repositories on Windows
+* Merge conflicts are written in the diff3 style unless merge.conflictStyle is set, so they stay whole
+
+#### Fixed
+
+* Merging and aborting merges were slow in large repositories on Windows
+* Discard File and the discard button of the file list did nothing for untracked files. They remove them after asking
+* Actions in submenus of context menus, like Reset, ran twice
+* The entries of context menus were hovered only after a click, and no longer while a submenu was open
+
+----
+
 ### v0.0.2 - 2026-10-06
 
 Bug Fix release
