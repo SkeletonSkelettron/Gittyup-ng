@@ -482,9 +482,31 @@ QString Repository::unbornHeadName() const {
 }
 
 bool Repository::setHead(const Reference &ref) {
-  int error = git_repository_set_head(d->repo, ref.qualifiedName().toUtf8());
+  // Like git_repository_set_head: detach HEAD at anything but a branch.
+  if (!ref.isLocalBranch())
+    return setHeadDetached(ref.target());
+  // The reflog entry 'git checkout -' looks for.
+
+  Reference current = head();
+  QString from = !current.isValid()        ? unbornHeadName()
+                 : current.isLocalBranch() ? current.name()
+                                           : current.target().id().toString();
+  QString msg = QString("checkout: moving from %1 to %2").arg(from, ref.name());
+
+  QStringList args = {"symbolic-ref", "-m", msg, "HEAD", ref.qualifiedName()};
+
+  git::Cli cli(workdir().path());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    emit notifier()->gitCommandFailed(tr("set head"),
+                                      QString::fromUtf8(result.errors));
+    return false;
+  }
+
   emit d->notifier->referenceUpdated(head());
-  return !error;
+  return true;
 }
 
 bool Repository::setHeadDetached(const Commit &commit) {
