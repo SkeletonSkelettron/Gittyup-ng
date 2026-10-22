@@ -6,8 +6,8 @@ It continues [Gittyup](https://github.com/Murmele/Gittyup) with a new interface 
 Windows installers are on the [releases page](https://github.com/SkeletonSkelettron/Gittyup-ng/releases);
 on other systems, build it from source by following the directions [below](#how-to-build).
 
-The changes that Gittyup-ng makes to Gittyup were made by an AI: Claude, by Anthropic.
-See [what Gittyup-ng changes](#what-gittyup-ng-changes).
+Gittyup-ng 0.0.1 and 0.0.2 were made by an AI: Claude, by Anthropic. Since then the maintainer of this fork
+develops it, partly with Claude. See [what Gittyup-ng changes](#what-gittyup-ng-changes).
 
 Gittyup is a continuation of the [GitAhead](https://github.com/gitahead/gitahead) client.
 
@@ -27,10 +27,11 @@ Table of contents
 
 What Gittyup-ng Changes
 ---------------
-> **Made by AI.** All of the changes below were made by Claude Opus 5.5, an AI model by
-> [Anthropic](https://www.anthropic.com), working in [Claude Code](https://claude.com/claude-code)
+> **Made by AI, up to 0.0.2.** The changes below, up to [Since 0.0.3](#since-003), were made by Claude Opus 5.5,
+> an AI model by [Anthropic](https://www.anthropic.com), working in [Claude Code](https://claude.com/claude-code)
 > at the request of the maintainer of this fork: the code, the tests, the build of the Windows packages
-> and this description. The commits say so with a `Co-Authored-By: Claude` line.
+> and their description. Since 0.0.2 the maintainer develops Gittyup-ng, partly with Claude: the changes
+> made with Claude say so in their commits.
 
 Gittyup-ng starts from the master branch of Gittyup of 24 September 2026. On top of it:
 
@@ -90,6 +91,18 @@ Gittyup-ng starts from the master branch of Gittyup of 24 September 2026. On top
 * New tests load every QML view and cover the merge editor, undo and redo, dragging branches, interactive rebase,
   signing, pulling branches, SSH keys and opening repositories.
 
+### Since 0.0.3
+
+* Gittyup-ng runs git for the operations that change a repository: staging, checking out, resetting, reverting,
+  stashes, branches, tags, remotes, fetch and push. git has to be installed. libgit2 still reads the repository,
+  and makes commits, merges, rebases and clones.
+* git status lists the changed files of the workdir, which is faster in large repositories on Windows.
+* OneNord, Palenight and GitHub themes. The lines of diffs and the names of branches and tags can be copied.
+  A rejected push offers to pull or to force push, failed operations open the log at the error, and a splash screen
+  shows while the windows load.
+
+See the [changelog](docs/changelog.md) for the changes of every release.
+
 Features
 ---------------
 To get an overview of the current features please have a look at the [GitHub Page](https://murmele.github.io/Gittyup/)
@@ -129,12 +142,13 @@ submodules are optional or may also be satisfied by system libraries.
 **External Dependencies**
 
 * Qt (required >= 6.4)
+* git (required to run Gittyup-ng, which runs it for the operations that change a repository)
 
 **Included Dependencies**
 
 * libgit2 (required)
 * cmark (required)
-* git (only needed for the credential helpers)
+* git (the submodule only builds the credential helpers)
 * libssh2 (needed by `libgit2` for SSH support)
 * openssl (needed by `libssh2` and `libgit2` on some platforms)
 
@@ -196,12 +210,14 @@ How to Install
 -----------------
 ### Windows
 
-Download the installer or the zip from the [releases page](https://github.com/SkeletonSkelettron/Gittyup-ng/releases).
+Install [Git for Windows](https://git-scm.com/download/win) first: Gittyup-ng runs git, and finds it on the `PATH`
+or in `C:\Program Files\Git`.
+Then download the installer or the zip from the [releases page](https://github.com/SkeletonSkelettron/Gittyup-ng/releases).
 Start Gittyup-ng from the Start menu after installing it.
 
 ### Linux and macOS
 
-Build Gittyup-ng from source by following the directions [above](#how-to-build).
+Build Gittyup-ng from source by following the directions [above](#how-to-build). It needs git to be installed.
 The packages on Flathub, the AUR and Homebrew install Gittyup, not Gittyup-ng.
 
 How to Contribute
