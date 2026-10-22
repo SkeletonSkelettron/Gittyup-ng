@@ -24,11 +24,10 @@ QVariantList ThemeDialog::themes() const {
                        {"image", QString("qrc:/%1").arg(image)}};
   };
 
-  return {theme("Kraken Dark", tr("Kraken Dark"),
-                tr("A flat dark theme with a teal accent"), "kraken_dark.png"),
-          theme("Kraken Light", tr("Kraken Light"),
-                tr("A flat light theme with a teal accent"),
-                "kraken_light.png"),
+  return {theme("Teal Dark", tr("Teal Dark"),
+                tr("A flat dark theme with a teal accent"), "teal_dark.png"),
+          theme("Teal Light", tr("Teal Light"),
+                tr("A flat light theme with a teal accent"), "teal_light.png"),
           theme("Mocha", tr("Catppuccin Mocha"),
                 tr("A more modern dark theme"), "mocha.png"),
           theme("Dark", tr("Dark"),

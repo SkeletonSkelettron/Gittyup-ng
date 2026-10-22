@@ -281,6 +281,12 @@ Theme *Theme::create(const QString &defaultName) {
     settings->setValue(Setting::Id::ColorTheme, key);
   }
 
+  // The Kraken themes are called Teal since 0.0.4.
+  if (key.startsWith("Kraken ")) {
+    key.replace(0, 6, "Teal");
+    settings->setValue(Setting::Id::ColorTheme, key);
+  }
+
   QString name = !defaultName.isEmpty() ? defaultName : key;
   if (name.isEmpty() && !Application::isInTest()) {
     ThemeDialog dialog;

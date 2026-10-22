@@ -129,6 +129,7 @@ test(NAME tags)
 test(NAME remotes)
 test(NAME stashes)
 test(NAME revert)
+test(NAME theme)
 
 # Test case not compatible with Windows
 if(NOT WIN32)

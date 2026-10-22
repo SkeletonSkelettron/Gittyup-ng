@@ -1,5 +1,5 @@
 --
--- Kraken Dark: a flat, dark theme with a teal accent and vivid graph lanes.
+-- Teal Dark: a flat, dark theme with a teal accent and vivid graph lanes.
 --
 -- See Dark.lua for a description of the keys. The 'ui' table colors the QML
 -- tool bar and sidebar, and 'stylesheet' is appended to the application

@@ -1,5 +1,5 @@
 --
--- Kraken Light: a flat, light theme with a teal accent and vivid graph lanes.
+-- Teal Light: a flat, light theme with a teal accent and vivid graph lanes.
 --
 -- See Default.lua for a description of the keys. The 'ui' table colors the
 -- QML tool bar and sidebar, and 'stylesheet' is appended to the application
