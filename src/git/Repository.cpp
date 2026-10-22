@@ -1276,6 +1276,12 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
       }
     }
 
+    // read-tree -m takes files whose time in the index is out of date for
+    // local changes, and refuses to update them. git checkout refreshes the
+    // index first.
+    if (!force)
+      cli.run({"update-index", "-q", "--refresh"});
+
     QStringList args = {"read-tree", "-u"};
     if (force) {
       args << "--reset" << target;
