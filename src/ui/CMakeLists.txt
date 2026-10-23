@@ -46,13 +46,14 @@ add_library(
   qml/QmlSupport.cpp
   qml/QmlTheme.cpp)
 
-# QML files and icons for the tool bar and sidebar.
+# QML files and icons for the tool bar and sidebar. The build looks for new
+# ones by itself.
 file(
-  GLOB QML_ICONS
+  GLOB QML_ICONS CONFIGURE_DEPENDS
   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/qml/icons/*.svg)
 file(
-  GLOB QML_FILES
+  GLOB QML_FILES CONFIGURE_DEPENDS
   RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/qml/*.qml)
 qt_add_resources(
