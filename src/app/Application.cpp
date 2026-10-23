@@ -10,7 +10,10 @@
 #include "Application.h"
 #include "dialogs/ConfirmDialog.h"
 #include "conf/Settings.h"
+#include "git/Commit.h"
 #include "git/Id.h"
+#include "git/Reference.h"
+#include "git/Remote.h"
 #include "git/Repository.h"
 #include "ui/MainWindow.h"
 #include "ui/MenuBar.h"
@@ -176,8 +179,13 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
     importGittyupSettings();
   }
 
-  // Register types that are queued at runtime.
+  // Register types that are queued at runtime. The repository notifies with
+  // them from the threads of writing operations too, see RepoView::runBusy().
+  // Its signals name them without the namespace.
   qRegisterMetaType<git::Id>();
+  qRegisterMetaType<git::Commit>("Commit");
+  qRegisterMetaType<git::Reference>("Reference");
+  qRegisterMetaType<git::Remote>("Remote");
 
   // Connect updater signals.
   connect(Updater::instance(), &Updater::sslErrors, this,
