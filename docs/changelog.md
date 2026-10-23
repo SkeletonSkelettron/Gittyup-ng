@@ -1,3 +1,24 @@
+### v0.0.4 - 2026-10-23 (DEV)
+
+#### Added
+
+* Delete remote branches from their context menu, after confirming it
+* Filters in the titles of the Branch / Tag, Commit message, Author and SHA columns of the commit graph. The commits that don't match fade out instead of being hidden, the first match is selected, and Enter and Shift+Enter go to the next and the previous one
+* Undo, Redo, Cut, Copy, Paste, Delete and Select All in the context menu of every text field, in the colors of the theme
+* A spinner over the repository while checkouts, new branches, stashes, resets, reverts and discarding run
+
+#### Changed
+
+* The Kraken themes are called Teal
+
+#### Fixed
+
+* The window froze while checkouts, new branches, stashes, resets, reverts and discarding ran, and clicks meanwhile ran them again when they ended
+* The references didn't update after deleting the upstream branch of a deleted branch
+* The changelog of the About dialog was empty when Gittyup-ng ran from its build
+
+----
+
 ### v0.0.3 - 2026-10-22
 
 Gittyup-ng now runs git for the operations that change a repository, so git has to be installed: Git for Windows on Windows.
