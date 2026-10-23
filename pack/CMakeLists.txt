@@ -449,6 +449,13 @@ if(GITTYUP_PACK_WIN64)
       "${CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS}
     DeleteRegKey HKCR 'Directory\\\\Background\\\\shell\\\\${GITTYUP_NAME}'
     DeleteRegKey HKCR 'Directory\\\\shell\\\\${GITTYUP_NAME}'")
+
+  # The Kraken themes are called Teal since 0.0.4. Installing over an older
+  # version doesn't remove its files, and the themes would be listed twice.
+  set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+      "${CPACK_NSIS_EXTRA_INSTALL_COMMANDS}
+    Delete '$INSTDIR\\\\${RESOURCES_DIR}\\\\themes\\\\Kraken Dark.lua'
+    Delete '$INSTDIR\\\\${RESOURCES_DIR}\\\\themes\\\\Kraken Light.lua'")
 endif()
 
 set(CPACK_PACKAGE_FILE_NAME ${PACKAGE_FILE_NAME})
