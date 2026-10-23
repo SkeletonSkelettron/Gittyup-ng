@@ -38,6 +38,10 @@ Rectangle {
         Controls.TextArea {
             id: area
 
+            // The edit menu below replaces the one of the style.
+            Controls.ContextMenu.menu: null
+            EditMenuHandler {}
+
             leftPadding: 10
             rightPadding: 10
             topPadding: 8

@@ -38,6 +38,8 @@ Rectangle {
     TextInput {
         id: input
 
+        EditMenuHandler {}
+
         objectName: "searchInput"
         anchors.left: leading.right
         anchors.leftMargin: 6

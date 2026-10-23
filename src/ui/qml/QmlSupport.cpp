@@ -12,6 +12,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QBuffer>
+#include <QCursor>
 #include <QEvent>
 #include <QEventLoop>
 #include <QFile>
@@ -24,6 +25,7 @@
 #include <QQmlEngine>
 #include <QQuickImageProvider>
 #include <QQuickItem>
+#include <QPointer>
 #include <QQuickWidget>
 #include <QToolTip>
 
@@ -135,6 +137,15 @@ void QmlHost::hideToolTip() {
   }
 
   QToolTip::hideText();
+}
+
+void QmlHost::showEditMenu(QQuickItem *field) {
+  if (!field)
+    return;
+
+  QMenu menu;
+  QmlSupport::addEditActions(&menu, field);
+  QmlSupport::execMenu(&menu, QCursor::pos());
 }
 
 QPoint QmlHost::mapToGlobal(qreal x, qreal y) const {
@@ -354,6 +365,60 @@ QAction *execMenu(QMenu *menu, const QPoint &pos) {
   action->activate(QAction::Trigger);
 
   return action;
+}
+
+void addEditActions(QMenu *menu, QQuickItem *field) {
+  // The menu takes the focus, and the field loses its selection with it.
+  // Give both back before acting on the field.
+  QPointer<QQuickItem> target(field);
+  int start = field->property("selectionStart").toInt();
+  int end = field->property("selectionEnd").toInt();
+  bool selected = start != end;
+  bool editable = !field->property("readOnly").toBool();
+  // Passwords aren't copied. TextEdit has no echo mode.
+  bool visible = field->property("echoMode").toInt() == 0;
+
+  auto add = [menu, target, start,
+              end](const QString &text, QKeySequence::StandardKey key,
+                   bool enabled, std::function<void(QQuickItem *)> act) {
+    QAction *action = menu->addAction(text);
+    action->setShortcut(key);
+    action->setEnabled(enabled);
+    QObject::connect(action, &QAction::triggered, [target, start, end, act] {
+      if (!target)
+        return;
+
+      target->forceActiveFocus();
+      QMetaObject::invokeMethod(target, "select", Q_ARG(int, start),
+                                Q_ARG(int, end));
+      act(target);
+    });
+  };
+
+  auto invoke = [](const char *method) {
+    return
+        [method](QQuickItem *item) { QMetaObject::invokeMethod(item, method); };
+  };
+
+  add(QMenu::tr("Undo"), QKeySequence::Undo,
+      editable && field->property("canUndo").toBool(), invoke("undo"));
+  add(QMenu::tr("Redo"), QKeySequence::Redo,
+      editable && field->property("canRedo").toBool(), invoke("redo"));
+  menu->addSeparator();
+  add(QMenu::tr("Cut"), QKeySequence::Cut, editable && selected && visible,
+      invoke("cut"));
+  add(QMenu::tr("Copy"), QKeySequence::Copy, selected && visible,
+      invoke("copy"));
+  add(QMenu::tr("Paste"), QKeySequence::Paste,
+      editable && field->property("canPaste").toBool(), invoke("paste"));
+  add(QMenu::tr("Delete"), QKeySequence::Delete, editable && selected,
+      [start, end](QQuickItem *item) {
+        QMetaObject::invokeMethod(item, "remove", Q_ARG(int, start),
+                                  Q_ARG(int, end));
+      });
+  menu->addSeparator();
+  add(QMenu::tr("Select All"), QKeySequence::SelectAll,
+      !field->property("text").toString().isEmpty(), invoke("selectAll"));
 }
 
 } // namespace QmlSupport

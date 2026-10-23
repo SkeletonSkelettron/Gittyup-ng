@@ -423,6 +423,10 @@ Rectangle {
                             Controls.TextArea {
                                 id: editor
 
+                                // The edit menu below replaces the one of the style.
+                                Controls.ContextMenu.menu: null
+                                EditMenuHandler {}
+
                                 anchors.fill: parent
                                 leftPadding: 8
                                 rightPadding: 8

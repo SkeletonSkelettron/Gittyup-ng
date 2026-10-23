@@ -6,6 +6,10 @@ import Gittyup
 Controls.TextField {
     id: control
 
+    // The edit menu below replaces the one of the style.
+    Controls.ContextMenu.menu: null
+    EditMenuHandler {}
+
     // Mark the text as invalid.
     property bool error: false
 

@@ -14,6 +14,7 @@
 #include <QVariantList>
 #include <memory>
 
+class QQuickItem;
 class RepoView;
 class SpellChecker;
 
@@ -35,9 +36,9 @@ public:
   Q_INVOKABLE QVariantList misspelled(const QString &text,
                                       int revision) const;
 
-  // Show the menu of the word at 'position'. Suggestions are applied by
-  // replaceRequested() for the field.
-  Q_INVOKABLE void showMenu(const QString &field, const QString &text,
+  // Show the menu of the word at 'position', with the edit actions of
+  // 'editor'. Suggestions are applied by replaceRequested() for the field.
+  Q_INVOKABLE void showMenu(const QString &field, QQuickItem *editor,
                             int position, qreal x, qreal y);
 
 signals:

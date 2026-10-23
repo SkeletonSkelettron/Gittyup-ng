@@ -82,6 +82,10 @@ Item {
                 Controls.TextField {
                     id: input
 
+                    // The edit menu below replaces the one of the style.
+                    Controls.ContextMenu.menu: null
+                    EditMenuHandler {}
+
                     objectName: "commandPaletteInput"
                     anchors.left: searchIcon.right
                     anchors.right: parent.right

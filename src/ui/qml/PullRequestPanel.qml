@@ -221,6 +221,10 @@ Rectangle {
             }
 
             Controls.TextArea {
+                // The edit menu below replaces the one of the style.
+                Controls.ContextMenu.menu: null
+                EditMenuHandler {}
+
                 width: scroll.availableWidth
                 readOnly: true
                 selectByMouse: true

@@ -15,6 +15,7 @@
 #include <QFile>
 #include <QLocale>
 #include <QMenu>
+#include <QQuickItem>
 #include <QRegularExpression>
 
 namespace {
@@ -92,12 +93,13 @@ QVariantList SpellCheck::misspelled(const QString &text, int revision) const {
   return ranges;
 }
 
-void SpellCheck::showMenu(const QString &field, const QString &text,
+void SpellCheck::showMenu(const QString &field, QQuickItem *editor,
                           int position, qreal x, qreal y) {
   Q_UNUSED(x)
   Q_UNUSED(y)
 
   QMenu menu;
+  QString text = editor ? editor->property("text").toString() : QString();
   Word word = wordAt(text, position);
   bool misspelled = mChecker && word.start >= 0 && isCheckable(word.text) &&
                     !mIgnored.contains(word.text) &&
@@ -129,6 +131,11 @@ void SpellCheck::showMenu(const QString &field, const QString &text,
       ++mRevision;
       emit changed();
     });
+    menu.addSeparator();
+  }
+
+  if (editor) {
+    QmlSupport::addEditActions(&menu, editor);
     menu.addSeparator();
   }
 

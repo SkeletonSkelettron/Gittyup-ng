@@ -17,6 +17,7 @@
 class QAction;
 class QImage;
 class QMenu;
+class QQuickItem;
 class QQuickWidget;
 class QWidget;
 
@@ -38,6 +39,10 @@ public:
   Q_INVOKABLE void showToolTip(const QString &text, qreal x, qreal y,
                                qreal width, qreal height);
   Q_INVOKABLE void hideToolTip();
+
+  // Show the edit actions of 'field', a TextInput or a TextEdit, at the
+  // mouse.
+  Q_INVOKABLE void showEditMenu(QQuickItem *field);
 
   QString toolTipText() const { return mToolTipText; }
   QRectF toolTipRect() const { return mToolTipRect; }
@@ -82,6 +87,10 @@ bool drawsPopups(QQuickWidget *view);
 // menu closes, like QMenu::exec(). The menu is drawn by the view at 'pos'
 // if it draws popups. Returns the triggered action.
 QAction *execMenu(QMenu *menu, const QPoint &pos);
+
+// Add Undo, Redo, Cut, Copy, Paste, Delete and Select All for 'field', a
+// TextInput or a TextEdit, to 'menu'.
+void addEditActions(QMenu *menu, QQuickItem *field);
 
 // Images for QML at "image://images/<key>". Remove them when they're no
 // longer shown.

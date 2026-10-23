@@ -57,6 +57,8 @@ Rectangle {
     TextInput {
         id: input
 
+        EditMenuHandler {}
+
         anchors.left: root.showIcon ? leading.right : parent.left
         anchors.leftMargin: root.showIcon ? 6 : 8
         anchors.right: clearButton.visible ? clearButton.left : parent.right

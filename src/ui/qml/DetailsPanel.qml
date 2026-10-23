@@ -64,6 +64,8 @@ Rectangle {
                 spacing: 10
 
                 TextEdit {
+                    EditMenuHandler {}
+
                     Layout.fillWidth: true
                     readOnly: true
                     selectByMouse: true
@@ -317,6 +319,8 @@ Rectangle {
                 }
 
                 TextEdit {
+                    EditMenuHandler {}
+
                     Layout.fillWidth: true
                     visible: text !== ""
                     readOnly: true
@@ -630,7 +634,7 @@ Rectangle {
                         acceptedButtons: Qt.RightButton
                         onTapped: (eventPoint) => {
                             const p = eventPoint.position
-                            detailView.spellCheck.showMenu("summary", summaryField.text,
+                            detailView.spellCheck.showMenu("summary", summaryField,
                                                            summaryField.positionAt(p.x, p.y),
                                                            p.x, p.y)
                         }
@@ -674,6 +678,9 @@ Rectangle {
                     Controls.TextArea {
                         id: descriptionField
 
+                        // The edit menu below replaces the one of the style.
+                        Controls.ContextMenu.menu: null
+
                         objectName: "MessageEditor"
                         placeholderText: qsTr("Description")
                         placeholderTextColor: Theme.textMuted
@@ -697,7 +704,7 @@ Rectangle {
                             acceptedButtons: Qt.RightButton
                             onTapped: (eventPoint) => {
                                 const p = eventPoint.position
-                                detailView.spellCheck.showMenu("description", descriptionField.text,
+                                detailView.spellCheck.showMenu("description", descriptionField,
                                                                descriptionField.positionAt(p.x, p.y),
                                                                p.x, p.y)
                             }
