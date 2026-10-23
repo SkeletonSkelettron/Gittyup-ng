@@ -235,7 +235,14 @@ QDir Settings::appDir() {
   return dir;
 }
 
-QDir Settings::docDir() { return confDir(); }
+QDir Settings::docDir() {
+  // The build writes the documents in its own folder: they are installed in
+  // the resources only.
+  QDir dir = confDir();
+  if (!dir.exists("changelog.html"))
+    dir.setPath(SRC_DOC_DIR);
+  return dir;
+}
 
 QDir Settings::confDir() {
 

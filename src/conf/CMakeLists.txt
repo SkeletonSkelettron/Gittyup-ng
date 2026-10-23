@@ -10,6 +10,7 @@ target_compile_definitions(
           SRC_CONF_DIR="${CMAKE_SOURCE_DIR}/conf"
           L10N_DIR="${L10N_INSTALL_DIR}"
           SRC_L10N_DIR="${CMAKE_BINARY_DIR}/l10n"
+          SRC_DOC_DIR="${CMAKE_BINARY_DIR}/docs"
           SCINTILLUA_LEXERS_DIR="${SCINTILLUA_LEXERS_DIR}"
           SRC_SCINTILLUA_LEXERS_DIR="${SRC_SCINTILLUA_LEXERS_DIR}")
 set_target_properties(conf PROPERTIES AUTOMOC ON)
