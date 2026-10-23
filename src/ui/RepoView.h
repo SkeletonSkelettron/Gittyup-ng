@@ -283,6 +283,9 @@ public:
                            const git::Branch &upstream = git::Branch(),
                            bool checkout = false, bool force = false);
   void promptToDeleteBranch(const git::Reference &ref);
+  void promptToDeleteRemoteBranch(const git::Reference &ref);
+  // Deletes 'branch' (refs/heads/...) on 'remote'.
+  void deleteRemoteBranch(const git::Remote &remote, const QString &branch);
   void promptToRenameBranch(const git::Branch &branch);
 
   // stash

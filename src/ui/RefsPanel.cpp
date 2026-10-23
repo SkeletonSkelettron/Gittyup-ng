@@ -745,6 +745,13 @@ void RefsPanel::showContextMenu(int row, qreal x, qreal y) {
           QString local = ref.name().section('/', 1);
           view->createBranch(local, ref.target(), ref, true);
         });
+
+        QAction *remove = menu.addAction(tr("Delete..."), [view, ref] {
+          view->promptToDeleteRemoteBranch(ref);
+        });
+        // origin/HEAD only says which branch the remote checks out.
+        remove->setEnabled(!ref.name().endsWith("/HEAD") &&
+                           git::Branch(ref).remote().isValid());
       }
 
       if (item.kind == RefsModel::Branch || item.kind == RefsModel::Tag ||

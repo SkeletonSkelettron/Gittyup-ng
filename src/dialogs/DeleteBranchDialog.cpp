@@ -11,11 +11,7 @@
 #include "git/Branch.h"
 #include "git/Config.h"
 #include "git/Remote.h"
-#include "log/LogEntry.h"
-#include "ui/RemoteCallbacks.h"
 #include "ui/RepoView.h"
-#include <QFutureWatcher>
-#include <QtConcurrent>
 
 namespace {
 
@@ -39,42 +35,9 @@ DeleteBranchDialog::DeleteBranchDialog(const git::Branch &branch,
   connect(this, &QDialog::accepted, [this, branch, upstream] {
     if (upstream.isValid() && isChecked()) {
       RepoView *view = RepoView::parentView(this);
-      git::Repository repo = view->repo();
-
-      QString name = upstream.name().section('/', 1);
       QString key = kBranchMergeFmt.arg(branch.name());
-      QString upstreamName = repo.gitConfig().value<QString>(key);
-
-      git::Remote remote = upstream.remote();
-      QString remoteName = remote.name();
-      QString text = tr("delete '%1' from '%2'").arg(name, remoteName);
-      LogEntry *entry = view->addLogEntry(text, tr("Push"));
-      QFutureWatcher<git::Result> *watcher =
-          new QFutureWatcher<git::Result>(view);
-      RemoteCallbacks *callbacks =
-          new RemoteCallbacks(RemoteCallbacks::Send, entry, remote.url(),
-                              remoteName, watcher, repo);
-
-      entry->setBusy(true);
-      QStringList refspecs(QString(":%1").arg(upstreamName));
-      git::Result (git::Remote::*push)(
-          git::Remote::Callbacks *, const QStringList &) = &git::Remote::push;
-      watcher->setFuture(QtConcurrent::run(push, remote, callbacks, refspecs));
-
-      connect(watcher, &QFutureWatcher<git::Result>::finished, watcher,
-              [entry, watcher, callbacks, remoteName] {
-                entry->setBusy(false);
-                git::Result result = watcher->result();
-                if (callbacks->isCanceled()) {
-                  entry->addEntry(LogEntry::Error, tr("Push canceled."));
-                } else if (!result) {
-                  QString err = result.errorString();
-                  QString fmt = tr("Unable to push to %1 - %2");
-                  entry->addEntry(LogEntry::Error, fmt.arg(remoteName, err));
-                }
-
-                watcher->deleteLater();
-              });
+      QString upstreamName = view->repo().gitConfig().value<QString>(key);
+      view->deleteRemoteBranch(upstream.remote(), upstreamName);
     }
 
     git::Branch(branch).remove();

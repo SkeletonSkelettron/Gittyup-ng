@@ -2196,6 +2196,65 @@ void RepoView::promptToDeleteBranch(const git::Reference &ref) {
   dialog->open();
 }
 
+void RepoView::promptToDeleteRemoteBranch(const git::Reference &ref) {
+  Q_ASSERT(ref.isRemoteBranch());
+  git::Remote remote = git::Branch(ref).remote();
+  if (!remote.isValid())
+    return;
+
+  // origin/feature/x is feature/x on origin.
+  QString name = ref.name().mid(remote.name().length() + 1);
+
+  ConfirmDialog *dialog = new ConfirmDialog(this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setTitle(tr("Delete Remote Branch?"));
+  dialog->setText(tr("Are you sure you want to delete branch '%1' from '%2'?")
+                      .arg(name, remote.name()));
+  dialog->setInformativeText(
+      tr("The branch is deleted on the remote, for everyone who uses it."));
+  dialog->setAcceptText(tr("Delete"));
+  dialog->setDanger(true);
+  connect(dialog, &QDialog::accepted, this, [this, remote, name] {
+    deleteRemoteBranch(remote, QString("refs/heads/%1").arg(name));
+  });
+
+  dialog->open();
+}
+
+void RepoView::deleteRemoteBranch(const git::Remote &remote,
+                                  const QString &branch) {
+  QString name = branch.section('/', 2);
+  QString remoteName = remote.name();
+  QString text = tr("delete '%1' from '%2'").arg(name, remoteName);
+  LogEntry *entry = addLogEntry(text, tr("Push"));
+  QFutureWatcher<git::Result> *watcher = new QFutureWatcher<git::Result>(this);
+  RemoteCallbacks *callbacks = new RemoteCallbacks(
+      RemoteCallbacks::Send, entry, remote.url(), remoteName, watcher, mRepo);
+  connect(callbacks, &RemoteCallbacks::referenceUpdated, this,
+          &RepoView::notifyReferenceUpdated);
+
+  entry->setBusy(true);
+  QStringList refspecs(QString(":%1").arg(branch));
+  git::Result (git::Remote::*push)(git::Remote::Callbacks *,
+                                   const QStringList &) = &git::Remote::push;
+  watcher->setFuture(QtConcurrent::run(push, remote, callbacks, refspecs));
+
+  connect(watcher, &QFutureWatcher<git::Result>::finished, watcher,
+          [entry, watcher, callbacks, remoteName] {
+            entry->setBusy(false);
+            git::Result result = watcher->result();
+            if (callbacks->isCanceled()) {
+              entry->addEntry(LogEntry::Error, tr("Push canceled."));
+            } else if (!result) {
+              QString err = result.errorString();
+              QString fmt = tr("Unable to push to %1 - %2");
+              entry->addEntry(LogEntry::Error, fmt.arg(remoteName, err));
+            }
+
+            watcher->deleteLater();
+          });
+}
+
 void RepoView::promptToRenameBranch(const git::Branch &branch) {
   Q_ASSERT(branch.isValid() && branch.isLocalBranch());
   RenameBranchDialog *dialog = new RenameBranchDialog(mRepo, branch, this);
