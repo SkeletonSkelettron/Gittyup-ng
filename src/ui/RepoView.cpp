@@ -56,9 +56,11 @@
 #include "LogPanel.h"
 #include "tools/ShowTool.h"
 #include "watcher/RepositoryWatcher.h"
+#include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QDesktopServices>
+#include <QEventLoop>
 #include <QtNetwork>
 #include <QPushButton>
 #include <QQmlContext>
@@ -91,9 +93,11 @@ class CheckoutCallbacks : public QObject,
 public:
   CheckoutCallbacks(LogEntry *log, int flags, QObject *parent = nullptr)
       : QObject(parent), mLog(log), mFlags(flags) {
-    // Connect with automatic type.
+    // Connect with automatic type: the checkout may run on another thread.
     connect(this, &CheckoutCallbacks::queueNotify, this,
             &CheckoutCallbacks::notifyImpl);
+    connect(this, &CheckoutCallbacks::queueProgress, this,
+            &CheckoutCallbacks::progressImpl);
   }
 
   QStringList conflicts() const { return mConflicts; }
@@ -107,16 +111,20 @@ public:
 
   void progress(const QString &path, int current, int total) override {
     Q_UNUSED(path)
+    emit queueProgress(current, total);
+  }
 
+signals:
+  void queueNotify(char status, const QString &path);
+  void queueProgress(int current, int total);
+
+private:
+  void progressImpl(int current, int total) {
     // Add entries all at once.
     if (current == total && !mEntries.isEmpty())
       mLog->addEntries(mEntries);
   }
 
-signals:
-  void queueNotify(char status, const QString &path);
-
-private:
   void notifyImpl(char status, const QString &path) {
     LogEntry *entry = new LogEntry(LogEntry::File, path, QString());
     entry->setStatus(status);
@@ -131,6 +139,33 @@ private:
 
   QStringList mConflicts;
   QList<LogEntry *> mEntries;
+};
+
+// Drops the input of the application while it's installed on it.
+class InputBlocker : public QObject {
+protected:
+  bool eventFilter(QObject *watched, QEvent *event) override {
+    switch (event->type()) {
+      case QEvent::KeyPress:
+      case QEvent::KeyRelease:
+      case QEvent::ShortcutOverride:
+      case QEvent::Shortcut:
+      case QEvent::MouseButtonPress:
+      case QEvent::MouseButtonRelease:
+      case QEvent::MouseButtonDblClick:
+      case QEvent::Wheel:
+      case QEvent::ContextMenu:
+      case QEvent::TouchBegin:
+      case QEvent::TouchUpdate:
+      case QEvent::TouchEnd:
+      // Closing the window would delete the view that waits.
+      case QEvent::Close:
+        return true;
+
+      default:
+        return QObject::eventFilter(watched, event);
+    }
+  }
 };
 
 class ScopedCollapse {
@@ -472,6 +507,29 @@ RepoView::~RepoView() {
   // The QML page references this object, so it has to go first.
   delete mPage;
   delete mPageContext;
+}
+
+bool RepoView::runBusy(const std::function<void()> &work) {
+  if (mBusy)
+    return false;
+
+  mBusy = true;
+  emit busyChanged();
+
+  InputBlocker blocker;
+  qApp->installEventFilter(&blocker);
+
+  QEventLoop loop;
+  QFutureWatcher<void> watcher;
+  connect(&watcher, &QFutureWatcher<void>::finished, &loop, &QEventLoop::quit);
+  watcher.setFuture(QtConcurrent::run(work));
+  loop.exec();
+
+  qApp->removeEventFilter(&blocker);
+
+  mBusy = false;
+  emit busyChanged();
+  return true;
 }
 
 QPoint RepoView::mapFromPage(qreal x, qreal y) const {
@@ -1635,7 +1693,8 @@ void RepoView::revert(const git::Commit &commit) {
   LogEntry *parent = addLogEntry(link, tr("Revert"));
 
   // FIXME: Report which files conflicted?
-  if (!commit.revert())
+  bool reverted = false;
+  if (!runBusy([&] { reverted = commit.revert(); }) || !reverted)
     return;
 
   // Check for conflicts.
@@ -2063,7 +2122,9 @@ void RepoView::checkout(const git::Commit &commit, const QStringList &paths) {
 
   CheckoutCallbacks callbacks(entry, GIT_CHECKOUT_NOTIFY_ALL);
   int strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_DONT_UPDATE_INDEX;
-  mRepo.checkout(commit, &callbacks, paths, strategy);
+  if (!runBusy([&] { mRepo.checkout(commit, &callbacks, paths, strategy); }))
+    return;
+
   mRefs->select(mRepo.head());
 }
 
@@ -2131,9 +2192,15 @@ void RepoView::checkout(const git::Commit &commit, const git::Reference &ref,
 
   LogEntry *entry = addLogEntry(name, tr("Checkout"));
   CheckoutCallbacks callbacks(entry, GIT_CHECKOUT_NOTIFY_DIRTY);
-  if (!commit.isValid() || !mRepo.checkout(commit, &callbacks) ||
-      (detach && !mRepo.setHeadDetached(commit)) ||
-      (!detach && !mRepo.setHead(ref))) {
+  bool checkedOut = false;
+  bool ran = runBusy([&] {
+    checkedOut = commit.isValid() && mRepo.checkout(commit, &callbacks) &&
+                 (detach ? mRepo.setHeadDetached(commit) : mRepo.setHead(ref));
+  });
+  if (!ran)
+    return;
+
+  if (!checkedOut) {
     LogEntry *err = error(entry, tr("checkout"), name);
     for (const QString &path : callbacks.conflicts())
       err->addEntry(LogEntry::File, path)->setStatus('!');
@@ -2174,14 +2241,21 @@ git::Branch RepoView::createBranch(const QString &name,
                                    const git::Branch &upstream, bool checkout,
                                    bool force) {
   LogEntry *entry = addLogEntry(name, tr("New Branch"));
-  git::Branch branch = mRepo.createBranch(name, target, force);
+  git::Branch branch;
+  bool ran = runBusy([&] {
+    branch = mRepo.createBranch(name, target, force);
+
+    // Start tracking.
+    if (branch.isValid())
+      branch.setUpstream(upstream);
+  });
+  if (!ran)
+    return git::Branch();
+
   if (!branch.isValid()) {
     error(entry, tr("create new branch"), name);
     return git::Branch();
   }
-
-  // Start tracking.
-  branch.setUpstream(upstream);
 
   // Checkout.
   if (checkout)
@@ -2288,10 +2362,9 @@ void RepoView::stash(const QString &message) {
   QString text = tr("<i>working directory</i>");
   LogEntry *entry = addLogEntry(text, tr("Stash"));
 
-  git::Commit commit = mRepo.stash(message);
-  if (!commit.isValid()) {
+  git::Commit commit;
+  if (!runBusy([&] { commit = mRepo.stash(message); }) || !commit.isValid())
     return;
-  }
 
   entry->setText(msg(commit));
   refresh(false);
@@ -2303,7 +2376,9 @@ void RepoView::applyStash(int index) {
 
   git::Commit commit = stashes.at(index);
   addLogEntry(msg(commit), tr("Apply Stash"));
-  mRepo.applyStash(index);
+  if (!runBusy([&] { mRepo.applyStash(index); }))
+    return;
+
   refresh(false);
 }
 
@@ -2313,7 +2388,8 @@ void RepoView::dropStash(int index) {
 
   git::Commit commit = stashes.at(index);
   addLogEntry(msg(commit), tr("Drop Stash"));
-  mRepo.dropStash(index);
+  if (!runBusy([&] { mRepo.dropStash(index); }))
+    return;
 
   if (mRepo.stashes().size() == 0) {
     // switch back to head when there are no stashes left
@@ -2329,7 +2405,9 @@ void RepoView::popStash(int index) {
 
   git::Commit commit = stashes.at(index);
   addLogEntry(msg(commit), tr("Pop Stash"));
-  mRepo.popStash(index); // A conflict applies the stash too, and keeps it.
+  // A conflict applies the stash too, and keeps it.
+  if (!runBusy([&] { mRepo.popStash(index); }))
+    return;
 
   // switch back to head
   selectReference(mRepo.head());
@@ -2478,7 +2556,11 @@ void RepoView::reset(const git::Commit &commit, git_reset_t type,
     mUndo->setMode(UndoHistory::Mixed);
   }
 
-  if (!commit.reset(type, QStringList(), false))
+  bool reset = false;
+  if (!runBusy([&] { reset = commit.reset(type, QStringList(), false); }))
+    return;
+
+  if (!reset)
     error(entry, commitToAmend ? tr("amend") : tr("reset"), head.name());
 
   updateSubmodules(mRepo.submodules(), true, false,

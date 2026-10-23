@@ -265,4 +265,49 @@ FocusScope {
             }
         }
     }
+
+    // A spinner over the page while a writing operation runs, unless it ends
+    // right away. The view drops the input meanwhile.
+    Item {
+        id: busyOverlay
+
+        property bool shown: false
+
+        anchors.fill: parent
+        z: 100
+        visible: shown && repoView.busy
+
+        Connections {
+            target: repoView
+
+            function onBusyChanged() {
+                if (repoView.busy) {
+                    showTimer.restart()
+                } else {
+                    showTimer.stop()
+                    busyOverlay.shown = false
+                }
+            }
+        }
+
+        Timer {
+            id: showTimer
+
+            interval: 250
+            onTriggered: busyOverlay.shown = true
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.base
+            opacity: 0.5
+        }
+
+        Spinner {
+            anchors.centerIn: parent
+            size: 36
+            color: Theme.accent
+            running: busyOverlay.visible
+        }
+    }
 }

@@ -339,8 +339,14 @@ void FileContextMenu::handleUncommittedChanges(const git::Index &index,
         connect(dialog, &QDialog::accepted, [view, modified, submodules] {
           git::Repository repo = view->repo();
           int strategy = GIT_CHECKOUT_FORCE;
-          if (modified.count() &&
-              !repo.checkout(git::Commit(), nullptr, modified, strategy)) {
+          bool discarded = true;
+          if (modified.count() && !view->runBusy([&] {
+                discarded =
+                    repo.checkout(git::Commit(), nullptr, modified, strategy);
+              }))
+            return;
+
+          if (!discarded) {
             QString text = tr("%1 files").arg(modified.size());
             LogEntry *parent = view->addLogEntry(text, tr("Discard"));
             view->error(parent, tr("discard"), text);

@@ -61,6 +61,8 @@ class RepoView : public QWidget {
                  pathspecChanged)
   Q_PROPERTY(QAbstractItemModel *pathModel READ pathModel CONSTANT)
   Q_PROPERTY(bool maximized READ detailsMaximized NOTIFY maximizedChanged)
+  // A writing operation runs, see runBusy().
+  Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
 
 public:
   enum ViewMode {
@@ -93,6 +95,13 @@ public:
 
   git::Repository repo() const { return mRepo; }
   History *history() const { return mHistory; }
+
+  // Run 'work', a writing operation, on another thread and wait for it. The
+  // window keeps drawing meanwhile, with a spinner over the view, and drops
+  // the input: clicks don't run the operation again when it ends. Returns
+  // false without running 'work' if another operation runs already.
+  bool runBusy(const std::function<void()> &work);
+  bool isBusy() const { return mBusy; }
   DetailView *detailView() const { return mDetails; }
 
   // The actions that can be undone and redone.
@@ -410,11 +419,14 @@ signals:
   void loadingChanged(bool loading);
   void pathspecChanged(const QString &pathspec);
   void maximizedChanged();
+  void busyChanged();
 
 protected:
   void closeEvent(QCloseEvent *event) override;
 
 private:
+  bool mBusy = false;
+
   struct SubmoduleInfo {
     git::Submodule submodule;
     git::Repository repo;
