@@ -71,7 +71,8 @@ public:
     NodeColorRole,
     MergeRole,
     BusyRole,
-    WipRole
+    WipRole,
+    DimmedRole
   };
 
   enum class RefsFilter {
@@ -109,6 +110,13 @@ public:
   void resetSelection(bool spontaneous = false);
   void selectFirstCommit(bool spontaneous = false);
   Q_INVOKABLE void selectCommitRelative(int offset);
+  // Dims the commits whose 'column' doesn't contain 'text', and selects the
+  // first one that does. The column is "refs", "message", "author" or "id":
+  // the commits have to match the text of every column.
+  Q_INVOKABLE void setHighlight(const QString &column, const QString &text);
+  // Selects the next (offset > 0) or the previous (offset < 0) commit that
+  // matches the highlight.
+  Q_INVOKABLE void selectHighlighted(int offset);
   void selectRow(int row);
   bool selectRange(const QString &range, const QString &file = QString(),
                    bool spontaneous = false);

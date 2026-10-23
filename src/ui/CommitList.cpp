@@ -246,6 +246,69 @@ public:
     resetWalker();
   }
 
+  bool isHighlighting() const { return !mHighlight.isEmpty(); }
+
+  // Highlights the commits whose 'column' contains 'text': "refs", "message",
+  // "author" or "id".
+  void setHighlight(const QString &column, const QString &text) {
+    if (mHighlight.value(column) == text)
+      return;
+
+    if (text.isEmpty()) {
+      mHighlight.remove(column);
+    } else {
+      mHighlight.insert(column, text);
+    }
+
+    if (!mRows.isEmpty())
+      emit dataChanged(index(0, 0), index(mRows.size() - 1, 0),
+                       {CommitList::Role::DimmedRole});
+  }
+
+  // Whether the commit in 'row' matches the text of every column.
+  bool isHighlighted(int row) const {
+    const git::Commit &commit = mRows.at(row).commit;
+    if (mHighlight.isEmpty() || !commit.isValid())
+      return false;
+
+    for (auto it = mHighlight.cbegin(); it != mHighlight.cend(); ++it) {
+      if (!matches(commit, it.key(), it.value()))
+        return false;
+    }
+
+    return true;
+  }
+
+  bool matches(const git::Commit &commit, const QString &column,
+               const QString &text) const {
+    if (column == "id")
+      return commit.id().toString().startsWith(text, Qt::CaseInsensitive);
+
+    if (column == "message")
+      return commit.message().contains(text, Qt::CaseInsensitive);
+
+    if (column == "author") {
+      git::Signature author = commit.author();
+      return author.name().contains(text, Qt::CaseInsensitive) ||
+             author.email().contains(text, Qt::CaseInsensitive);
+    }
+
+    if (column == "refs") {
+      if (!mRefs)
+        return false;
+
+      for (const QVariant &ref : mRefs->value(commit.id())) {
+        QString name = ref.toMap().value("name").toString();
+        if (name.contains(text, Qt::CaseInsensitive))
+          return true;
+      }
+
+      return false;
+    }
+
+    return true;
+  }
+
   // Walk only these branches and their upstream branches.
   void setSolo(const QStringList &solo) {
     if (solo == mSolo)
@@ -442,6 +505,9 @@ public:
 
         return QVariant();
       }
+
+      case CommitList::Role::DimmedRole:
+        return isHighlighting() && !isHighlighted(index.row());
 
       default:
         return status ? QVariant() : commitData(row.commit, role, mRefs);
@@ -879,6 +945,7 @@ private:
   QFutureWatcher<ResetResult> mReset;
 
   QString mPathspec;
+  QMap<QString, QString> mHighlight;
   git::Reference mRef;
   git::RevWalk mWalker;
   git::Repository mRepo;
@@ -1089,7 +1156,8 @@ QHash<int, QByteArray> CommitList::roleNames() {
           {NodeColorRole, "nodeColor"},
           {MergeRole, "isMerge"},
           {BusyRole, "busy"},
-          {WipRole, "wip"}};
+          {WipRole, "wip"},
+          {DimmedRole, "dimmed"}};
 }
 
 git::Diff CommitList::status() const {
@@ -1221,6 +1289,44 @@ void CommitList::selectCommitRelative(int offset) {
   QModelIndex next = model()->index(row, 0);
   if (next.isValid())
     selectIndexes(QItemSelection(next, next), QString(), true);
+}
+
+void CommitList::setHighlight(const QString &column, const QString &text) {
+  static_cast<CommitModel *>(mModel)->setHighlight(column, text.trimmed());
+  selectHighlighted(0);
+}
+
+void CommitList::selectHighlighted(int offset) {
+  // Search results replace the graph: there is nothing to highlight in them.
+  CommitModel *model = static_cast<CommitModel *>(mModel);
+  if (mCurrent != mModel || !model->isHighlighting())
+    return;
+
+  // Start at the first commit, or next to the selection.
+  int row = 0;
+  QModelIndexList indexes = sortedIndexes();
+  if (offset != 0 && !indexes.isEmpty())
+    row = ((offset < 0) ? indexes.first() : indexes.last()).row() + offset;
+
+  int step = (offset < 0) ? -1 : 1;
+  for (; row >= 0; row += step) {
+    // Load more commits to search them, but not the whole history.
+    constexpr int kMaxRows = 10000;
+    if (row >= model->rowCount(QModelIndex())) {
+      if (step < 0 || row >= kMaxRows || !model->canFetchMore(QModelIndex()))
+        return;
+
+      model->fetchMore(QModelIndex());
+      if (row >= model->rowCount(QModelIndex()))
+        return;
+    }
+
+    if (model->isHighlighted(row)) {
+      QModelIndex index = model->index(row, 0);
+      selectIndexes(QItemSelection(index, index), QString(), true);
+      return;
+    }
+  }
 }
 
 void CommitList::selectRow(int row) {
@@ -2017,7 +2123,7 @@ void CommitList::updateRefs() {
   if (model && model->rowCount() > 0)
     emit model->dataChanged(model->index(0, 0),
                             model->index(model->rowCount() - 1, 0),
-                            {RefsRole});
+                            {RefsRole, DimmedRole});
 }
 
 void CommitList::updateLaneCount() {

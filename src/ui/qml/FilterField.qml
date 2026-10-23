@@ -8,13 +8,32 @@ Rectangle {
     property alias text: input.text
     property string placeholder
     property string icon: "search"
+    property bool showIcon: true
+    readonly property bool focused: input.activeFocus
 
     signal edited(string text)
     signal accepted()
+    // Shift+Enter.
+    signal acceptedBackward()
+    // Escape or the clear button.
+    signal cleared()
 
     function clear() {
         input.clear()
         root.edited("")
+        root.cleared()
+    }
+
+    function focusInput() {
+        input.forceActiveFocus()
+    }
+
+    // Let the input accept plain Enter itself.
+    function handleReturn(event) {
+        if (event.modifiers & Qt.ShiftModifier)
+            root.acceptedBackward()
+        else
+            event.accepted = false
     }
 
     implicitWidth: 160
@@ -29,6 +48,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.leftMargin: 8
         anchors.verticalCenter: parent.verticalCenter
+        visible: root.showIcon
         name: root.icon
         size: 14
         color: Theme.textMuted
@@ -37,8 +57,8 @@ Rectangle {
     TextInput {
         id: input
 
-        anchors.left: leading.right
-        anchors.leftMargin: 6
+        anchors.left: root.showIcon ? leading.right : parent.left
+        anchors.leftMargin: root.showIcon ? 6 : 8
         anchors.right: clearButton.visible ? clearButton.left : parent.right
         anchors.rightMargin: 6
         anchors.verticalCenter: parent.verticalCenter
@@ -51,6 +71,8 @@ Rectangle {
         onTextEdited: root.edited(text)
         onAccepted: root.accepted()
         Keys.onEscapePressed: root.clear()
+        Keys.onReturnPressed: (event) => root.handleReturn(event)
+        Keys.onEnterPressed: (event) => root.handleReturn(event)
 
         Text {
             anchors.fill: parent

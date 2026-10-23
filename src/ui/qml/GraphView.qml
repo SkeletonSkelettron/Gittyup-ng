@@ -289,10 +289,10 @@ Rectangle {
             }
         }
 
-        // Column titles.
+        // Column titles, with filters that dim the commits that don't match.
         Item {
             Layout.fillWidth: true
-            implicitHeight: 24
+            implicitHeight: 28
 
             Row {
                 anchors.fill: parent
@@ -300,32 +300,129 @@ Rectangle {
                 anchors.rightMargin: 12
 
                 Repeater {
-                    model: [
-                        { title: qsTr("Branch / Tag"), width: root.refsWidth },
-                        { title: qsTr("Graph"), width: root.graphWidth },
-                        { title: qsTr("Commit message"),
-                          width: root.width - 20 - root.refsWidth - root.graphWidth
-                                 - root.authorWidth - root.dateWidth - root.idWidth },
-                        { title: qsTr("Author"), width: root.authorWidth },
-                        { title: qsTr("Date"), width: root.dateWidth },
-                        { title: qsTr("SHA"), width: root.idWidth }
-                    ]
+                    // Keys only: resizing doesn't recreate the titles and their
+                    // filters then.
+                    model: ["refs", "graph", "message", "author", "date", "id"]
 
-                    Text {
-                        required property var modelData
+                    Item {
+                        id: header
 
-                        visible: modelData.width > 0
-                        width: modelData.width
+                        required property string modelData
+
+                        readonly property string title: {
+                            switch (modelData) {
+                            case "refs": return qsTr("Branch / Tag")
+                            case "graph": return qsTr("Graph")
+                            case "message": return qsTr("Commit message")
+                            case "author": return qsTr("Author")
+                            case "date": return qsTr("Date")
+                            default: return qsTr("SHA")
+                            }
+                        }
+                        readonly property bool filterable: modelData !== "graph"
+                                                           && modelData !== "date"
+                                                           && !commitList.filtered
+                        // The filter shows while it is edited or has a text.
+                        property bool editing: false
+                        readonly property bool filtering: editing || field.text !== ""
+
+                        visible: width > 0
+                        width: {
+                            switch (modelData) {
+                            case "refs": return root.refsWidth
+                            case "graph": return root.graphWidth
+                            case "message":
+                                return root.width - 20 - root.refsWidth - root.graphWidth
+                                       - root.authorWidth - root.dateWidth - root.idWidth
+                            case "author": return root.authorWidth
+                            case "date": return root.dateWidth
+                            default: return root.idWidth
+                            }
+                        }
                         height: parent.height
-                        leftPadding: 6
-                        verticalAlignment: Text.AlignVCenter
-                        text: modelData.title
-                        elide: Text.ElideRight
-                        color: Theme.textMuted
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.capitalization: Font.AllUppercase
-                        font.letterSpacing: 0.6
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.right: filterIcon.visible ? filterIcon.left : parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !header.filtering
+                            leftPadding: 6
+                            text: header.title
+                            elide: Text.ElideRight
+                            color: Theme.textMuted
+                            font.pixelSize: 10
+                            font.bold: true
+                            font.capitalization: Font.AllUppercase
+                            font.letterSpacing: 0.6
+                        }
+
+                        Icon {
+                            id: filterIcon
+
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: header.filterable && !header.filtering
+                            name: "filter"
+                            size: 11
+                            color: filterMouse.containsMouse ? Theme.text : Theme.textMuted
+
+                            MouseArea {
+                                id: filterMouse
+
+                                anchors.fill: parent
+                                anchors.margins: -4
+                                hoverEnabled: true
+                                onClicked: {
+                                    header.editing = true
+                                    field.focusInput()
+                                }
+                            }
+
+                            HoverTip {
+                                target: filterIcon
+                                text: qsTr("Highlight the commits by %1").arg(header.title.toLowerCase())
+                                hovered: filterMouse.containsMouse
+                            }
+                        }
+
+                        FilterField {
+                            id: field
+
+                            anchors.fill: parent
+                            anchors.leftMargin: 2
+                            anchors.rightMargin: 2
+                            anchors.topMargin: 2
+                            anchors.bottomMargin: 3
+                            visible: header.filterable && header.filtering
+                            showIcon: width > 120
+                            icon: "filter"
+                            placeholder: header.title
+                            onFocusedChanged: {
+                                if (!focused && text === "")
+                                    header.editing = false
+                            }
+                            onEdited: timer.restart()
+                            onCleared: listView.forceActiveFocus()
+                            // Enter goes to the next match, Shift+Enter to the
+                            // previous one.
+                            onAccepted: {
+                                if (timer.running) {
+                                    timer.stop()
+                                    commitList.setHighlight(header.modelData, text)
+                                } else {
+                                    commitList.selectHighlighted(1)
+                                }
+                            }
+                            onAcceptedBackward: commitList.selectHighlighted(-1)
+
+                            Timer {
+                                id: timer
+
+                                interval: 300
+                                onTriggered: commitList.setHighlight(header.modelData, field.text)
+                            }
+                        }
                     }
                 }
             }
@@ -388,6 +485,10 @@ Rectangle {
                 required property var isMerge
                 required property var busy
                 required property var wip
+                required property var dimmed
+
+                // The commits that don't match the highlight fade out.
+                opacity: dimmed && !highlighted ? 0.35 : 1
 
                 readonly property bool selected:
                     commitList.selectionRevision >= 0 && commitList.isSelected(index)
