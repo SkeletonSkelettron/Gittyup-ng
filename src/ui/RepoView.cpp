@@ -535,11 +535,26 @@ bool RepoView::runBusy(const std::function<void()> &work) {
   InputBlocker blocker;
   qApp->installEventFilter(&blocker);
 
+  // libgit2 keeps the last error for each thread. Bring the one of 'work'
+  // here, where error() reads it, instead of an old one of this thread.
+  git::Repository::clearError();
+  int kind = GIT_ERROR_NONE;
+  QString message;
+
   QEventLoop loop;
   QFutureWatcher<void> watcher;
   connect(&watcher, &QFutureWatcher<void>::finished, &loop, &QEventLoop::quit);
-  watcher.setFuture(QtConcurrent::run(work));
+  watcher.setFuture(QtConcurrent::run([&work, &kind, &message] {
+    git::Repository::clearError();
+    work();
+    kind = git::Repository::lastErrorKind();
+    if (kind != GIT_ERROR_NONE)
+      message = git::Repository::lastError();
+  }));
   loop.exec();
+
+  if (kind != GIT_ERROR_NONE)
+    git::Repository::setError(kind, message);
 
   qApp->removeEventFilter(&blocker);
 

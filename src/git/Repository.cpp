@@ -143,6 +143,17 @@ bool workdirChanges(const QString &workdir, bool untracked,
   return true;
 }
 
+// The message of a git command that failed, without "error: " and "fatal: ".
+QString commandError(const QByteArray &errors) {
+  QStringList lines = QString::fromUtf8(errors).trimmed().split('\n');
+  for (QString &line : lines) {
+    if (line.startsWith("error: ") || line.startsWith("fatal: "))
+      line.remove(0, 7);
+  }
+
+  return lines.join('\n');
+}
+
 // The reflog message of moving HEAD to 'to', which 'git checkout -' looks for.
 QString checkoutMessage(const Repository &repo, const QString &to) {
   Reference head = repo.head();
@@ -503,6 +514,7 @@ bool Repository::setHead(const Reference &ref) {
   RunResult result = cli.run(args);
 
   if (result.exitCode != 0) {
+    setError(GIT_ERROR_REFERENCE, commandError(result.errors));
     emit notifier()->gitCommandFailed(tr("set head"),
                                       QString::fromUtf8(result.errors));
     return false;
@@ -525,6 +537,7 @@ bool Repository::setHeadDetached(const Commit &commit) {
   RunResult result = cli.run(args);
 
   if (result.exitCode != 0) {
+    setError(GIT_ERROR_REFERENCE, commandError(result.errors));
     emit notifier()->gitCommandFailed(tr("set head detached"),
                                       QString::fromUtf8(result.errors));
     return false;
@@ -1295,17 +1308,22 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
     RunResult result = cli.run(args);
     if (result.exitCode != 0) {
       // "error: Entry 'path' not uptodate. Cannot merge." and the like.
-      if (callbacks) {
-        for (const QByteArray &line : result.errors.split('\n')) {
-          qsizetype begin = line.indexOf('\'');
-          qsizetype end = line.lastIndexOf('\'');
-          if (line.startsWith("error: ") && begin >= 0 && end > begin) {
-            QByteArray path = line.mid(begin + 1, end - begin - 1);
+      bool conflicts = false;
+      for (const QByteArray &line : result.errors.split('\n')) {
+        qsizetype begin = line.indexOf('\'');
+        qsizetype end = line.lastIndexOf('\'');
+        if (line.startsWith("error: ") && begin >= 0 && end > begin) {
+          conflicts = true;
+          QByteArray path = line.mid(begin + 1, end - begin - 1);
+          if (callbacks)
             callbacks->notify('!', QString::fromUtf8(path));
-          }
         }
       }
 
+      setError(GIT_ERROR_CHECKOUT, conflicts ? tr("Your local changes to the "
+                                                  "following files would be "
+                                                  "overwritten")
+                                             : commandError(result.errors));
       return false;
     }
 
@@ -1342,8 +1360,10 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
   // git restore overwrites local changes, libgit2 refuses unless forced.
   if (!force) {
     RunResult result = cli.run({"diff", "--name-only", "-z"});
-    if (result.exitCode != 0)
+    if (result.exitCode != 0) {
+      setError(GIT_ERROR_CHECKOUT, commandError(result.errors));
       return false;
+    }
 
     QSet<QString> changed;
     for (const QByteArray &path : result.output.split('\0'))
@@ -1358,8 +1378,12 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
       }
     }
 
-    if (conflicts)
+    if (conflicts) {
+      setError(GIT_ERROR_CHECKOUT,
+               tr("Your local changes to the following files would be "
+                  "overwritten"));
       return false;
+    }
   }
 
   QByteArray input;
@@ -1378,8 +1402,10 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
        << "--pathspec-file-nul";
 
   RunResult result = cli.run(args, input);
-  if (result.exitCode != 0)
+  if (result.exitCode != 0) {
+    setError(GIT_ERROR_CHECKOUT, commandError(result.errors));
     return false;
+  }
 
   if (updateIndex)
     index().read();
@@ -1548,8 +1574,16 @@ QString Repository::lastError(const QString &defaultError) {
   if (!defaultError.isEmpty())
     return defaultError;
 
+  // libgit2 reports "no error" without one.
   const git_error *err = git_error_last();
-  return err ? err->message : tr("Unknown error");
+  return err && err->klass != GIT_ERROR_NONE ? err->message
+                                             : tr("Unknown error");
+}
+
+void Repository::clearError() { git_error_clear(); }
+
+void Repository::setError(int kind, const QString &message) {
+  git_error_set_str(kind, message.toUtf8());
 }
 
 QDir Repository::appDir(const QDir &dir) {

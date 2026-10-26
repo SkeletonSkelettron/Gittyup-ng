@@ -18,6 +18,7 @@
 * The changelog of the About dialog was empty when Gittyup-ng ran from its build
 * The New Branch, Checkout, Merge and Remote dialogs took up to 20 seconds to open in repositories with thousands of branches
 * Branches that other programs checked out, committed to or deleted showed up only after refreshing. They show up when the window becomes active, and right away on Windows
+* Failed checkouts showed an unrelated error, like "config value 'branch.x.merge' was not found". They say that local changes would be overwritten, or what git reports
 
 ----
 

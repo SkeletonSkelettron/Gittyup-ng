@@ -264,9 +264,12 @@ public:
   bool lfsIsLocked(const QString &path);
   bool lfsSetLocked(const QString &path, bool locked);
 
-  // last error
+  // last error, which libgit2 keeps for each thread
   static int lastErrorKind();
   static QString lastError(const QString &defaultError = QString());
+  static void clearError();
+  // Report the error of an operation that runs git, as libgit2 would.
+  static void setError(int kind, const QString &message);
 
   // Get the app dir for the given git dir.
   static QDir appDir(const QDir &dir);
