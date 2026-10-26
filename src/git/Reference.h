@@ -59,6 +59,10 @@ public:
   Commit target() const;
   Reference setTarget(const Commit &commit, const QString &msg) const;
 
+  // The id of the target commit. Unlike target(), it doesn't read the commit
+  // when the reference knows its id, like branches and packed tags.
+  Id targetId() const;
+
   // Get the annotated commit for merging this reference.
   AnnotatedCommit annotatedCommit() const;
 

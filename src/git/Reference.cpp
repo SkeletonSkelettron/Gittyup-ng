@@ -90,6 +90,21 @@ Commit Reference::target() const {
   return Commit(reinterpret_cast<git_commit *>(obj));
 }
 
+Id Reference::targetId() const {
+  // Annotated tags in packed-refs store the id of their commit.
+  if (const git_oid *id = git_reference_target_peel(d.data()))
+    return id;
+
+  // Other tags may point to a tag object, symbolic references to another
+  // reference: read the commit.
+  const git_oid *id = git_reference_target(d.data());
+  if (id && !isTag())
+    return id;
+
+  Commit commit = target();
+  return commit.isValid() ? commit.id() : Id();
+}
+
 Reference Reference::setTarget(const Commit &commit, const QString &msg) const {
   // Convert reflog message.
   QByteArray storage;

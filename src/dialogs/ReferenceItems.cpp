@@ -91,10 +91,12 @@ void ReferenceItems::prepend(const QVariantMap &item) {
 }
 
 void ReferenceItems::add(const git::Reference &ref, const QString &icon) {
-  git::Commit commit = ref.target();
+  // Thousands of references may be listed: don't read their commits, and
+  // abbreviate the ids without checking that they're unique.
+  git::Id id = ref.targetId();
   mRefs.append(ref);
   mItems.append(QVariantMap{
       {"text", ref.name()},
       {"icon", icon},
-      {"detail", commit.isValid() ? commit.shortId() : QString()}});
+      {"detail", id.isValid() ? id.toString().left(7) : QString()}});
 }
