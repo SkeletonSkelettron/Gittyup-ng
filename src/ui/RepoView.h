@@ -425,7 +425,16 @@ protected:
   void closeEvent(QCloseEvent *event) override;
 
 private:
+  // Where HEAD points and the targets of the references.
+  QString references() const;
+  // Refresh when other programs changed the references, like checking out
+  // or deleting a branch.
+  void checkReferences();
+
   bool mBusy = false;
+  QString mReferences;
+  // The view changed the references itself since it last looked at them.
+  bool mReferencesChanged = true;
 
   struct SubmoduleInfo {
     git::Submodule submodule;

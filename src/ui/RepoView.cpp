@@ -428,6 +428,22 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
   connect(mCommits, &CommitList::statusStarted, watcher,
           &RepositoryWatcher::cancelPendingNotification);
 
+  // Notice the references that other programs change: the watcher reports
+  // their files on some systems, and the user comes back to the window.
+  connect(notifier, &git::RepositoryNotifier::workdirChanged, this,
+          &RepoView::checkReferences);
+  connect(qApp, &QGuiApplication::applicationStateChanged, this,
+          [this](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive)
+              checkReferences();
+          });
+
+  // The changes of the view itself are known.
+  auto changed = [this] { mReferencesChanged = true; };
+  connect(notifier, &git::RepositoryNotifier::referenceUpdated, this, changed);
+  connect(notifier, &git::RepositoryNotifier::referenceAdded, this, changed);
+  connect(notifier, &git::RepositoryNotifier::referenceRemoved, this, changed);
+
   // Make failures visible: open the log at the failed entry, and alert on the
   // page and the log button until the user acknowledges them.
   connect(mLogRoot, &LogEntry::errorInserted, this, [this](LogEntry *error) {
@@ -530,6 +546,26 @@ bool RepoView::runBusy(const std::function<void()> &work) {
   mBusy = false;
   emit busyChanged();
   return true;
+}
+
+QString RepoView::references() const {
+  git::Reference head = mRepo.head();
+  QStringList state(head.isValid() ? head.qualifiedName() + ' ' +
+                                         head.targetId().toString()
+                                   : mRepo.unbornHeadName());
+  for (const git::Reference &ref : mRepo.refs())
+    state.append(ref.qualifiedName() + ' ' + ref.targetId().toString());
+
+  return state.join('\n');
+}
+
+void RepoView::checkReferences() {
+  QString state = references();
+  bool changed = !mReferencesChanged && state != mReferences;
+  mReferences = state;
+  mReferencesChanged = false;
+  if (changed)
+    refresh(false);
 }
 
 QPoint RepoView::mapFromPage(qreal x, qreal y) const {

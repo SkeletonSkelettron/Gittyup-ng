@@ -23,6 +23,13 @@ bool PathFilter::isRelevant(const QString &path) {
   // libgit2 expects workdir-relative paths.
   QString relative =
       QDir::isAbsolutePath(path) ? mWorkdir.relativeFilePath(path) : path;
+
+  // HEAD and the references change when other programs check out, commit or
+  // delete branches. git ignores everything else in .git.
+  if (relative == ".git/HEAD" || relative == ".git/packed-refs" ||
+      relative.startsWith(".git/refs/"))
+    return true;
+
   if (!mRepo.isIgnored(relative))
     return true;
 
