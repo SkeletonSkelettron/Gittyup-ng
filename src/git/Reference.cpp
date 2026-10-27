@@ -14,6 +14,7 @@
 #include "Repository.h"
 #include "TagRef.h"
 #include "Tree.h"
+#include "git/Cli.h"
 #include "git2/annotated_commit.h"
 #include "git2/branch.h"
 #include "git2/checkout.h"
@@ -106,20 +107,34 @@ Id Reference::targetId() const {
 }
 
 Reference Reference::setTarget(const Commit &commit, const QString &msg) const {
-  // Convert reflog message.
-  QByteArray storage;
-  const char *log = nullptr;
+  QStringList args = {"update-ref", "--no-deref"};
+
+  if (!commit.isValid()) {
+    Repository::setError(GIT_ERROR_REFERENCE, tr("invalid commit"));
+    return Reference();
+  }
   if (!msg.isEmpty()) {
-    storage = msg.toUtf8();
-    log = storage.constData();
+    args.append("-m");
+    args.append(msg);
+  }
+  args.append(qualifiedName());
+  args.append(commit.id().toString());
+  args.append(target().id().toString());
+
+  git::Cli cli(repo().workdir().path());
+
+  RunResult res = cli.run(args);
+
+  if (res.exitCode != 0) {
+    Repository::setError(GIT_ERROR_REFERENCE,
+                         QString::fromUtf8(res.errors).trimmed());
+    emit repo().notifier()->gitCommandFailed(tr("set target"),
+                                             QString::fromUtf8(res.errors));
+    return Reference();
   }
 
-  git_reference *ref = nullptr;
-  git_reference_set_target(&ref, d.data(), commit, log);
-
-  Reference result(ref);
+  Reference result = repo().lookupRef(qualifiedName());
   emit repo().notifier()->referenceUpdated(result);
-
   return result;
 }
 
