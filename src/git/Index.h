@@ -15,12 +15,15 @@
 #include <QMap>
 #include <QSet>
 #include <QSharedPointer>
+#include <QCoreApplication>
 
 namespace git {
 
 class Tree;
 
 class Index {
+  Q_DECLARE_TR_FUNCTIONS(Index)
+
 public:
   enum StagedState {
     Disabled = -1,

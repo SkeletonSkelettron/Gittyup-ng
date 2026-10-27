@@ -76,13 +76,27 @@ git_filemode_t Index::mode(const QString &path) const {
 }
 
 void Index::setMode(const QString &path, git_filemode_t mode) {
-  const git_index_entry *entry = this->entry(path);
-  if (!entry)
+  if (!entry(path))
     return;
 
-  git_index_entry copy = *entry;
-  copy.mode = mode;
-  git_index_add(d->index, &copy);
+  QString chmod =
+      mode == GIT_FILEMODE_BLOB_EXECUTABLE ? "--chmod=+x" : "--chmod=-x";
+  QStringList args = {"update-index", chmod, "--", path};
+  Repository repo(git_index_owner(d->index));
+
+  git::Cli cli(repo.workdir().path());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    emit repo.notifier()->gitCommandFailed(tr("set mode"),
+                                           QString::fromUtf8(result.errors));
+    return;
+  }
+
+  git_index_read(d->index, true);
+  d->stagedCache.remove(path);
+  emit repo.notifier()->indexChanged({path});
 }
 
 bool Index::isTracked(const QString &path) const { return entry(path); }
