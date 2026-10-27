@@ -10,6 +10,7 @@
 #### Changed
 
 * The Kraken themes are called Teal
+* Pushing a branch that tracks no remote branch yet makes it track the one it pushes to, like git push -u, instead of failing with "has no upstream branch"
 
 #### Fixed
 

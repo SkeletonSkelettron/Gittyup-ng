@@ -1874,6 +1874,13 @@ void RepoView::push(const git::Remote &rmt, const git::Reference &src,
 
   git::Branch branch = ref;
   git::Branch upstream = branch ? branch.upstream() : git::Branch();
+
+  // Track the remote branch of the same name, like git push -u, when the
+  // branch tracks none yet.
+  if (!upstream.isValid() && ref.isLocalBranch() &&
+      (dst.isEmpty() || dst == ref.name() || dst == ref.qualifiedName()))
+    setUpstream = true;
+
   git::Remote upstreamRemote = upstream ? upstream.remote() : git::Remote();
   if (upstreamRemote && upstreamRemote.name() != remote.name())
     upstream = git::Branch();
