@@ -1,3 +1,18 @@
+### v0.0.5 - 2026-10-28
+
+#### Changed
+
+* Pushing a branch that tracks no remote branch yet makes it track the one it pushes to, like git push -u, instead of failing with "has no upstream branch"
+* Fast-forwarding branches, moving a branch after an interactive rebase and Set Executable run git instead of libgit2
+
+#### Fixed
+
+* The New Branch, Checkout, Merge and Remote dialogs took up to 20 seconds to open in repositories with thousands of branches
+* Branches that other programs checked out, committed to or deleted showed up only after refreshing. They show up when the window becomes active, and right away on Windows
+* Failed checkouts showed an unrelated error, like "config value 'branch.x.merge' was not found". They say that local changes would be overwritten, or what git reports
+
+----
+
 ### v0.0.4 - 2026-10-23
 
 #### Added
@@ -10,16 +25,12 @@
 #### Changed
 
 * The Kraken themes are called Teal
-* Pushing a branch that tracks no remote branch yet makes it track the one it pushes to, like git push -u, instead of failing with "has no upstream branch"
 
 #### Fixed
 
 * The window froze while checkouts, new branches, stashes, resets, reverts and discarding ran, and clicks meanwhile ran them again when they ended
 * The references didn't update after deleting the upstream branch of a deleted branch
 * The changelog of the About dialog was empty when Gittyup-ng ran from its build
-* The New Branch, Checkout, Merge and Remote dialogs took up to 20 seconds to open in repositories with thousands of branches
-* Branches that other programs checked out, committed to or deleted showed up only after refreshing. They show up when the window becomes active, and right away on Windows
-* Failed checkouts showed an unrelated error, like "config value 'branch.x.merge' was not found". They say that local changes would be overwritten, or what git reports
 
 ----
 
