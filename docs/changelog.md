@@ -1,3 +1,19 @@
+### v0.0.6 - 2026-10-29
+
+#### Added
+
+* The Neon theme: neon pink, cyan and green on a deep night blue
+
+#### Changed
+
+* Staging single lines, writing the configuration, initializing and updating submodules and cherry-picking run git instead of libgit2
+
+#### Fixed
+
+* Closing a repository while a push, a fetch or an update of submodules ran crashed Gittyup-ng
+
+----
+
 ### v0.0.5 - 2026-10-28
 
 #### Changed
