@@ -520,6 +520,14 @@ void RepoView::diffSelected(const git::Diff diff, const QString &file,
 }
 
 RepoView::~RepoView() {
+  // A remote operation still runs on another thread with the callbacks that
+  // are deleted with this view. Let it finish first.
+  if (mWatcher) {
+    if (mCallbacks)
+      mCallbacks->setCanceled(true);
+    mWatcher->waitForFinished();
+  }
+
   // The QML page references this object, so it has to go first.
   delete mPage;
   delete mPageContext;
