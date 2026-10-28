@@ -168,7 +168,18 @@ void TestFileContextMenu::testDiscardSubmodule() {
   QVERIFY(dialog);
   dialog->accept();
 
-  QTest::qWait(10); // Wait until submodule discarded
+  // The submodule is updated on another thread, by git.
+  QString readme = repo.workdir().filePath("GittyupTestRepo/README.md");
+  auto content = [readme] {
+    QFile file(readme);
+    return file.open(QFile::ReadOnly) ? QString::fromUtf8(file.readAll())
+                                      : QString();
+  };
+  QTRY_COMPARE_WITH_TIMEOUT(
+      content(),
+      QString(
+          "# GittyupTestRepo\nTest repo for Gittyup used in the unittests\n"),
+      10000);
 
   // original text
   //  {"file.txt", "File.txt\n"},
