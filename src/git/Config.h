@@ -83,7 +83,17 @@ public:
 private:
   Config(git_config *config = nullptr);
 
+  // Run git config on the file that libgit2 writes to, the one with the
+  // highest level.
+  bool write(const QStringList &args);
+
   QSharedPointer<git_config> d;
+
+  // The arguments of git config that name the file, empty when it's unknown
+  // and libgit2 writes instead, the directory to run it in and the level.
+  QStringList mScope;
+  QString mDir;
+  int mLevel = 0;
 
   friend class Repository;
 };

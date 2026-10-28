@@ -269,7 +269,13 @@ QString Repository::message() const {
 Config Repository::gitConfig() const {
   git_config *config = nullptr;
   git_repository_config(&config, d->repo);
-  return Config(config);
+
+  // Write to .git/config like libgit2 does.
+  Config result(config);
+  result.mScope = {"--local"};
+  result.mDir = dir().path();
+  result.mLevel = GIT_CONFIG_LEVEL_LOCAL;
+  return result;
 }
 
 // Config file used for app specific configs

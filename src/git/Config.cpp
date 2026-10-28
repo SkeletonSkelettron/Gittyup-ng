@@ -8,7 +8,10 @@
 //
 
 #include "Config.h"
+#include "Cli.h"
+#include <QDir>
 #include <QStandardPaths>
+#include <climits>
 
 namespace git {
 
@@ -60,8 +63,23 @@ bool Config::addFile(const QString &path, git_config_level_t level,
                      const Repository &repo) {
   git_repository *ptr =
       repo.isValid() ? static_cast<git_repository *>(repo) : nullptr;
-  return !git_config_add_file_ondisk(d.data(), path.toUtf8(), level, ptr,
-                                     false);
+  if (git_config_add_file_ondisk(d.data(), path.toUtf8(), level, ptr, false))
+    return false;
+
+  // libgit2 writes to the file with the highest level.
+  int rank = (level == GIT_CONFIG_HIGHEST_LEVEL) ? INT_MAX : level;
+  if (rank > mLevel) {
+    mScope = {"--file", path};
+    mDir = QDir::homePath();
+    mLevel = rank;
+  }
+
+  return true;
+}
+
+bool Config::write(const QStringList &args) {
+  RunResult result = Cli(mDir).run(QStringList("config") + mScope + args);
+  return result.exitCode == 0;
 }
 
 template <>
@@ -74,7 +92,12 @@ bool Config::value<bool>(const QString &key, const bool &defaultValue) const {
 }
 
 template <> void Config::setValue<bool>(const QString &key, const bool &value) {
-  if (isValid()) {
+  if (!isValid())
+    return;
+
+  if (!mScope.isEmpty()) {
+    write({"--", key, value ? "true" : "false"});
+  } else {
     git_config_set_bool(d.data(), key.toUtf8(), value);
   }
 }
@@ -89,7 +112,12 @@ int Config::value<int>(const QString &key, const int &defaultValue) const {
 }
 
 template <> void Config::setValue<int>(const QString &key, const int &value) {
-  if (isValid()) {
+  if (!isValid())
+    return;
+
+  if (!mScope.isEmpty()) {
+    write({"--", key, QString::number(value)});
+  } else {
     git_config_set_int32(d.data(), key.toUtf8(), value);
   }
 }
@@ -110,13 +138,24 @@ QString Config::value<QString>(const QString &key,
 
 template <>
 void Config::setValue<QString>(const QString &key, const QString &value) {
-  if (isValid()) {
+  if (!isValid())
+    return;
+
+  if (!mScope.isEmpty()) {
+    write({"--", key, value});
+  } else {
     git_config_set_string(d.data(), key.toUtf8(), value.toUtf8());
   }
 }
 
 bool Config::remove(const QString &key) {
-  return isValid() && !git_config_delete_entry(d.data(), key.toUtf8());
+  if (!isValid())
+    return false;
+
+  if (!mScope.isEmpty())
+    return write({"--unset", "--", key});
+
+  return !git_config_delete_entry(d.data(), key.toUtf8());
 }
 
 QStringList Config::value(const QString &key, const QString &regexp,
@@ -147,15 +186,27 @@ QStringList Config::value(const QString &key, const QString &regexp,
 
 void Config::setValue(const QString &key, const QString regexp,
                       const QString &value) {
-  if (isValid()) {
+  if (!isValid())
+    return;
+
+  if (!mScope.isEmpty()) {
+    write({"--replace-all", "--", key, value, regexp});
+  } else {
     git_config_set_multivar(d.data(), key.toUtf8(), regexp.toUtf8(),
                             value.toUtf8());
   }
 }
 
 bool Config::remove(const QString &key, const QString regexp) {
-  return isValid() && git_config_delete_multivar(d.data(), key.toUtf8(),
-                                                 regexp.toUtf8()) >= 0;
+  if (!isValid())
+    return false;
+
+  if (!mScope.isEmpty())
+    return write({"--unset-all", "--", key, regexp});
+
+  int error =
+      git_config_delete_multivar(d.data(), key.toUtf8(), regexp.toUtf8());
+  return error >= 0;
 }
 
 Config::Iterator Config::glob(const QString &pattern) const {
@@ -169,7 +220,12 @@ Config::Iterator Config::glob(const QString &pattern) const {
 Config Config::global() {
   git_config *config = nullptr;
   git_config_open_default(&config);
-  return Config(config);
+
+  Config result(config);
+  result.mScope = {"--global"};
+  result.mDir = QDir::homePath();
+  result.mLevel = GIT_CONFIG_LEVEL_GLOBAL;
+  return result;
 }
 
 QString Config::globalPath() {
@@ -208,13 +264,22 @@ Config Config::appGlobal() {
     return Config();
   }
 
-  return Config(config);
+  Config result(config);
+  result.mScope = {"--file", QString::fromUtf8(path)};
+  result.mDir = QDir::homePath();
+  result.mLevel = GIT_CONFIG_LEVEL_GLOBAL;
+  return result;
 }
 
 Config Config::open(const QString &path) {
   git_config *config = nullptr;
   git_config_open_ondisk(&config, path.toUtf8());
-  return Config(config);
+
+  Config result(config);
+  result.mScope = {"--file", path};
+  result.mDir = QDir::homePath();
+  result.mLevel = GIT_CONFIG_LEVEL_LOCAL;
+  return result;
 }
 
 } // namespace git
