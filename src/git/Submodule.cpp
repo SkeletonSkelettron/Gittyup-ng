@@ -8,13 +8,12 @@
 //
 
 #include "Submodule.h"
+#include "Cli.h"
 #include "Config.h"
 #include "Id.h"
 #include "Repository.h"
 
 namespace git {
-
-const QString kUrl = "https://github.com/Murmele/Gittyup";
 
 Submodule::Submodule() {}
 
@@ -29,7 +28,10 @@ bool Submodule::isInitialized() const {
   return !repo.gitConfig().value<QString>(key).isEmpty();
 }
 
-void Submodule::initialize() const { git_submodule_init(d.data(), false); }
+void Submodule::initialize() const {
+  Repository repo(git_submodule_owner(d.data()));
+  Cli(repo.workdir().path()).run({"submodule", "init", "--", path()});
+}
 
 void Submodule::deinitialize() const {
   // Remove git config entry.
@@ -82,28 +84,30 @@ Id Submodule::workdirId() const { return git_submodule_wd_id(d.data()); }
 
 Result Submodule::update(Remote::Callbacks *callbacks, bool init,
                          bool checkout_force) {
-  git_submodule_update_options opts = GIT_SUBMODULE_UPDATE_OPTIONS_INIT;
-#ifndef USE_SYSTEM_LIBGIT2
-  opts.fetch_opts.callbacks.connected = &Remote::Callbacks::connected;
-  opts.fetch_opts.callbacks.about_to_disconnect =
-      &Remote::Callbacks::about_to_disconnect;
-#endif
-  opts.fetch_opts.callbacks.sideband_progress = &Remote::Callbacks::sideband;
-  opts.fetch_opts.callbacks.credentials = &Remote::Callbacks::credentials;
-  opts.fetch_opts.callbacks.certificate_check = &Remote::Callbacks::certificate;
-  opts.fetch_opts.callbacks.transfer_progress = &Remote::Callbacks::transfer;
-  opts.fetch_opts.callbacks.update_tips = &Remote::Callbacks::update;
-  opts.fetch_opts.callbacks.remote_ready = &Remote::Callbacks::remoteReady;
-  opts.fetch_opts.callbacks.payload = callbacks;
-
+  // Check out the commit of the index, like libgit2, whatever the update
+  // mode of the submodule is.
+  QStringList args = {"submodule", "update", "--checkout"};
+  if (init)
+    args.append("--init");
   if (checkout_force)
-    opts.checkout_opts.checkout_strategy |= GIT_CHECKOUT_FORCE;
-  // Use a fake URL. Submodule update doesn't have a way to
-  // query a different proxy for each submodule remote.
-  QByteArray proxy = Remote::proxyUrl(kUrl, opts.fetch_opts.proxy_opts.type);
-  opts.fetch_opts.proxy_opts.url = proxy;
+    args.append("--force");
+  args << "--" << path();
 
-  return git_submodule_update(d.data(), init, &opts);
+  Repository repo(git_submodule_owner(d.data()));
+  RunResult result = Cli(repo.workdir().path()).run(args);
+
+  // What the remote said while cloning or fetching.
+  if (callbacks) {
+    for (const QByteArray &line : result.errors.split('\n')) {
+      if (line.startsWith("remote: ") && !line.mid(8).trimmed().isEmpty())
+        callbacks->sideband(QString::fromUtf8(line.mid(8)) + '\n');
+    }
+  }
+
+  if (result.exitCode != 0)
+    return Result(-1, QString::fromUtf8(result.errors).trimmed());
+
+  return 0;
 }
 
 Repository Submodule::open() const {
