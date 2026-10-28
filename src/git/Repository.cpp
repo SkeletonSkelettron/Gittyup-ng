@@ -1257,16 +1257,32 @@ bool Repository::rebaseOngoing() {
 
 bool Repository::cherryPick(const Commit &commit) {
   int current = state();
-  // libgit2 only allows conflicts by default when no strategy is given.
-  git_cherrypick_options opts = GIT_CHERRYPICK_OPTIONS_INIT;
-  opts.checkout_opts.checkout_strategy = GIT_CHECKOUT_ALLOW_CONFLICTS;
+  QString id = commit.id().toString();
+  QStringList args = {"cherry-pick", "--no-commit", id};
   if (forcesDiff3Conflicts())
-    opts.checkout_opts.checkout_strategy |= GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
-  int error = git_cherrypick(d->repo, commit, &opts);
+    args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
+
+  Cli cli(workdir().path());
+  RunResult result = cli.run(args);
+
+  // git exits with 1 for conflicts. They are resolved later, like with
+  // libgit2, so only fail when nothing was picked.
+  Index index = this->index();
+  index.read();
+  if (result.exitCode != 0 && !index.hasConflicts()) {
+    git_error_set_str(GIT_ERROR_CHERRYPICK,
+                      QString::fromUtf8(result.errors).trimmed().toUtf8());
+    return false;
+  }
+
+  // Remember the commit like libgit2 does. git doesn't with --no-commit, but
+  // the state of the repository and aborting it depend on it.
+  cli.run({"update-ref", "CHERRY_PICK_HEAD", id});
+
   if (state() != current)
     emit d->notifier->stateChanged();
 
-  return !error;
+  return true;
 }
 
 bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
