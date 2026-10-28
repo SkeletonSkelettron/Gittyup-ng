@@ -11,6 +11,7 @@
 #include "Commit.h"
 #include "Reference.h"
 #include "Repository.h"
+#include "Result.h"
 #include "Signature.h"
 #include "Submodule.h"
 #include "Tree.h"
@@ -253,21 +254,34 @@ void Index::setStaged(const QStringList &files, bool staged, bool yieldFocus) {
 }
 
 void Index::add(const QString &path, const QByteArray &buffer) {
+  // The pointer dies when the index is read again below.
   const git_index_entry *entry = this->entry(path);
-  if (!entry) {
-    git_index_add_bypath(d->index, path.toUtf8());
-    entry = this->entry(path);
+  uint32_t mode = entry ? entry->mode : GIT_FILEMODE_BLOB;
+
+  Repository repo(git_index_owner(d->index));
+  Cli cli(repo.workdir().path());
+
+  // Write the staged lines as a blob.
+  RunResult result = cli.run({"hash-object", "-w", "--stdin"}, buffer);
+  if (result.exitCode != 0) {
+    emit repo.notifier()->gitCommandFailed(tr("stage lines"),
+                                           QString::fromUtf8(result.errors));
+    return;
   }
 
-  if (!entry)
+  // Point the entry of the index to the blob.
+  QString id = QString::fromUtf8(result.output).trimmed();
+  result = cli.run({"update-index", "--add", "--cacheinfo",
+                    QString::number(mode, 8), id, path});
+  if (result.exitCode != 0) {
+    emit repo.notifier()->gitCommandFailed(tr("stage lines"),
+                                           QString::fromUtf8(result.errors));
     return;
+  }
 
-  if (git_index_add_from_buffer(d->index, entry, buffer, buffer.size()))
-    return;
-
-  git_index_write(d->index);
+  // git changed the index file, read it again.
+  git_index_read(d->index, true);
   d->stagedCache.remove(path);
-  git::Repository repo(git_index_owner(d->index));
   emit repo.notifier()->indexChanged({path});
 }
 
