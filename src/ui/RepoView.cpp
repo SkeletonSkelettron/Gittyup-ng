@@ -2205,8 +2205,19 @@ void RepoView::checkout(const git::Commit &commit, const QStringList &paths) {
 
   CheckoutCallbacks callbacks(entry, GIT_CHECKOUT_NOTIFY_ALL);
   int strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_DONT_UPDATE_INDEX;
-  if (!runBusy([&] { mRepo.checkout(commit, &callbacks, paths, strategy); }))
+  bool checkedOut = false;
+  if (!runBusy([&] {
+        checkedOut = mRepo.checkout(commit, &callbacks, paths, strategy);
+      }))
     return;
+
+  // List the files with local changes that would be overwritten.
+  if (!checkedOut) {
+    LogEntry *err = error(entry, tr("checkout"));
+    for (const QString &path : callbacks.conflicts())
+      err->addEntry(LogEntry::File, path)->setStatus('!');
+    return;
+  }
 
   mRefs->select(mRepo.head());
 }

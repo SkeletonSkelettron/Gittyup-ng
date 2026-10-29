@@ -7,6 +7,8 @@
 #include "git/Reference.h"
 
 #include "dialogs/ConfirmDialog.h"
+#include "log/LogEntry.h"
+#include <QProcess>
 #include <QPushButton>
 
 #define INIT_REPO(repoPath)                                                    \
@@ -44,6 +46,7 @@ private slots:
   void testIgnoreFileUntracked();
   void testIgnoreFolder();
   void testRemoveUntrackedFolder();
+  void testCheckoutKeepsLocalFiles();
 };
 
 using namespace git;
@@ -605,6 +608,87 @@ void TestFileContextMenu::testRemoveUntrackedFolder() {
       QVERIFY2(file.readAll() == i.value(), qPrintable(i.key()));
     }
   }
+}
+
+// Checking out files of a commit keeps untracked files and changes, staged
+// ones too, also of files in the way of their directories and of directories
+// in the way of them, like libgit2 did. The view reports them.
+void TestFileContextMenu::testCheckoutKeepsLocalFiles() {
+  Test::ScratchRepository repo;
+  QDir dir = repo->workdir();
+  auto runGit = [&dir](const QStringList &args) {
+    QProcess process;
+    process.setWorkingDirectory(dir.path());
+    process.start("git", args);
+    process.waitForFinished();
+    return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+  };
+  auto write = [&dir](const QString &name, const QByteArray &content) {
+    dir.mkpath(QFileInfo(name).path());
+    QFile file(dir.filePath(name));
+    return file.open(QFile::WriteOnly) && file.write(content) >= 0;
+  };
+  auto read = [&dir](const QString &name) {
+    QFile file(dir.filePath(name));
+    return file.open(QFile::ReadOnly) ? file.readAll() : QByteArray();
+  };
+
+  // The second commit deletes or changes the files of the first.
+  QStringList changed = {"changed.txt", "kept/file.txt", "staged.txt"};
+  for (const QString &name :
+       changed + QStringList{"deleted.txt", "dir/file.txt", "e"})
+    QVERIFY(write(name, "old\n"));
+  runGit({"add", "."});
+  runGit({"commit", "-q", "-m", "first"});
+  git::Commit first = repo->head().target();
+
+  runGit({"rm", "-q", "-r", "deleted.txt", "dir", "e"});
+  for (const QString &name : changed + QStringList{"e/x"})
+    QVERIFY(write(name, "new\n"));
+  runGit({"add", "."});
+  runGit({"commit", "-q", "-m", "second"});
+
+  QVERIFY(write("deleted.txt", "untracked\n"));
+  QVERIFY(write("dir", "untracked\n"));
+  QVERIFY(write("e/x", "changed\n"));
+  QVERIFY(QDir(dir.filePath("kept")).removeRecursively());
+  QVERIFY(write("staged.txt", "staged\n"));
+  runGit({"add", "staged.txt"});
+
+  int strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_DONT_UPDATE_INDEX;
+  for (const QString &path :
+       {"deleted.txt", "dir/file.txt", "e", "kept", "staged.txt"})
+    QVERIFY(!repo->checkout(first, nullptr, {path}, strategy));
+  QVERIFY(!repo->checkout(first, nullptr, {"staged.txt"}, GIT_CHECKOUT_SAFE));
+  QCOMPARE(read("deleted.txt"), QByteArray("untracked\n"));
+  QCOMPARE(read("dir"), QByteArray("untracked\n"));
+  QCOMPARE(read("e/x"), QByteArray("changed\n"));
+  QVERIFY(!dir.exists("kept"));
+  QCOMPARE(read("staged.txt"), QByteArray("staged\n"));
+  QCOMPARE(runGit({"show", ":staged.txt"}), QString("staged"));
+
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&window));
+  RepoView *view = window.currentView();
+  view->checkout(first, QStringList{"deleted.txt"});
+  QCOMPARE(read("deleted.txt"), QByteArray("untracked\n"));
+
+  QStringList reported;
+  for (LogEntry *entry : view->findChildren<LogEntry *>()) {
+    if (entry->kind() != LogEntry::Error)
+      continue;
+
+    for (LogEntry *file : entry->entries())
+      reported.append(file->text());
+  }
+  QCOMPARE(reported, QStringList({"deleted.txt"}));
+
+  // Files without local changes are checked out, the index stays.
+  QVERIFY(repo->checkout(first, nullptr, {"changed.txt"}, strategy));
+  QCOMPARE(read("changed.txt"), QByteArray("old\n"));
+  QCOMPARE(runGit({"status", "--porcelain", "--", "changed.txt"}),
+           QString("M changed.txt"));
 }
 
 TEST_MAIN(TestFileContextMenu)

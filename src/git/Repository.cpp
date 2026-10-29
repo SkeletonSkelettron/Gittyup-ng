@@ -57,6 +57,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QVector>
+#include <algorithm>
 
 #ifdef Q_OS_UNIX
 #include <pwd.h>
@@ -1411,21 +1412,43 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
 
   Cli cli(workdir().path());
 
-  // git restore overwrites local changes, libgit2 refuses unless forced.
+  // git restore overwrites changes, also staged ones, and untracked files,
+  // which libgit2 refuses unless forced. git also deletes a file in the way
+  // of a directory, and a directory in the way of a file.
   if (!force) {
-    RunResult result = cli.run({"diff", "--name-only", "-z"});
-    if (result.exitCode != 0) {
-      setError(GIT_ERROR_CHECKOUT, commandError(result.errors));
+    QStringList files;
+    QMap<QString, Index::StagedState> states;
+    if (!workdirChanges(workdir().path(), true, files, states)) {
+      setError(GIT_ERROR_CHECKOUT,
+               tr("Unable to read the status of the files"));
       return false;
     }
 
-    QSet<QString> changed;
-    for (const QByteArray &path : result.output.split('\0'))
-      changed.insert(QString::fromUtf8(path));
+    // The files that differ from HEAD. git status tells the staged state of
+    // those that differ only in the index.
+    QSet<QString> changed(files.cbegin(), files.cend());
+    for (auto it = states.cbegin(); it != states.cend(); ++it)
+      changed.insert(it.key());
+
+    auto overwrites = [&changed](const QString &path) {
+      if (changed.contains(path))
+        return true;
+
+      for (qsizetype i = path.indexOf('/'); i > 0;
+           i = path.indexOf('/', i + 1)) {
+        if (changed.contains(path.left(i)))
+          return true;
+      }
+
+      QString dir = path + '/';
+      return std::any_of(
+          changed.cbegin(), changed.cend(),
+          [&dir](const QString &file) { return file.startsWith(dir); });
+    };
 
     bool conflicts = false;
     for (const QString &path : paths) {
-      if (changed.contains(path)) {
+      if (overwrites(path)) {
         conflicts = true;
         if (callbacks)
           callbacks->notify('!', path);
