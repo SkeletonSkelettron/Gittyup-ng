@@ -192,8 +192,10 @@ bool UndoHistory::apply(const Action &action, bool undo) {
     return fail(tr("Finish or abort the current merge, rebase, cherry-pick "
                    "or revert first."));
 
+  // Only the references of the action change back, not tags fetched since.
   git::RefState current(repo);
-  if (!current.matches(from, action.before.changes(action.after)))
+  QStringList names = action.before.changes(action.after);
+  if (!current.matches(from, names))
     return fail(tr("The branches have changed since."));
 
   // Move the working directory to the commit of HEAD.
@@ -224,7 +226,7 @@ bool UndoHistory::apply(const Action &action, bool undo) {
 
   QString message = QString("%1: %2").arg(title.toLower(), action.text);
   QString error;
-  if (!to.restore(repo, current, message, &error))
+  if (!to.restore(repo, current, names, message, &error))
     return fail(error);
 
   if (action.mode == Mixed && commit.isValid() &&

@@ -19,8 +19,9 @@ namespace git {
 class Repository;
 
 // The HEAD, local branches and tags of a repository at one time, and the
-// upstreams of its branches. Actions are undone by restoring the state from
-// before them, and redone by restoring the state after them.
+// upstreams of its branches. Actions are undone by restoring the references
+// that they changed to the state from before them, and redone by restoring
+// them to the state after them.
 class RefState {
   Q_DECLARE_TR_FUNCTIONS(RefState)
 
@@ -58,11 +59,14 @@ public:
   bool operator==(const RefState &rhs) const;
   bool operator!=(const RefState &rhs) const { return !(*this == rhs); }
 
-  // Change the references of 'repo' from 'current' to this state. The index
-  // and the working directory don't change. The reflogs get 'message'.
-  // Returns false and sets 'error' when something couldn't be changed.
+  // Change the references 'names' of 'repo', like those of changes(), from
+  // 'current' to this state. Other references may have changed since, and
+  // stay. The index and the working directory don't change. The reflogs get
+  // 'message'. Returns false and sets 'error' when something couldn't be
+  // changed.
   bool restore(const Repository &repo, const RefState &current,
-               const QString &message, QString *error = nullptr) const;
+               const QStringList &names, const QString &message,
+               QString *error = nullptr) const;
 
   static bool isBranch(const QString &name);
   static bool isTag(const QString &name);

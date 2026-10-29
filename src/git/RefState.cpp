@@ -151,7 +151,8 @@ bool RefState::operator==(const RefState &rhs) const {
 }
 
 bool RefState::restore(const Repository &repo, const RefState &current,
-                       const QString &message, QString *error) const {
+                       const QStringList &names, const QString &message,
+                       QString *error) const {
   git_repository *raw = repo;
   RepositoryNotifier *notifier = repo.notifier();
   QByteArray log = message.toUtf8();
@@ -162,19 +163,32 @@ bool RefState::restore(const Repository &repo, const RefState &current,
     return false;
   };
 
-  // Create and move references first so that HEAD can point to them.
-  for (auto it = mRefs.cbegin(); it != mRefs.cend(); ++it) {
-    const QString &name = it.key();
+  QStringList created;
+  QStringList moved;
+  QStringList removed;
+  for (const QString &name : names) {
+    auto it = mRefs.constFind(name);
     auto old = current.mRefs.constFind(name);
-    bool exists = (old != current.mRefs.cend());
-    if (exists && old.value() == it.value())
-      continue;
+    bool has = (it != mRefs.cend());
+    bool had = (old != current.mRefs.cend());
+    if (has && !had) {
+      created.append(name);
+    } else if (has && old.value() != it.value()) {
+      moved.append(name);
+    } else if (had && !has) {
+      removed.append(name);
+    }
+  }
 
+  // Create and move references first so that HEAD can point to them.
+  for (const QString &name : created + moved) {
+    bool exists = current.mRefs.contains(name);
     if (!exists)
       emit notifier->referenceAboutToBeAdded(shortName(name));
 
     git_reference *ref = nullptr;
-    if (git_reference_create(&ref, raw, name.toUtf8(), it.value(), 1, log)) {
+    if (git_reference_create(&ref, raw, name.toUtf8(), mRefs.value(name), 1,
+                             log)) {
       return fail(tr("Unable to restore '%1' - %2")
                       .arg(shortName(name), lastError()));
     }
@@ -190,7 +204,8 @@ bool RefState::restore(const Repository &repo, const RefState &current,
   }
 
   // Point HEAD to its branch or commit.
-  if (mHead != current.mHead || mHeadId != current.mHeadId) {
+  if (names.contains("HEAD") &&
+      (mHead != current.mHead || mHeadId != current.mHeadId)) {
     int result = 0;
     if (!mHead.isEmpty()) {
       if (mHead != current.mHead)
@@ -204,11 +219,7 @@ bool RefState::restore(const Repository &repo, const RefState &current,
   }
 
   // Remove the references that didn't exist.
-  for (auto it = current.mRefs.cbegin(); it != current.mRefs.cend(); ++it) {
-    const QString &name = it.key();
-    if (mRefs.contains(name))
-      continue;
-
+  for (const QString &name : removed) {
     Reference ref = repo.lookupRef(name);
     if (!ref.isValid())
       continue;

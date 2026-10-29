@@ -10,12 +10,14 @@
 #include "git/Commit.h"
 #include "git/Config.h"
 #include "git/Index.h"
+#include "git/TagRef.h"
 #include "git/Tree.h"
 #include "ui/DetailView.h"
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
 #include "ui/UndoHistory.h"
 #include <QFile>
+#include <QProcess>
 
 using namespace Test;
 using namespace QTest;
@@ -31,9 +33,11 @@ private slots:
   void checkout();
   void reset();
   void localChanges();
+  void laterTags();
   void cleanupTestCase();
 
 private:
+  QString git(const QStringList &args);
   void write(const QString &name, const QByteArray &content);
   QByteArray read(const QString &name);
   git::Id head();
@@ -209,9 +213,37 @@ void TestUndo::localChanges() {
   QVERIFY(!mHistory->canRedo());
 }
 
+// Undoing and redoing an action keeps the tags that came after it, like the
+// ones of a fetch, which aren't actions.
+void TestUndo::laterTags() {
+  mView->createBranch("tagged", mRepo->lookupCommit(mFirst));
+  mHistory->check();
+  QCOMPARE(mHistory->undoText(), QString("Create Branch tagged"));
+
+  git({"tag", "fetched", mFirst.toString()});
+  mHistory->check();
+  QCOMPARE(mHistory->undoText(), QString("Create Branch tagged"));
+
+  QVERIFY(mHistory->undo());
+  QVERIFY(!mRepo->lookupBranch("tagged").isValid());
+  QVERIFY(mRepo->lookupTag("fetched").isValid());
+  QVERIFY(mHistory->redo());
+  QVERIFY(mRepo->lookupBranch("tagged").isValid());
+  QVERIFY(mRepo->lookupTag("fetched").isValid());
+}
+
 void TestUndo::cleanupTestCase() {
   delete mWindow;
   mWindow = nullptr;
+}
+
+// Run git in the repository, for what Gittyup doesn't do itself.
+QString TestUndo::git(const QStringList &args) {
+  QProcess process;
+  process.setWorkingDirectory(mRepo->workdir().path());
+  process.start("git", args);
+  process.waitForFinished();
+  return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
 }
 
 void TestUndo::write(const QString &name, const QByteArray &content) {
