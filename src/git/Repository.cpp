@@ -51,6 +51,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMap>
+#include <QMutex>
 #include <QPair>
 #include <QProcess>
 #include <QSaveFile>
@@ -67,8 +68,18 @@ namespace git {
 
 namespace {
 
-// Whether git itself opens the repository at 'path'.
+// Whether git itself opens the repository at 'path'. A repository is opened
+// again and again, by the watcher of a new tab too, and starting git took
+// seconds there while other programs started. Remember the ones it opens.
 bool gitAccepts(const QString &path) {
+  static QMutex mutex;
+  static QSet<QString> accepted;
+  {
+    QMutexLocker locker(&mutex);
+    if (accepted.contains(path))
+      return true;
+  }
+
   QString git = QStandardPaths::findExecutable("git");
 #ifdef Q_OS_WIN
   if (git.isEmpty() && QFileInfo::exists("C:/Program Files/Git/cmd/git.exe"))
@@ -79,9 +90,13 @@ bool gitAccepts(const QString &path) {
 
   QProcess process;
   process.start(git, {"-C", path, "rev-parse", "--git-dir"});
-  return process.waitForFinished(10000) &&
-         process.exitStatus() == QProcess::NormalExit &&
-         process.exitCode() == 0;
+  if (!process.waitForFinished(10000) ||
+      process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+    return false;
+
+  QMutexLocker locker(&mutex);
+  accepted.insert(path);
+  return true;
 }
 
 // Collects the paths that differ between the index and the workdir, as
@@ -1662,7 +1677,7 @@ Repository Repository::open(const QString &path, bool searchParents) {
   // libgit2 refuses more repositories that aren't owned by the current user
   // than git on Windows, like folders of the Administrators while Gittyup
   // isn't elevated. Open the repositories that git itself opens.
-  if (error == GIT_EOWNER && gitAccepts(path)) {
+  if (error == GIT_EOWNER && gitAccepts(QString::fromUtf8(dir))) {
     git_libgit2_opts(GIT_OPT_SET_OWNER_VALIDATION, 0);
     git_repository_open_ext(&repo, dir, flags, nullptr);
     git_libgit2_opts(GIT_OPT_SET_OWNER_VALIDATION, 1);
