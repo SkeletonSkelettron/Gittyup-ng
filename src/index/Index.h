@@ -80,7 +80,12 @@ public:
   using PostingMap = QMap<QByteArray, QVector<Index::Posting>>;
   using Predicate = std::function<bool(const QByteArray &)>;
 
-  Index(const git::Repository &repo, QObject *parent = nullptr);
+  // Later reads the index on another thread and emits indexReset() when it's
+  // there, it's big for big repositories.
+  enum class Load { Now, Later };
+
+  Index(const git::Repository &repo, QObject *parent = nullptr,
+        Load load = Load::Now);
 
   bool isValid() const;
 
@@ -138,6 +143,7 @@ private:
   git::Repository mRepo;
   IdList mIds;
   Dictionary mDict;
+  int mResets = 0;
 
   static bool sLoggingEnabled;
 };

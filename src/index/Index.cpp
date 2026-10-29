@@ -38,11 +38,40 @@ const QString kVersionFile = "version";
 
 const QStringList kIndexFiles = {kIdFile, kDictFile, kPostFile, kProxFile};
 
+using Data = QPair<Index::IdList, Index::Dictionary>;
+
+// The indexed ids and the dictionary in 'dir'.
+Data readIndex(const QDir &dir, git_oid_t idType) {
+  Data data;
+  uint8_t idSize = git::Id::getSize(idType);
+
+  // Read already indexed ids.
+  QFile idFile(dir.filePath(kIdFile));
+  if (idFile.open(QIODevice::ReadOnly)) {
+    while (idFile.bytesAvailable() > 0)
+      data.first.append(git::Id(idFile.read(idSize), idType));
+  }
+
+  // Read dictionary.
+  QFile dictFile(dir.filePath(kDictFile));
+  if (dictFile.open(QIODevice::ReadOnly)) {
+    QDataStream dictIn(&dictFile);
+    while (!dictIn.atEnd()) {
+      quint32 pos;
+      QByteArray word;
+      dictIn >> word >> pos;
+      data.second.append(Index::Word(word, pos));
+    }
+  }
+
+  return data;
+}
+
 } // namespace
 
 bool Index::sLoggingEnabled = false;
 
-Index::Index(const git::Repository &repo, QObject *parent)
+Index::Index(const git::Repository &repo, QObject *parent, Load load)
     : QObject(parent), mRepo(repo) {
   // Read log setting.
   sLoggingEnabled = QSettings().value(kLogKey).toBool();
@@ -54,38 +83,37 @@ Index::Index(const git::Repository &repo, QObject *parent)
     remove();
 
   // Read data from disk.
-  reset();
+  if (load == Load::Now) {
+    reset();
+    return;
+  }
+
+  // A reset in the meantime read newer data.
+  int resets = mResets;
+  auto *watcher = new QFutureWatcher<Data>(this);
+  connect(watcher, &QFutureWatcher<Data>::finished, this,
+          [this, watcher, resets] {
+            if (mResets == resets) {
+              Data data = watcher->result();
+              mIds = data.first;
+              mDict = data.second;
+              emit indexReset();
+            }
+
+            watcher->deleteLater();
+          });
+
+  watcher->setFuture(
+      QtConcurrent::run(readIndex, indexDir(), mRepo.oidType()));
 }
 
 bool Index::isValid() const { return indexDir().exists(kIdFile); }
 
 void Index::reset() {
-  mIds.clear();
-  mDict.clear();
-
-  git_oid_t id_type = mRepo.oidType();
-  uint8_t id_size = git::Id::getSize(id_type);
-
-  // Read already indexed ids.
-  QDir dir = indexDir();
-  QFile idFile(dir.filePath(kIdFile));
-  if (idFile.open(QIODevice::ReadOnly)) {
-    while (idFile.bytesAvailable() > 0)
-      mIds.append(git::Id(idFile.read(id_size), id_type));
-  }
-
-  // Read dictionary.
-  QFile dictFile(dir.filePath(kDictFile));
-  if (dictFile.open(QIODevice::ReadOnly)) {
-    QDataStream dictIn(&dictFile);
-    while (!dictIn.atEnd()) {
-      quint32 pos;
-      QByteArray word;
-      dictIn >> word >> pos;
-      mDict.append(Word(word, pos));
-    }
-  }
-
+  ++mResets;
+  Data data = readIndex(indexDir(), mRepo.oidType());
+  mIds = data.first;
+  mDict = data.second;
   emit indexReset();
 }
 

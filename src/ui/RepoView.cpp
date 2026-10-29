@@ -214,7 +214,7 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
   connect(this, &RepoView::statusChanged, toolBar, &ToolBar::updateStash);
 
   // Initialize index.
-  mIndex = new Index(repo, this);
+  mIndex = new Index(repo, this, Index::Load::Later);
   SearchField *searchField = toolBar->searchField();
   connect(&mIndexer, &QProcess::started, this, [searchField] {
     searchField->setPlaceholderText(tr("Indexing..."));
