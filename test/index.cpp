@@ -16,6 +16,7 @@
 #include "ui/RepoView.h"
 #include "conf/Settings.h"
 #include <QFile>
+#include <QProcess>
 #include <QTextStream>
 
 using namespace Test;
@@ -44,6 +45,7 @@ private slots:
   void stageDeletion();
   void stageDirectory();
   void discardUntracked();
+  void stageKeepsStagedByGit();
   void cleanupTestCase();
 
 private:
@@ -207,6 +209,36 @@ void TestIndex::discardUntracked() {
   QVERIFY(dialog);
   dialog->accept();
   QVERIFY(!dir.exists("untracked2"));
+}
+
+// Staging keeps what git staged since the index was read.
+void TestIndex::stageKeepsStagedByGit() {
+  QDir dir = mRepo->workdir();
+  for (const QString &name : {"mine", "theirs"}) {
+    QFile file(dir.filePath(name));
+    QVERIFY(file.open(QFile::WriteOnly));
+    QTextStream(&file) << "This is a test." << Qt::endl;
+  }
+
+  RepoView *view = mWindow->currentView();
+  refresh(view);
+
+  QProcess git;
+  git.setWorkingDirectory(dir.path());
+  git.start("git", {"add", "theirs"});
+  QVERIFY(git.waitForFinished());
+  QCOMPARE(git.exitCode(), 0);
+
+  git::Index index = mRepo->index();
+  index.setStaged({"mine"}, true);
+
+  git.start("git", {"diff", "--cached", "--name-only"});
+  QVERIFY(git.waitForFinished());
+  QStringList staged =
+      QString::fromUtf8(git.readAllStandardOutput()).split('\n');
+  QVERIFY(staged.contains("mine"));
+  QVERIFY(staged.contains("theirs"));
+  QCOMPARE(index.isStaged("theirs"), git::Index::Staged);
 }
 
 void TestIndex::cleanupTestCase() { mWindow->close(); }

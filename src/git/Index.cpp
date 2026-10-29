@@ -282,7 +282,8 @@ void Index::setStaged(const QStringList &files, bool staged, bool yieldFocus) {
   }
 
   if (!changedFiles.isEmpty()) {
-    git_index_write(d->index);
+    // git stages into the index file. Writing the index in memory over it
+    // first would drop what other git processes staged since it was read.
     pathList += subPathList;
     if (!pathList.isEmpty()) {
       QByteArray input;
