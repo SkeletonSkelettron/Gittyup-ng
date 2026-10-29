@@ -1523,8 +1523,12 @@ void RepoView::merge(MergeFlags flags, const git::AnnotatedCommit &upstream,
   git::Reference head = mRepo.head();
   Q_ASSERT(head.isValid());
 
-  // Try to merge.
-  if (!mRepo.merge(upstream)) {
+  // Try to merge. A big merge writes thousands of files.
+  bool merged = false;
+  if (!runBusy([&] { merged = mRepo.merge(upstream); }))
+    return;
+
+  if (!merged) {
     LogEntry *err = error(parent, tr("merge"), head.name());
 
     // Add stash hint if the failure was because of uncommitted changes.
