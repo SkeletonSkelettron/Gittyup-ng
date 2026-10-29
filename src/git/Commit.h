@@ -78,8 +78,11 @@ public:
 
   // Reset HEAD to this commit.
   bool reset(git_reset_t type = GIT_RESET_MIXED,
-             const QStringList &paths = QStringList(),
              bool triggerReferenceUpdated = true) const;
+
+  // Reset HEAD to this commit like git merge --abort. The changes in the
+  // index, conflicts included, are undone and other local changes are kept.
+  bool resetMerge() const;
 
   // favorite commits
   bool isStarred() const;
@@ -100,6 +103,9 @@ private:
 
   QString decodeMessage(const char *msg) const;
   QString substituteEmoji(const QString &text) const;
+
+  bool runReset(QStringList args, bool hard,
+                bool triggerReferenceUpdated) const;
 
   friend class Blame;
   friend class AnnotatedCommit;

@@ -1616,7 +1616,7 @@ void RepoView::mergeAbort(LogEntry *parent) {
   }
 
   int state = mRepo.state();
-  if (!commit.reset(GIT_RESET_HARD, paths.values()))
+  if (!commit.resetMerge())
     return;
 
   QString text = tr("merge");
@@ -2647,7 +2647,7 @@ void RepoView::reset(const git::Commit &commit, git_reset_t type,
   }
 
   bool reset = false;
-  if (!runBusy([&] { reset = commit.reset(type, QStringList(), false); }))
+  if (!runBusy([&] { reset = commit.reset(type, false); }))
     return;
 
   if (!reset)

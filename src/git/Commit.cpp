@@ -321,20 +321,8 @@ bool Commit::amend(const Signature &author, const Signature &committer,
   return !error;
 }
 
-bool Commit::reset(git_reset_t type, const QStringList &paths,
-                   bool triggerReferenceUpdated) const {
-  QByteArray files;
+bool Commit::reset(git_reset_t type, bool triggerReferenceUpdated) const {
   QStringList args = {"reset"};
-
-  if (!paths.isEmpty()) {
-    // Paths are assumed to be exact matches.
-
-    for (const QString &path : paths) {
-      files.append(path.toUtf8());
-      files.append('\0');
-    }
-  }
-
   if (type == GIT_RESET_SOFT) {
     args.append("--soft");
   } else if (type == GIT_RESET_MIXED) {
@@ -343,27 +331,23 @@ bool Commit::reset(git_reset_t type, const QStringList &paths,
     args.append("--hard");
   }
 
+  return runReset(args, type == GIT_RESET_HARD, triggerReferenceUpdated);
+}
+
+bool Commit::resetMerge() const {
+  // git restore refuses unmerged files, like the ones deleted on one side.
+  return runReset({"reset", "--merge"}, true, true);
+}
+
+bool Commit::runReset(QStringList args, bool hard,
+                      bool triggerReferenceUpdated) const {
   args.append("-q");
   args.append(id().toString());
 
   Repository repo = this->repo();
   int state = repo.state();
 
-  git::Cli cli(repo.workdir().path());
-  RunResult result;
-
-  if (type == GIT_RESET_HARD && !paths.isEmpty()) {
-    // Only these files in the workdir, but the whole index and HEAD.
-    result = cli.run({"--literal-pathspecs", "restore",
-                      "--source=" + id().toString(), "--staged", "--worktree",
-                      "--pathspec-from-file=-", "--pathspec-file-nul"},
-                     files);
-    if (result.exitCode == 0)
-      result = cli.run({"reset", "-q", id().toString()});
-  } else {
-    result = cli.run(args);
-  }
-
+  RunResult result = git::Cli(repo.workdir().path()).run(args);
   if (result.exitCode != 0) {
     emit repo.notifier()->gitCommandFailed(tr("reset commit"),
                                            QString::fromUtf8(result.errors));
@@ -373,8 +357,7 @@ bool Commit::reset(git_reset_t type, const QStringList &paths,
   repo.index().read();
 
   if (triggerReferenceUpdated)
-    emit repo.notifier()->referenceUpdated(repo.head(),
-                                           type == git_reset_t::GIT_RESET_HARD);
+    emit repo.notifier()->referenceUpdated(repo.head(), hard);
   if (repo.state() != state) {
     Patch::clearConflictResolutions(repo);
     emit repo.notifier()->stateChanged();
