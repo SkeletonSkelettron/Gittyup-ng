@@ -1134,17 +1134,31 @@ Commit Repository::mergeBase(const Commit &lhs, const Commit &rhs) const {
 
 bool Repository::merge(const AnnotatedCommit &mergeHead) {
   int current = state();
-  const git_annotated_commit *head = mergeHead;
-  git_merge_options mergeOpts = GIT_MERGE_OPTIONS_INIT;
-  git_checkout_options checkoutOpts = GIT_CHECKOUT_OPTIONS_INIT;
-  checkoutOpts.checkout_strategy = GIT_CHECKOUT_SAFE;
+
+  // Merge the commit itself rather than a name that git looks up again.
+  QStringList args = {"merge", "--no-commit", "--no-ff", "-m",
+                      mergeHead.mergeMessage(),
+                      mergeHead.commit().id().toString()};
   if (forcesDiff3Conflicts())
-    checkoutOpts.checkout_strategy |= GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
-  int error = git_merge(d->repo, &head, 1, &mergeOpts, &checkoutOpts);
+    args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
+
+  RunResult result = Cli(workdir().path()).run(args);
+  Index index = this->index();
+  index.read();
+
+  // git exits with 1 for conflicts, which are resolved later like with
+  // libgit2. It only fails without MERGE_HEAD, before anything changed.
+  bool merged = (state() == GIT_REPOSITORY_STATE_MERGE);
+  if (!merged) {
+    QByteArray message =
+        result.errors.isEmpty() ? result.output : result.errors;
+    git_error_set_str(GIT_ERROR_MERGE, message.trimmed());
+  }
+
   if (state() != current)
     emit d->notifier->stateChanged();
 
-  return !error;
+  return merged;
 }
 
 /*!

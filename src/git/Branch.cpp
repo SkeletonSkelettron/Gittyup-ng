@@ -187,7 +187,7 @@ AnnotatedCommit Branch::annotatedCommitFromFetchHead() const {
   if (git_annotated_commit_from_fetchhead(&head, repo, name, url, commit))
     return AnnotatedCommit();
 
-  return AnnotatedCommit(head, repo);
+  return AnnotatedCommit(head, repo, remote.url());
 }
 
 bool Branch::isNameValid(const QString &name) {

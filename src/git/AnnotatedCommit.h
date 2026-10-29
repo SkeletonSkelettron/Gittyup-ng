@@ -11,6 +11,7 @@
 #define ANNOTATEDCOMMIT_H
 
 #include <QSharedPointer>
+#include <QString>
 
 struct git_annotated_commit;
 struct git_repository;
@@ -30,12 +31,17 @@ public:
 
   int analysis() const;
 
+  // The message of a merge of this commit, like libgit2 writes MERGE_MSG.
+  QString mergeMessage() const;
+
 private:
-  AnnotatedCommit(git_annotated_commit *commit, git_repository *repo);
+  AnnotatedCommit(git_annotated_commit *commit, git_repository *repo,
+                  const QString &url = QString());
   operator git_annotated_commit *() const;
 
   git_repository *repo;
   QSharedPointer<git_annotated_commit> d;
+  QString url; // of the remote, for a commit from FETCH_HEAD
 
   friend class Commit;
   friend class Branch;
