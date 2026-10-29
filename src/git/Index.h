@@ -63,6 +63,10 @@ public:
   StagedState isStaged(const QString &path) const;
   void setStaged(const QStringList &paths, bool staged, bool yieldFocus = true);
 
+  // Take the staged states that 'index', of the same file, knows already,
+  // like those that Repository::status() gets from git.
+  void copyStagedStates(const Index &index);
+
   void add(const QString &path, const QByteArray &buffer);
 
   void read();

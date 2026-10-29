@@ -206,6 +206,11 @@ Index::StagedState Index::isStaged(const QString &path) const {
   return d->stagedCache.insert(path, PartiallyStaged).value();
 }
 
+void Index::copyStagedStates(const Index &index) {
+  if (isValid() && index.isValid() && d != index.d)
+    d->stagedCache.insert(index.d->stagedCache);
+}
+
 void Index::setStaged(const QStringList &files, bool staged, bool yieldFocus) {
   bool dirAdded = false;
   QStringList changedFiles;

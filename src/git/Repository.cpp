@@ -85,11 +85,11 @@ bool gitAccepts(const QString &path) {
 }
 
 // Collects the paths that differ between the index and the workdir, as
-// 'git status' lists them. git checks the workdir much faster than libgit2
-// does on Windows, where it caches file system data (core.fscache). Returns
-// false if git can't tell.
-bool workdirChanges(const QString &workdir, bool untracked,
-                    QStringList &paths) {
+// 'git status' lists them, and the staged state of the files that it lists.
+// git checks the workdir much faster than libgit2 does on Windows, where it
+// caches file system data (core.fscache). Returns false if git can't tell.
+bool workdirChanges(const QString &workdir, bool untracked, QStringList &paths,
+                    QMap<QString, Index::StagedState> &states) {
   // Don't refresh the index: that would race with Gittyup's own writes.
   QStringList args = {"--no-optional-locks", "status", "--porcelain=v2", "-z"};
   args.append(untracked ? "--untracked-files=all" : "--untracked-files=no");
@@ -124,11 +124,6 @@ bool workdirChanges(const QString &workdir, bool untracked,
         continue;
     }
 
-    // Changed, renamed and copied entries may differ only in the index.
-    if ((record.at(0) == '1' || record.at(0) == '2') &&
-        (record.size() < 4 || record.at(3) == '.'))
-      continue;
-
     qsizetype pos = 0;
     for (int field = 0; field < fields && pos >= 0; ++field) {
       pos = record.indexOf(' ', pos);
@@ -136,8 +131,26 @@ bool workdirChanges(const QString &workdir, bool untracked,
         ++pos;
     }
 
-    if (pos > 0)
-      paths.append(QString::fromUtf8(record.mid(pos)));
+    if (pos <= 0)
+      continue;
+
+    // Changed, renamed and copied entries may differ only in the index.
+    QString path = QString::fromUtf8(record.mid(pos));
+    bool changed = (record.at(0) == '1' || record.at(0) == '2');
+    bool unstaged = !changed || (record.size() > 3 && record.at(3) != '.');
+    if (unstaged)
+      paths.append(path);
+
+    // "<XY> N..." of files, submodules have "S...". Conflicts and the
+    // original paths of renames are left to Index::isStaged().
+    if (record.at(0) == '?') {
+      states.insert(path, Index::Unstaged);
+    } else if (changed && record.size() > 5 && record.at(5) == 'N') {
+      bool staged = (record.at(2) != '.');
+      states.insert(path, !unstaged ? Index::Staged
+                          : staged  ? Index::PartiallyStaged
+                                    : Index::Unstaged);
+    }
   }
 
   return true;
@@ -407,8 +420,10 @@ Diff Repository::status(const Index &index, Diff::Callbacks *callbacks,
   // Let git find the changes in the workdir, and diff only those. Diff the
   // whole workdir if git can't tell.
   QStringList paths;
+  QMap<QString, Index::StagedState> states;
   bool untracked = !appConfig().value<bool>("untracked.hide", false);
-  bool listed = workdirChanges(this->workdir().path(), untracked, paths);
+  bool listed =
+      workdirChanges(this->workdir().path(), untracked, paths, states);
   if (!listed || !paths.isEmpty()) {
     Diff workdir =
         diffIndexToWorkdir(index, callbacks, ignoreWhitespace, paths);
@@ -417,6 +432,10 @@ Diff Repository::status(const Index &index, Diff::Callbacks *callbacks,
 
     diff.merge(workdir);
   }
+
+  // Index::isStaged() would read and hash the files that git compared.
+  if (index.isValid())
+    index.d->stagedCache.insert(states);
 
   diff.setIndex(index);
 

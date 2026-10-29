@@ -222,8 +222,11 @@ public:
       git::Diff diff = mRepo.status(own, &mStatusCallbacks, ignoreWhitespace);
 
       // Stage with the index of the repository, which isn't read here.
-      if (diff.isValid())
-        diff.setIndex(index);
+      if (diff.isValid()) {
+        git::Index staging = index;
+        staging.copyStagedStates(own);
+        diff.setIndex(staging);
+      }
       return diff;
     }));
   }
