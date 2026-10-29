@@ -20,6 +20,9 @@ namespace {
 // The pull requests are listed again this often.
 const int kRefreshInterval = 5 * 60 * 1000;
 
+// The pull requests are listed first this long after the view is created.
+const int kStartDelay = 50;
+
 } // namespace
 
 PullRequestList::PullRequestList(RepoView *view)
@@ -32,20 +35,28 @@ PullRequestList::PullRequestList(RepoView *view)
     emit currentChanged();
   });
 
-  // Look up the account of the default remote for private repositories.
-  git::Remote remote = view->repo().defaultRemote();
-  if (remote.isValid()) {
-    mRemote = remote.name();
-    Repository *repo = Accounts::instance()->lookup(remote.url());
-    mSource->setRemote(remote.url(), repo ? repo->account() : nullptr);
-  }
+  // Asking for the pull requests the first time takes a while, the system
+  // proxy is looked up for one. Start after the page of the repository is
+  // drawn, which the view of the window does 5 ms after a change.
+  QTimer::singleShot(kStartDelay, this, [this] {
+    // Look up the account of the default remote for private repositories.
+    git::Remote remote = mView->repo().defaultRemote();
+    if (remote.isValid()) {
+      mRemote = remote.name();
+      Repository *repo = Accounts::instance()->lookup(remote.url());
+      mSource->setRemote(remote.url(), repo ? repo->account() : nullptr);
+    }
 
-  if (mSource->isSupported()) {
-    mTimer.setInterval(kRefreshInterval);
-    connect(&mTimer, &QTimer::timeout, this, &PullRequestList::refresh);
-    mTimer.start();
-    refresh();
-  }
+    if (mSource->isSupported()) {
+      mTimer.setInterval(kRefreshInterval);
+      connect(&mTimer, &QTimer::timeout, this, &PullRequestList::refresh);
+      mTimer.start();
+      refresh();
+    }
+
+    // The references show the pull requests now.
+    emit changed();
+  });
 }
 
 QVariantMap PullRequestList::current() const {
