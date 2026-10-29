@@ -15,6 +15,7 @@
 #include "git/Blob.h"
 #include "git/Branch.h"
 #include "git/Commit.h"
+#include "git/Index.h"
 #include "git/Reference.h"
 #include "git/Remote.h"
 #include "git/Repository.h"
@@ -88,6 +89,9 @@ public:
 
   // clean
   void clean(const QStringList &untracked);
+
+  // Resolve conflicts with one side, after confirming it.
+  void takeConflictSide(const QStringList &files, git::Index::Side side);
 
   // Select head reference in ref list.
   void selectHead();

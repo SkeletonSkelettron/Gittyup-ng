@@ -635,6 +635,30 @@ void RepoView::clean(const QStringList &untracked) {
   dialog->show();
 }
 
+void RepoView::takeConflictSide(const QStringList &files,
+                                git::Index::Side side) {
+  bool ours = (side == git::Index::Ours);
+  ConfirmDialog *dialog = new ConfirmDialog(this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setTitle(ours ? tr("Take Ours?") : tr("Take Theirs?"));
+  dialog->setText(
+      ours ? tr("Resolve the conflicts with our version of the files?")
+           : tr("Resolve the conflicts with their version of the files?"));
+  dialog->setInformativeText(
+      ours ? tr("Their changes and your edits of the conflicts are lost.")
+           : tr("Our changes and your edits of the conflicts are lost."));
+  dialog->setDetailedText(files.join('\n'));
+  dialog->setAcceptText(ours ? tr("Take Ours") : tr("Take Theirs"));
+  dialog->setDanger(true);
+
+  connect(dialog, &QDialog::accepted, this, [this, files, side] {
+    mRepo.index().takeSide(files, side);
+    refresh();
+  });
+
+  dialog->show();
+}
+
 void RepoView::selectHead() { mRefs->select(mRepo.head()); }
 
 void RepoView::selectFirstCommit() { mCommits->selectFirstCommit(); }

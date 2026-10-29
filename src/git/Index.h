@@ -43,11 +43,18 @@ public:
     }
   };
 
+  // A side of a conflict.
+  enum Side { Ours, Theirs };
+
   Index();
 
   bool isValid() const { return !d.isNull(); }
 
   Conflict conflict(const QString &path) const;
+
+  // Resolve the conflicts of the files with the version of one side, and
+  // stage it. A file that the side deleted is deleted.
+  bool takeSide(const QStringList &paths, Side side);
 
   git_filemode_t mode(const QString &path) const;
   void setMode(const QString &path, git_filemode_t mode);

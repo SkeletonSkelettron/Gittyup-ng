@@ -68,6 +68,62 @@ Index::Conflict Index::conflict(const QString &path) const {
   return {ancestorId, oursId, theirsId};
 }
 
+bool Index::takeSide(const QStringList &paths, Side side) {
+  Repository repo(git_index_owner(d->index));
+  RepositoryNotifier *notifier = repo.notifier();
+  QString action =
+      (side == Ours) ? tr("take our version") : tr("take their version");
+
+  // The files that the side kept, and the ones it deleted.
+  QStringList kept;
+  QStringList deleted;
+  for (const QString &path : paths) {
+    Conflict conflict = this->conflict(path);
+    Id id = (side == Ours) ? conflict.ours : conflict.theirs;
+    (id.isNull() ? deleted : kept).append(path);
+  }
+
+  // Run git with the paths on stdin, like setStaged.
+  Cli cli(repo.workdir().path());
+  auto run = [&](const QStringList &command, const QStringList &files) {
+    QByteArray input;
+    for (const QString &file : files) {
+      input += file.toUtf8();
+      input += '\0';
+    }
+
+    QStringList args = {"--literal-pathspecs", "-c", "core.splitindex=false"};
+    args += command;
+    args += {"--pathspec-from-file=-", "--pathspec-file-nul"};
+    RunResult result = cli.run(args, input);
+    if (result.exitCode != 0)
+      emit notifier->gitCommandFailed(action, QString::fromUtf8(result.errors));
+    return result.exitCode == 0;
+  };
+
+  // Write the version of the side to the workdir.
+  QString option = (side == Ours) ? "--ours" : "--theirs";
+  if (!kept.isEmpty() && !run({"checkout", option}, kept))
+    return false;
+
+  // Delete the files that the side deleted, which resolves them.
+  if (!deleted.isEmpty()) {
+    if (!run({"rm", "-q"}, deleted))
+      return false;
+
+    git_index_read(d->index, true);
+    for (const QString &path : deleted)
+      d->stagedCache.remove(path);
+    emit notifier->indexChanged(deleted);
+  }
+
+  // Staging the version resolves the conflict.
+  if (!kept.isEmpty())
+    setStaged(kept, true);
+
+  return true;
+}
+
 git_filemode_t Index::mode(const QString &path) const {
   const git_index_entry *entry = this->entry(path);
   if (!entry)

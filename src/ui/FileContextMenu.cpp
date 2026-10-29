@@ -284,13 +284,35 @@ void FileContextMenu::handleUncommittedChanges(const git::Index &index,
           break;
 
         case git::Index::Conflicted:
-          // FIXME: Resolve conflicts?
+          // Taken with Take Ours or Take Theirs below.
           break;
       }
     }
 
     stage->setEnabled(unstaged > 0);
     unstage->setEnabled(staged > 0);
+
+    addSeparator();
+  }
+
+  // Take one side of the conflicts. The file lists of the details give no
+  // index: use the one of the status.
+  git::Index conflictIndex = index.isValid() ? index : diff.index();
+  QStringList conflicted;
+  if (conflictIndex.isValid()) {
+    for (const QString &file : files) {
+      if (conflictIndex.isStaged(file) == git::Index::Conflicted)
+        conflicted.append(file);
+    }
+  }
+
+  if (!conflicted.isEmpty()) {
+    addAction(tr("Take Ours"), [view, conflicted] {
+      view->takeConflictSide(conflicted, git::Index::Ours);
+    });
+    addAction(tr("Take Theirs"), [view, conflicted] {
+      view->takeConflictSide(conflicted, git::Index::Theirs);
+    });
 
     addSeparator();
   }
