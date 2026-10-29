@@ -38,8 +38,10 @@ public:
     Id ours;
     Id theirs;
 
+    // A side that deleted the file, or the base of a file that both sides
+    // added, is missing.
     bool isValid() const {
-      return !ancestor.isNull() && !ours.isNull() && !theirs.isNull();
+      return !ancestor.isNull() || !ours.isNull() || !theirs.isNull();
     }
   };
 

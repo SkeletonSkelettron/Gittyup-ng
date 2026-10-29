@@ -163,6 +163,10 @@ Index::StagedState Index::isStaged(const QString &path) const {
   if (it != d->stagedCache.end())
     return it.value();
 
+  // Handle conflicts, also of files that are only on one side.
+  if (conflict(path).isValid())
+    return d->stagedCache.insert(path, Conflicted).value();
+
   Repository repo(git_index_owner(d->index));
   Submodule sm = repo.lookupSubmodule(path);
 
@@ -199,9 +203,6 @@ Index::StagedState Index::isStaged(const QString &path) const {
 
   if (head == index && headMode == indexMode)
     return d->stagedCache.insert(path, Unstaged).value();
-
-  if (conflict(path).isValid())
-    return d->stagedCache.insert(path, Conflicted).value();
 
   return d->stagedCache.insert(path, PartiallyStaged).value();
 }

@@ -65,6 +65,15 @@ void makeConflicts(const QString &dir) {
   runGit(dir, {"merge", "-q", "other"});
 }
 
+// Whether the menu has the action.
+bool hasAction(QMenu &menu, const QString &text) {
+  for (QAction *action : menu.actions()) {
+    if (action->text() == text)
+      return true;
+  }
+  return false;
+}
+
 // The visible confirmation dialog of the view.
 ConfirmDialog *confirmDialog(QWidget *parent) {
   for (ConfirmDialog *dialog : parent->findChildren<ConfirmDialog *>()) {
@@ -83,6 +92,7 @@ private slots:
   void theirs();
   void ours();
   void menu();
+  void conflictKinds();
 };
 
 // Their version of a conflict, and their deletion.
@@ -96,6 +106,7 @@ void TestTakeSide::theirs() {
   git::Index index = repo->index();
   index.read();
   QCOMPARE(index.isStaged("f.txt"), git::Index::Conflicted);
+  QCOMPARE(index.isStaged("g.txt"), git::Index::Conflicted);
   QVERIFY(index.takeSide({"f.txt", "g.txt"}, git::Index::Theirs));
 
   QCOMPARE(content(dir + "/f.txt"), QString("a\ntheirs\n"));
@@ -150,6 +161,11 @@ void TestTakeSide::menu() {
   QVERIFY(!action(plain, "Take Ours"));
   QVERIFY(!action(plain, "Take Theirs"));
 
+  // Also for a file that they deleted.
+  FileContextMenu deleted(view, {"g.txt"}, git::Index());
+  QVERIFY(hasAction(deleted, "Take Ours"));
+  QVERIFY(hasAction(deleted, "Take Theirs"));
+
   // The lists of the details give no index.
   FileContextMenu menu(view, {"f.txt"}, git::Index());
   QVERIFY(action(menu, "Take Ours"));
@@ -163,6 +179,54 @@ void TestTakeSide::menu() {
 
   QCOMPARE(content(dir + "/f.txt"), QString("a\ntheirs\n"));
   QCOMPARE(runGit(dir, {"ls-files", "-u", "--", "f.txt"}), QString());
+}
+
+// A file that we deleted and they changed, and one that both sides added,
+// conflict too, though a side or the base is missing.
+void TestTakeSide::conflictKinds() {
+  ScratchRepository repo;
+  QString dir = repo->workdir().path();
+  write(dir + "/deleted.txt", "base\n");
+  runGit(dir, {"add", "."});
+  runGit(dir, {"commit", "-q", "-m", "base"});
+
+  runGit(dir, {"checkout", "-q", "-b", "other"});
+  write(dir + "/deleted.txt", "theirs\n");
+  write(dir + "/added.txt", "theirs\n");
+  runGit(dir, {"add", "."});
+  runGit(dir, {"commit", "-q", "-m", "other"});
+
+  runGit(dir, {"checkout", "-q", "-"});
+  runGit(dir, {"rm", "-q", "deleted.txt"});
+  write(dir + "/added.txt", "ours\n");
+  runGit(dir, {"add", "."});
+  runGit(dir, {"commit", "-q", "-m", "ours"});
+
+  runGit(dir, {"merge", "-q", "other"});
+  QCOMPARE(runGit(dir, {"status", "--porcelain"}),
+           QString("AA added.txt\nDU deleted.txt"));
+
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(qWaitForWindowExposed(&window));
+  RepoView *view = window.currentView();
+  refresh(view);
+
+  git::Index index = repo->index();
+  for (const QString &file : {"added.txt", "deleted.txt"}) {
+    QCOMPARE(index.isStaged(file), git::Index::Conflicted);
+    FileContextMenu menu(view, {file}, git::Index());
+    QVERIFY(hasAction(menu, "Take Ours"));
+    QVERIFY(hasAction(menu, "Take Theirs"));
+  }
+
+  // Our side deleted it.
+  QVERIFY(index.takeSide({"deleted.txt"}, git::Index::Ours));
+  QVERIFY(!QFile::exists(dir + "/deleted.txt"));
+  QVERIFY(index.takeSide({"added.txt"}, git::Index::Theirs));
+  QCOMPARE(content(dir + "/added.txt"), QString("theirs\n"));
+  QCOMPARE(runGit(dir, {"ls-files", "-u"}), QString());
+  QCOMPARE(runGit(dir, {"status", "--porcelain"}), QString("M  added.txt"));
 }
 
 TEST_MAIN(TestTakeSide)
