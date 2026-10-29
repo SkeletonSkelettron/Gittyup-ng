@@ -23,8 +23,11 @@
 #include "git/Submodule.h"
 #include <QApplication>
 #include <QClipboard>
+#include <QFutureWatcher>
 #include <QMenu>
 #include <QSettings>
+#include <QtConcurrent>
+#include <optional>
 
 namespace {
 
@@ -55,7 +58,7 @@ void RefsModel::setFilter(const QString &filter) {
     return;
 
   mFilter = simplified;
-  update();
+  assemble();
 }
 
 void RefsModel::toggle(int row) {
@@ -70,7 +73,7 @@ void RefsModel::toggle(int row) {
   }
 
   QSettings().setValue(kCollapsedKey, QStringList(mCollapsed.values()));
-  update();
+  assemble();
 }
 
 bool RefsModel::isExpanded(const QString &key) const {
@@ -92,39 +95,65 @@ void RefsModel::addHeader(Section section, const QString &name, int count) {
   mItems.append(header);
 }
 
-void RefsModel::update() {
-  beginResetModel();
-  mItems.clear();
+git::Reference RefsModel::ref(const Item &item) const {
+  return item.refName.isEmpty() ? git::Reference()
+                                : mRepo.lookupRef(item.refName);
+}
 
+void RefsModel::update() {
   // Refresh the current reference; its target may have moved.
   if (mCurrent.isValid())
     mCurrent = mRepo.lookupRef(mCurrent.qualifiedName());
 
+  // The thread reads a repository of its own: two threads can't use one.
+  // The last update wins.
+  int update = ++mUpdates;
+  QString path = mRepo.dir(false).path();
+  auto *watcher = new QFutureWatcher<std::optional<Snapshot>>(this);
+  connect(watcher, &QFutureWatcher<std::optional<Snapshot>>::finished, this,
+          [this, watcher, update] {
+            if (update == mUpdates) {
+              std::optional<Snapshot> result = watcher->result();
+              mSnapshot = result ? *result : snapshot(mRepo);
+              mLoaded = true;
+              assemble();
+            }
+
+            watcher->deleteLater();
+          });
+
+  watcher->setFuture(QtConcurrent::run([path]() -> std::optional<Snapshot> {
+    git::Repository repo = git::Repository::open(path);
+    if (!repo.isValid())
+      return std::nullopt;
+    return snapshot(repo);
+  }));
+}
+
+RefsModel::Snapshot RefsModel::snapshot(const git::Repository &repo) {
+  Snapshot snapshot;
+
   // local branches
-  QList<Item> local;
-  git::Reference head = mRepo.head();
-  if (head.isValid() && !head.isBranch() && matches(head.name())) {
+  git::Reference head = repo.head();
+  if (head.isValid() && !head.isBranch()) {
     Item item;
     item.kind = Branch;
     item.section = Local;
     item.name = head.name();
     item.depth = 1;
-    item.ref = head;
+    item.refName = head.qualifiedName();
     item.head = true;
-    local.append(item);
+    snapshot.local.append(item);
   }
 
   QList<Item> branches;
-  for (const git::Branch &branch : mRepo.branches(GIT_BRANCH_LOCAL)) {
-    if (!matches(branch.name()))
-      continue;
-
+  for (const git::Branch &branch : repo.branches(GIT_BRANCH_LOCAL)) {
     Item item;
     item.kind = Branch;
     item.section = Local;
     item.name = branch.name();
     item.depth = 1;
-    item.ref = branch;
+    item.refName = branch.qualifiedName();
     item.head = branch.isHead();
     if (git::Branch upstream = branch.upstream()) {
       item.ahead = branch.difference(upstream);
@@ -134,22 +163,12 @@ void RefsModel::update() {
   }
 
   std::sort(branches.begin(), branches.end(), lessThan);
-  local.append(branches);
-
-  addHeader(Local, tr("Local"), local.size());
-  if (isExpanded(mItems.last().key))
-    mItems.append(local);
+  snapshot.local.append(branches);
 
   // remote branches grouped by remote
-  QMap<QString, QList<Item>> remotes;
-  for (const git::Branch &branch : mRepo.branches(GIT_BRANCH_REMOTE)) {
+  for (const git::Branch &branch : repo.branches(GIT_BRANCH_REMOTE)) {
     QString name = branch.name();
     if (name.endsWith("/HEAD"))
-      continue;
-
-    QString remote = name.section('/', 0, 0);
-    remotes[remote]; // Show remotes without matching branches too.
-    if (!matches(name))
       continue;
 
     Item item;
@@ -157,13 +176,91 @@ void RefsModel::update() {
     item.section = Remote;
     item.name = name.section('/', 1);
     item.depth = 2;
-    item.ref = branch;
-    remotes[remote].append(item);
+    item.refName = branch.qualifiedName();
+    snapshot.remotes[name.section('/', 0, 0)].append(item);
   }
 
   // Include remotes that don't have any branches yet.
-  for (const git::Remote &remote : mRepo.remotes())
-    remotes[remote.name()];
+  for (const git::Remote &remote : repo.remotes())
+    snapshot.remotes[remote.name()];
+
+  for (QList<Item> &items : snapshot.remotes)
+    std::sort(items.begin(), items.end(), lessThan);
+
+  // tags
+  for (const git::Reference &ref : repo.refs()) {
+    if (!ref.isTag())
+      continue;
+
+    Item item;
+    item.kind = Tag;
+    item.section = Tags;
+    item.name = ref.name();
+    item.depth = 1;
+    item.refName = ref.qualifiedName();
+    snapshot.tags.append(item);
+  }
+
+  std::sort(snapshot.tags.begin(), snapshot.tags.end(), lessThan);
+
+  // stashes
+  git::Reference stashRef = repo.stashRef();
+  QList<git::Commit> stashCommits = repo.stashes();
+  for (int i = 0; i < stashCommits.size(); ++i) {
+    Item item;
+    item.kind = Stash;
+    item.section = Stashes;
+    item.name = stashCommits.at(i).summary();
+    item.depth = 1;
+    item.refName = stashRef.isValid() ? stashRef.qualifiedName() : QString();
+    item.index = i;
+    snapshot.stashes.append(item);
+  }
+
+  // submodules
+  QList<git::Submodule> modules = repo.submodules();
+  for (int i = 0; i < modules.size(); ++i) {
+    Item item;
+    item.kind = Submodule;
+    item.section = Submodules;
+    item.name = modules.at(i).name();
+    item.depth = 1;
+    item.index = i;
+    snapshot.submodules.append(item);
+  }
+
+  return snapshot;
+}
+
+void RefsModel::assemble() {
+  if (!mLoaded)
+    return;
+
+  beginResetModel();
+  mItems.clear();
+
+  // local branches
+  QList<Item> local;
+  for (const Item &item : mSnapshot.local) {
+    if (matches(item.name))
+      local.append(item);
+  }
+
+  addHeader(Local, tr("Local"), local.size());
+  if (isExpanded(mItems.last().key))
+    mItems.append(local);
+
+  // remote branches grouped by remote
+  QMap<QString, QList<Item>> remotes;
+  for (auto it = mSnapshot.remotes.cbegin(); it != mSnapshot.remotes.cend();
+       ++it) {
+    // Show remotes without matching branches too.
+    QList<Item> &items = remotes[it.key()];
+    for (const Item &item : it.value()) {
+      if (matches(QString("%1/%2").arg(it.key(), item.name)))
+        items.append(item);
+    }
+  }
 
   if (!mFilter.isEmpty()) {
     for (auto it = remotes.begin(); it != remotes.end();) {
@@ -183,10 +280,8 @@ void RefsModel::update() {
       group.key = QString("remote/%1").arg(it.key());
       mItems.append(group);
 
-      if (isExpanded(group.key)) {
-        std::sort(it.value().begin(), it.value().end(), lessThan);
+      if (isExpanded(group.key))
         mItems.append(it.value());
-      }
     }
   }
 
@@ -235,69 +330,23 @@ void RefsModel::update() {
     }
   }
 
-  // tags
-  QList<Item> tags;
-  for (const git::Reference &ref : mRepo.refs()) {
-    if (!ref.isTag() || !matches(ref.name()))
-      continue;
+  // tags, stashes and submodules
+  auto addSection = [this](Section section, const QString &name,
+                           const QList<Item> &all) {
+    QList<Item> items;
+    for (const Item &item : all) {
+      if (matches(item.name))
+        items.append(item);
+    }
 
-    Item item;
-    item.kind = Tag;
-    item.section = Tags;
-    item.name = ref.name();
-    item.depth = 1;
-    item.ref = ref;
-    tags.append(item);
-  }
+    addHeader(section, name, items.size());
+    if (isExpanded(mItems.last().key))
+      mItems.append(items);
+  };
 
-  std::sort(tags.begin(), tags.end(), lessThan);
-  addHeader(Tags, tr("Tags"), tags.size());
-  if (isExpanded(mItems.last().key))
-    mItems.append(tags);
-
-  // stashes
-  QList<Item> stashes;
-  git::Reference stashRef = mRepo.stashRef();
-  QList<git::Commit> stashCommits = mRepo.stashes();
-  for (int i = 0; i < stashCommits.size(); ++i) {
-    QString summary = stashCommits.at(i).summary();
-    if (!matches(summary))
-      continue;
-
-    Item item;
-    item.kind = Stash;
-    item.section = Stashes;
-    item.name = summary;
-    item.depth = 1;
-    item.ref = stashRef;
-    item.index = i;
-    stashes.append(item);
-  }
-
-  addHeader(Stashes, tr("Stashes"), stashes.size());
-  if (isExpanded(mItems.last().key))
-    mItems.append(stashes);
-
-  // submodules
-  QList<Item> submodules;
-  QList<git::Submodule> modules = mRepo.submodules();
-  for (int i = 0; i < modules.size(); ++i) {
-    QString name = modules.at(i).name();
-    if (!matches(name))
-      continue;
-
-    Item item;
-    item.kind = Submodule;
-    item.section = Submodules;
-    item.name = name;
-    item.depth = 1;
-    item.index = i;
-    submodules.append(item);
-  }
-
-  addHeader(Submodules, tr("Submodules"), submodules.size());
-  if (isExpanded(mItems.last().key))
-    mItems.append(submodules);
+  addSection(Tags, tr("Tags"), mSnapshot.tags);
+  addSection(Stashes, tr("Stashes"), mSnapshot.stashes);
+  addSection(Submodules, tr("Submodules"), mSnapshot.submodules);
 
   endResetModel();
 }
@@ -318,7 +367,7 @@ QVariant RefsModel::data(const QModelIndex &index, int role) const {
     case Qt::ToolTipRole:
       if (!item.tip.isEmpty())
         return item.tip;
-      return item.ref.isValid() ? item.ref.qualifiedName() : item.name;
+      return !item.refName.isEmpty() ? item.refName : item.name;
     case KindRole:
       return item.kind;
     case SectionRole:
@@ -328,8 +377,8 @@ QVariant RefsModel::data(const QModelIndex &index, int role) const {
     case HeadRole:
       return item.head;
     case CurrentRole:
-      return item.kind != Stash && item.ref.isValid() && mCurrent.isValid() &&
-             item.ref.qualifiedName() == mCurrent.qualifiedName();
+      return item.kind != Stash && !item.refName.isEmpty() &&
+             mCurrent.isValid() && item.refName == mCurrent.qualifiedName();
     case AheadRole:
       return item.ahead;
     case BehindRole:
@@ -342,14 +391,14 @@ QVariant RefsModel::data(const QModelIndex &index, int role) const {
       return !item.key.isEmpty();
     case SoloRole:
       return (item.kind == Branch || item.kind == RemoteBranch) &&
-             item.ref.isValid() && mSolo.contains(item.ref.qualifiedName());
+             mSolo.contains(item.refName);
     case HiddenRole: {
       QString name;
       if (item.kind == RemoteGroup) {
         name = QString("refs/remotes/%1/").arg(item.name);
       } else if ((item.kind == Branch || item.kind == RemoteBranch) &&
-                 item.ref.isValid()) {
-        name = item.ref.qualifiedName();
+                 !item.refName.isEmpty()) {
+        name = item.refName;
       } else {
         return false;
       }
@@ -365,9 +414,9 @@ QVariant RefsModel::data(const QModelIndex &index, int role) const {
     case RefNameRole:
       if (item.kind == RemoteGroup)
         return QString("remote:%1").arg(item.name);
-      if (item.kind == Stash || !item.ref.isValid())
+      if (item.kind == Stash)
         return QString();
-      return item.ref.qualifiedName();
+      return item.refName;
   }
 
   return QVariant();
@@ -375,8 +424,8 @@ QVariant RefsModel::data(const QModelIndex &index, int role) const {
 
 void RefsModel::setPullRequests(PullRequestList *pullRequests) {
   mPullRequests = pullRequests;
-  connect(pullRequests, &PullRequestList::changed, this, &RefsModel::update);
-  update();
+  connect(pullRequests, &PullRequestList::changed, this, &RefsModel::assemble);
+  assemble();
 }
 
 void RefsModel::setHidden(const QStringList &hidden) {
@@ -481,7 +530,10 @@ void RefsPanel::activate(int row) {
     case RefsModel::Tag: {
       // Show the graph again.
       mView->pullRequestList()->close();
-      git::Reference ref = item.ref;
+      git::Reference ref = mModel->ref(item);
+      if (!ref.isValid())
+        break;
+
       setCurrent(ref);
       emit referenceSelected(ref);
       break;
@@ -489,7 +541,7 @@ void RefsPanel::activate(int row) {
 
     case RefsModel::Stash: {
       int index = item.index;
-      setCurrent(item.ref);
+      setCurrent(mModel->ref(item));
       emit stashSelected(index);
       break;
     }
@@ -513,7 +565,7 @@ void RefsPanel::open(int row) {
     case RefsModel::RemoteBranch:
     case RefsModel::Tag:
       if (!item.head && !mRepo.isBare()) {
-        QString name = item.ref.qualifiedName();
+        QString name = item.refName;
         QmlSupport::callLater(this, [this, name] {
           if (git::Reference ref = mRepo.lookupRef(name))
             mView->checkout(ref);
@@ -552,11 +604,11 @@ void RefsPanel::toggleSolo(int row) {
 
   const RefsModel::Item &item = mModel->item(row);
   if ((item.kind != RefsModel::Branch && item.kind != RefsModel::RemoteBranch) ||
-      !item.ref.isValid())
+      item.refName.isEmpty())
     return;
 
   CommitList *commits = mView->commitList();
-  QString name = item.ref.qualifiedName();
+  QString name = item.refName;
   commits->setSoloed(name, !commits->isSoloed(name));
 }
 
@@ -573,8 +625,8 @@ void RefsPanel::toggleHidden(const RefsModel::Item &item) {
     name = QString("refs/remotes/%1/").arg(item.name);
   } else if ((item.kind == RefsModel::Branch ||
               item.kind == RefsModel::RemoteBranch) &&
-             item.ref.isValid()) {
-    name = item.ref.qualifiedName();
+             !item.refName.isEmpty()) {
+    name = item.refName;
   } else {
     return;
   }
@@ -586,8 +638,8 @@ void RefsPanel::toggleHidden(const RefsModel::Item &item) {
   }
 
   // Show a branch of a hidden remote by showing the remote.
-  if (!commits->hidden().contains(name) && item.ref.isRemoteBranch())
-    name = QString("refs/remotes/%1/").arg(item.ref.name().section('/', 0, 0));
+  if (!commits->hidden().contains(name) && item.kind == RefsModel::RemoteBranch)
+    name = QString("refs/remotes/%1/").arg(name.section('/', 2, 2));
   commits->setHidden(name, false);
 }
 
@@ -601,14 +653,11 @@ void RefsPanel::showContextMenu(int row, qreal x, qreal y) {
 
 void RefsPanel::showMenu(RefsModel::Item item, qreal x, qreal y) {
   // The reference may be gone by now.
-  if (item.ref.isValid()) {
-    item.ref = mRepo.lookupRef(item.ref.qualifiedName());
-    if (!item.ref.isValid())
-      return;
-  }
+  git::Reference ref = mModel->ref(item);
+  if (!item.refName.isEmpty() && !ref.isValid())
+    return;
 
   RepoView *view = mView;
-  git::Reference ref = item.ref;
 
   QMenu menu;
   switch (item.kind) {

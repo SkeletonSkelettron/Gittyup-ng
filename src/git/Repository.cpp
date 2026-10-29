@@ -233,8 +233,15 @@ Repository::Data::~Data() {
   git_repository_free(repo);
 }
 
+// Threads open repositories of their own too, like RefsModel::update().
+static QMutex registryMutex;
+
 void Repository::unregisterRepository(Data *data) {
-  registry.remove(data->repo);
+  {
+    QMutexLocker locker(&registryMutex);
+    registry.remove(data->repo);
+  }
+
   delete data;
 }
 
@@ -243,6 +250,7 @@ Repository::registerRepository(git_repository *repo) {
   if (!repo)
     return QSharedPointer<Data>();
 
+  QMutexLocker locker(&registryMutex);
   auto it = registry.find(repo);
   if (it != registry.end())
     return *it;

@@ -65,7 +65,7 @@ public:
     Section section;
     QString name;
     int depth = 0;
-    git::Reference ref;
+    QString refName; // qualified, see ref()
     int index = -1; // stash index, or pull request number
     QString tip;
     int count = 0;
@@ -78,11 +78,15 @@ public:
   RefsModel(const git::Repository &repo, QObject *parent = nullptr);
 
   const Item &item(int row) const { return mItems.at(row); }
+  // The reference of an item as it is now, invalid if it's gone.
+  git::Reference ref(const Item &item) const;
   git::Reference current() const { return mCurrent; }
   void setCurrent(const git::Reference &ref);
 
   void setFilter(const QString &filter);
   void toggle(int row);
+  // Read the references again. They're read on another thread: there are
+  // thousands in some repositories. The rows change when they're there.
   void update();
 
   // The qualified names of the soloed branches.
@@ -99,6 +103,19 @@ public:
   QHash<int, QByteArray> roleNames() const override;
 
 private:
+  // The items of the sections that update() reads, before filtering.
+  struct Snapshot {
+    QList<Item> local;
+    QMap<QString, QList<Item>> remotes;
+    QList<Item> tags;
+    QList<Item> stashes;
+    QList<Item> submodules;
+  };
+
+  static Snapshot snapshot(const git::Repository &repo);
+  // Lay out the rows of the snapshot.
+  void assemble();
+
   bool isExpanded(const QString &key) const;
   bool matches(const QString &name) const;
   void addHeader(Section section, const QString &name, int count);
@@ -107,6 +124,9 @@ private:
   git::Reference mCurrent;
   QString mFilter;
   QSet<QString> mCollapsed;
+  Snapshot mSnapshot;
+  bool mLoaded = false;
+  int mUpdates = 0;
   QList<Item> mItems;
   QStringList mSolo;
   QStringList mHidden;
