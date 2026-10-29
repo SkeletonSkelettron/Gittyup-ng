@@ -60,12 +60,14 @@ QString extractRepository(const QString &filename);
 void initRepo(git::Repository &repo);
 
 Application createApp(int &argc, char *argv[]);
+void ignoreSystemConfig();
 
 template <typename T> int runTest(int argc, char *argv[]) {
   Application::setInTest();
 
   int orig_argc = argc;
   auto app = createApp(argc, argv);
+  ignoreSystemConfig();
 
   T testObj;
 

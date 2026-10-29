@@ -11,6 +11,8 @@
 #include "Debug.h"
 #include "git/Config.h"
 #include "ui/RepoView.h"
+#include "git2/common.h"
+#include "git2/config.h"
 // #include <JlCompress.h>
 #include <exception>
 #include <QFileInfo>
@@ -234,6 +236,14 @@ Application createApp(int &argc, char *argv[]) {
 
   argc += 1;
   return Application(argc, new_argv);
+}
+
+void ignoreSystemConfig() {
+  // Git for Windows sets core.autocrlf for the whole system, which changes
+  // the line endings of the files that the tests check. libgit2 reads it too.
+  qputenv("GIT_CONFIG_NOSYSTEM", "1");
+  git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_SYSTEM, "");
+  git_libgit2_opts(GIT_OPT_SET_SEARCH_PATH, GIT_CONFIG_LEVEL_PROGRAMDATA, "");
 }
 
 } // namespace Test

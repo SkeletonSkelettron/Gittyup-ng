@@ -12,6 +12,7 @@
 #include "git/Reference.h"
 #include "git/Diff.h"
 #include "git/Commit.h"
+#include "git/Config.h"
 #include "git/Tree.h"
 
 namespace {
@@ -894,6 +895,13 @@ void TestEditorLineInfo::windowsCRLF() {
    */
 
   INIT_REPO("14_windowsCRLF.zip")
+
+  // Git for Windows converts the line endings for the whole system, which
+  // the tests ignore.
+  mRepo.gitConfig().setValue("core.autocrlf", true);
+  Test::refresh(repoView);
+  diff = mRepo.status(mRepo.index(), nullptr, false);
+
   QVERIFY(diff.count() > 0);
   git::Patch patch = diff.patch(0);
   // no staged lines yet, so no staged patch
