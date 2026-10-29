@@ -1166,8 +1166,10 @@ bool Repository::merge(const AnnotatedCommit &mergeHead) {
   RunResult result = Cli(workdir().path()).run(args);
 
   // git exits with 1 for conflicts, which are resolved later like with
-  // libgit2. It only fails without MERGE_HEAD, before anything changed.
-  bool merged = (state() == GIT_REPOSITORY_STATE_MERGE);
+  // libgit2. It fails before anything changed otherwise, without MERGE_HEAD
+  // or with the one of a merge that isn't concluded yet.
+  bool merged = (result.exitCode == 0 || result.exitCode == 1) &&
+                state() == GIT_REPOSITORY_STATE_MERGE;
   if (!merged) {
     QByteArray message =
         result.errors.isEmpty() ? result.output : result.errors;

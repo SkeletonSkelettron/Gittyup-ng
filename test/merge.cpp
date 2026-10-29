@@ -14,6 +14,7 @@
 #include "ui/DiffModel.h"
 #include "ui/RepoView.h"
 #include "git/Patch.h"
+#include "git2/repository.h"
 #include <QFile>
 
 using namespace Test;
@@ -29,6 +30,7 @@ private slots:
   void thirdCommit();
   void mergeConflict();
   void resolve();
+  void mergeDuringMerge();
   void cleanupTestCase();
 
 private:
@@ -191,6 +193,45 @@ void TestMerge::resolve() {
   // Diff is not in a conflicted state
   git::Diff wdiff = mRepo->diffIndexToWorkdir();
   QVERIFY(!wdiff.isConflicted());
+}
+
+// Another merge or a fast-forward before the merge is concluded fails, like
+// git refuses to merge, instead of committing the first merge with the other
+// branch as parent.
+void TestMerge::mergeDuringMerge() {
+  RepoView *view = mWindow->currentView();
+  git::Commit base = mRepo->head().target();
+  for (const QString &name : {"one", "two"}) {
+    view->checkout(mRepo->createBranch(name, base));
+    QFile file(mRepo->workdir().filePath(name));
+    QVERIFY(file.open(QFile::WriteOnly));
+    file.write(name.toUtf8() + '\n');
+    file.close();
+    mRepo->index().setStaged({name}, true);
+    QVERIFY(mRepo->commit(QString("Add %1").arg(name)));
+  }
+
+  view->checkout(mRepo->lookupRef(QString("refs/heads/%1").arg(mMainBranch)));
+  git::Id head = mRepo->head().target().id();
+
+  RepoView::MergeFlags flags = RepoView::Merge;
+  view->merge(flags | RepoView::NoFastForward | RepoView::NoCommit,
+              mRepo->lookupRef("refs/heads/one"));
+  QCOMPARE(mRepo->state(), int(GIT_REPOSITORY_STATE_MERGE));
+  QVERIFY(QFile::exists(mRepo->workdir().filePath("one")));
+
+  // two is a fast-forward of HEAD.
+  git::Reference two = mRepo->lookupRef("refs/heads/two");
+  view->merge(flags, two);
+  view->merge(flags | RepoView::NoFastForward, two);
+  QVERIFY(!mRepo->merge(two.annotatedCommit()));
+  QCOMPARE(mRepo->state(), int(GIT_REPOSITORY_STATE_MERGE));
+  QCOMPARE(mRepo->head().target().id(), head);
+  QVERIFY(!QFile::exists(mRepo->workdir().filePath("two")));
+
+  view->mergeAbort();
+  QCOMPARE(mRepo->state(), int(GIT_REPOSITORY_STATE_NONE));
+  QVERIFY(!QFile::exists(mRepo->workdir().filePath("one")));
 }
 
 void TestMerge::cleanupTestCase() {

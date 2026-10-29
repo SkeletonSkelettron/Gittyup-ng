@@ -1429,6 +1429,15 @@ void RepoView::merge(MergeFlags flags, const git::Reference &ref,
     return;
   }
 
+  // git refuses to merge again before the merge is concluded, and a
+  // fast-forward would move HEAD under it.
+  if (mRepo.state() != GIT_REPOSITORY_STATE_NONE) {
+    entry->addEntry(LogEntry::Error,
+                    tr("Finish or abort the current merge, rebase, "
+                       "cherry-pick or revert first."));
+    return;
+  }
+
   // Validate inputs.
   if (!upstream.isValid()) {
     entry->addEntry(
