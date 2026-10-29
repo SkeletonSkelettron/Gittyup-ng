@@ -92,6 +92,7 @@ void TestTreeView::restoreStagedFileAfterCommit() {
   QVERIFY(row >= 0);
   details->selectFile(DetailView::UnstagedFiles, row);
   details->stageFiles(DetailView::UnstagedFiles, row, true);
+  QCoreApplication::processEvents();
 
   refresh(repoView, true);
 
@@ -157,6 +158,7 @@ void TestTreeView::discardFiles() {
   int row = unstagedModel->rowOf("folder1/file.txt");
   QVERIFY(row >= 0);
   details->stageFiles(DetailView::UnstagedFiles, row, true);
+  QCoreApplication::processEvents();
 
   refresh(repoView, true);
 

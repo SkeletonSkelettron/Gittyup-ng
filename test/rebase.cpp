@@ -260,6 +260,7 @@ void TestRebase::conflictingRebase() {
   // Staging the file
   QCOMPARE(detailview->unstagedFiles()->rowCount(), 1);
   detailview->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   refreshTriggered = 0;
   rebaseConflict = 0;
@@ -341,6 +342,7 @@ void TestRebase::conflictingRebaseCustomMessage() {
   // Staging the file
   QCOMPARE(detailview->unstagedFiles()->rowCount(), 1);
   detailview->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   detailview->setCommitMessage("Test message"); // modify message
 
@@ -846,6 +848,7 @@ void TestRebase::commitDuringRebase() {
   // stage file otherwise it is not possible to continue
   QCOMPARE(detailview->unstagedFiles()->rowCount(), 1);
   detailview->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   detailview->setCommitMessage("Test message");
 
