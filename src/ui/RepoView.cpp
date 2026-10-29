@@ -1593,34 +1593,11 @@ void RepoView::mergeAbort(LogEntry *parent) {
   if (!commit.isValid())
     return;
 
-  bool ignoreWhitespace = Settings::instance()->isWhitespaceIgnored();
-
-  QSet<QString> paths;
-  git::Diff index =
-      mRepo.diffTreeToIndex(commit.tree(), git::Index(), ignoreWhitespace);
-  for (int i = 0; i < index.count(); ++i)
-    paths.insert(index.name(i));
-
-  QStringList conflicts;
-  git::Diff workdir =
-      mRepo.diffIndexToWorkdir(git::Index(), nullptr, ignoreWhitespace);
-  for (int i = 0; i < workdir.count(); ++i) {
-    QString name = workdir.name(i);
-    if (workdir.status(i) != GIT_DELTA_CONFLICTED && paths.contains(name))
-      conflicts.append(name);
-  }
-
-  if (!conflicts.isEmpty()) {
-    LogEntry *parent = addLogEntry(tr("merge"), tr("Abort"));
-    QString err = tr("Some merged files have unstaged changes");
-    LogEntry *entry = error(parent, tr("abort merge"), QString(), err);
-    for (const QString &conflict : conflicts)
-      entry->addEntry(LogEntry::File, conflict)->setStatus('M');
-    return;
-  }
-
+  // git refuses when merged files have unstaged changes, and keeps those of
+  // the other files. After a big merge it writes thousands of files back.
   int state = mRepo.state();
-  if (!commit.resetMerge())
+  bool reset = false;
+  if (!runBusy([&] { reset = commit.resetMerge(); }) || !reset)
     return;
 
   QString text = tr("merge");

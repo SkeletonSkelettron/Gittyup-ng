@@ -909,7 +909,10 @@ void DetailView::resetAuthor() {
   emit authorChanged();
 }
 
-void DetailView::abortMerge() { mView->mergeAbort(); }
+void DetailView::abortMerge() {
+  // It spins an event loop while git resets the files.
+  QmlSupport::callLater(this, [this] { mView->mergeAbort(); });
+}
 
 void DetailView::abortRebase() { mView->abortRebase(); }
 
