@@ -13,7 +13,9 @@
 
 class MainWindow;
 class TabWidget;
+class QPoint;
 class QQuickWidget;
+class QWidget;
 
 // The repository tabs above the tool bar. qrc:/qml/TabStrip.qml draws them
 // from the tabs of the main window's TabWidget, whose own tab bar is hidden.
@@ -50,6 +52,9 @@ signals:
   void tabsChanged();
 
 private:
+  void closeTab(QWidget *tab);
+  void showMenu(QWidget *widget, const QPoint &pos);
+
   // Update after the pending changes of the tab widget are done.
   void scheduleUpdate();
   void updateTabs();

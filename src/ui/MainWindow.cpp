@@ -32,6 +32,7 @@
 #include <QCryptographicHash>
 #include <QMenu>
 #include <QMimeData>
+#include <QPointer>
 #include <QSettings>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -229,8 +230,15 @@ QStringList MainWindow::menuTitles() const {
 
 void MainWindow::showMenu(int index, qreal x, qreal y) {
   QList<QMenu *> menus = mMenuBar->menus();
-  if (index >= 0 && index < menus.size())
-    QmlSupport::execMenu(menus.at(index), mapFromScene(x, y));
+  if (index < 0 || index >= menus.size())
+    return;
+
+  QPointer<QMenu> menu = menus.at(index);
+  QPoint pos = mapFromScene(x, y);
+  QmlSupport::callLater(this, [menu, pos] {
+    if (menu)
+      QmlSupport::execMenu(menu, pos);
+  });
 }
 
 QPoint MainWindow::mapFromScene(qreal x, qreal y) const {

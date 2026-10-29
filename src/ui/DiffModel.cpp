@@ -454,7 +454,7 @@ void DiffModel::toggleLine(int row) {
     return;
 
   line.staged = !line.staged;
-  stage(r.hunk);
+  stageLater();
 }
 
 void DiffModel::setLinesStaged(int first, int last, bool staged) {
@@ -475,7 +475,7 @@ void DiffModel::setLinesStaged(int first, int last, bool staged) {
   }
 
   if (!hunks.isEmpty())
-    stage(*hunks.begin());
+    stageLater();
 }
 
 void DiffModel::setHunkStaged(int hunk, bool staged) {
@@ -487,12 +487,30 @@ void DiffModel::setHunkStaged(int hunk, bool staged) {
       line.staged = staged;
   }
 
-  stage(hunk);
+  stageLater();
 }
 
 void DiffModel::setFileStaged(bool staged) {
-  if (isEditable())
-    mDiff.index().setStaged({mPath}, staged);
+  if (!isEditable())
+    return;
+
+  // Staging can ask about directories and large files.
+  QString path = mPath;
+  QmlSupport::callLater(this, [this, path, staged] {
+    if (path == mPath && isEditable())
+      mDiff.index().setStaged({path}, staged);
+  });
+}
+
+void DiffModel::stageLater() {
+  // Staging the whole file can ask about large files. The marked lines are
+  // gone when another diff is loaded.
+  git::Diff diff = mDiff;
+  QString path = mPath;
+  QmlSupport::callLater(this, [this, diff, path] {
+    if (diff == mDiff && path == mPath)
+      stage();
+  });
 }
 
 void DiffModel::stage(int changedHunk) {
@@ -638,6 +656,15 @@ void DiffModel::showEditMenu(int hunk, qreal x, qreal y) {
     newLine = mPatch.lineNumber(hunk, 0, git::Diff::NewFile);
   }
 
+  QString path = mPath;
+  QPoint pos = mView->mapFromPage(x, y);
+  QmlSupport::callLater(this, [this, path, oldLine, newLine, pos] {
+    if (path == mPath && mPatch.isValid())
+      showEditMenu(oldLine, newLine, pos);
+  });
+}
+
+void DiffModel::showEditMenu(int oldLine, int newLine, const QPoint &pos) {
   QMenu menu;
   RepoView *view = mView;
   QString name = mPath;
@@ -670,7 +697,7 @@ void DiffModel::showEditMenu(int hunk, qreal x, qreal y) {
   }
 
   if (!menu.isEmpty())
-    QmlSupport::execMenu(&menu, view->mapFromPage(x, y));
+    QmlSupport::execMenu(&menu, pos);
 }
 
 void DiffModel::chooseConflict(int hunk, int resolution) {

@@ -50,6 +50,7 @@ public:
   Q_INVOKABLE void setExpanded(const QModelIndex &index, bool expanded);
 
 private:
+  void showMenu(const QModelIndex &index, qreal x, qreal y);
   void hideAfterOpen();
   void promptToRemoveAccount(Account *account);
 

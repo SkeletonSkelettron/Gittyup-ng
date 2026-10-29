@@ -251,17 +251,21 @@ void ConfigDialog::deleteRemote(int index) {
   if (index < 0 || index >= remotes.size())
     return;
 
+  // Not exec(): QML calls this from a row of the list that a fetch resets.
+  // See QmlSupport::callLater().
   QString name = remotes.at(index).name();
-  ConfirmDialog dialog(this);
-  dialog.setTitle(tr("Delete Remote?"));
-  dialog.setText(tr("Are you sure you want to delete '%1'?").arg(name));
-  dialog.setAcceptText(tr("Delete"));
-  dialog.setDanger(true);
-  if (dialog.exec() != QDialog::Accepted)
-    return;
+  ConfirmDialog *dialog = new ConfirmDialog(this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setTitle(tr("Delete Remote?"));
+  dialog->setText(tr("Are you sure you want to delete '%1'?").arg(name));
+  dialog->setAcceptText(tr("Delete"));
+  dialog->setDanger(true);
+  connect(dialog, &QDialog::accepted, this, [this, name] {
+    mRepo.deleteRemote(name);
+    emit remotesChanged();
+  });
 
-  mRepo.deleteRemote(name);
-  emit remotesChanged();
+  dialog->open();
 }
 
 QVariantList ConfigDialog::branches() const {
@@ -352,9 +356,10 @@ void ConfigDialog::deleteBranch(int index) {
   if (index < 0 || index >= branches.size() || branches.at(index).isHead())
     return;
 
-  DeleteBranchDialog dialog(branches.at(index), this);
-  dialog.exec();
-  emit branchesChanged();
+  DeleteBranchDialog *dialog = new DeleteBranchDialog(branches.at(index), this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  connect(dialog, &QDialog::finished, this, &ConfigDialog::branchesChanged);
+  dialog->open();
 }
 
 QVariantList ConfigDialog::submodules() const {
@@ -406,22 +411,28 @@ void ConfigDialog::setSubmoduleInitialized(int index, bool initialized) {
   // Deinitializing removes the working directory of the submodule.
   QDir dir(mRepo.workdir().filePath(submodule.path()));
   if (!dir.isEmpty()) {
-    ConfirmDialog dialog(this);
-    dialog.setTitle(tr("Deinitialize Submodule?"));
-    dialog.setText(tr("Deinitializing '%1' will remove its working "
-                      "directory. Are you sure you want to deinitialize?")
-                       .arg(submodule.name()));
+    // Not exec(), like deleteRemote().
+    ConfirmDialog *dialog = new ConfirmDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setTitle(tr("Deinitialize Submodule?"));
+    dialog->setText(tr("Deinitializing '%1' will remove its working "
+                       "directory. Are you sure you want to deinitialize?")
+                        .arg(submodule.name()));
     if (GIT_SUBMODULE_STATUS_IS_WD_DIRTY(
             mRepo.submoduleStatus(submodule.name())))
-      dialog.setInformativeText(
+      dialog->setInformativeText(
           tr("The submodule working directory contains uncommitted "
              "changes that will be lost if you continue."));
-    dialog.setAcceptText(tr("Deinitialize"));
-    dialog.setDanger(true);
-    if (dialog.exec() != QDialog::Accepted) {
+    dialog->setAcceptText(tr("Deinitialize"));
+    dialog->setDanger(true);
+    connect(dialog, &QDialog::finished, this, [this, submodule](int result) {
+      if (result == QDialog::Accepted)
+        submodule.deinitialize();
       emit submodulesChanged();
-      return;
-    }
+    });
+
+    dialog->open();
+    return;
   }
 
   submodule.deinitialize();

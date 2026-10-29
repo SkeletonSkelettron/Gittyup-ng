@@ -13,6 +13,7 @@
 #include <QRectF>
 #include <QString>
 #include <QVariantMap>
+#include <functional>
 
 class QAction;
 class QImage;
@@ -87,6 +88,13 @@ bool drawsPopups(QQuickWidget *view);
 // menu closes, like QMenu::exec(). The menu is drawn by the view at 'pos'
 // if it draws popups. Returns the triggered action.
 QAction *execMenu(QMenu *menu, const QPoint &pos);
+
+// Call 'function' after the QML signal handler that calls this returns, like
+// Qt.callLater(). What QML calls must not show menus or run operations that
+// spin event loops itself: the loop can delete the item whose handler runs,
+// a delegate of a model that resets, and QML aborts the application then.
+// The call is dropped when 'context' is deleted first.
+void callLater(QObject *context, std::function<void()> function);
 
 // Add Undo, Redo, Cut, Copy, Paste, Delete and Select All for 'field', a
 // TextInput or a TextEdit, to 'menu'.

@@ -6,6 +6,7 @@
 //
 
 #include "TemplateDialog.h"
+#include "qml/QmlSupport.h"
 #include <QFile>
 #include <QFileDialog>
 #include <QTextStream>
@@ -116,9 +117,14 @@ void TemplateDialog::moveTemplate(int offset) {
 
 void TemplateDialog::importTemplates(QString filename) {
   if (filename.isEmpty()) {
-    filename = QFileDialog::getOpenFileName(
-        this, tr("Open File"), "/home",
-        tr("Gittyup Templates (*%1)").arg(kTemplateFileExtension));
+    QmlSupport::callLater(this, [this] {
+      QString path = QFileDialog::getOpenFileName(
+          this, tr("Open File"), "/home",
+          tr("Gittyup Templates (*%1)").arg(kTemplateFileExtension));
+      if (!path.isEmpty())
+        importTemplates(path);
+    });
+    return;
   }
 
   mNew.clear();
@@ -157,11 +163,16 @@ void TemplateDialog::importTemplates(QString filename) {
 
 void TemplateDialog::exportTemplates(QString filename) {
   if (filename.isEmpty()) {
-    filename = QFileDialog::getSaveFileName(
-        this, tr("Save Templates"),
-        QStringLiteral("/home/%1%2")
-            .arg("GittyupTemplates", kTemplateFileExtension),
-        tr("Gittyup Templates (*%1)").arg(kTemplateFileExtension));
+    QmlSupport::callLater(this, [this] {
+      QString path = QFileDialog::getSaveFileName(
+          this, tr("Save Templates"),
+          QStringLiteral("/home/%1%2")
+              .arg("GittyupTemplates", kTemplateFileExtension),
+          tr("Gittyup Templates (*%1)").arg(kTemplateFileExtension));
+      if (!path.isEmpty())
+        exportTemplates(path);
+    });
+    return;
   }
 
   QString templatesStr;

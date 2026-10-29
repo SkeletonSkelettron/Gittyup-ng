@@ -56,6 +56,7 @@ public:
   void stageSelected(int start, int end) {
     mModel->setLinesStaged(mModel->row(mHunk, start),
                            mModel->row(mHunk, end - 1), true);
+    QCoreApplication::processEvents();
   }
 
   // Discard the lines [start, end).

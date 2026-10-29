@@ -14,7 +14,6 @@
 #include "log/LogEntry.h"
 #include "qml/QmlSupport.h"
 #include <QMenu>
-#include <QTimer>
 
 namespace {
 
@@ -54,11 +53,8 @@ void RefDrop::finish() {
   QPointF pos = mDropPos;
   cancel();
 
-  // The menu and the checkout that it can run spin event loops, which delete
-  // the delegates of a reset model. QML aborts the application when the
-  // delegate whose onReleased calls this is one of them, so return first.
   if (!target.isEmpty())
-    QTimer::singleShot(0, this, [this, source, target, pos] {
+    QmlSupport::callLater(this, [this, source, target, pos] {
       showMenu(source, target, pos);
     });
 }

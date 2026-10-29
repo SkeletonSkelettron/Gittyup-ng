@@ -194,6 +194,13 @@ signals:
   void scrollRequested(int row);
 
 private:
+  // The menus of the QML interface, shown after QML returns. See
+  // QmlSupport::callLater().
+  void execContextMenu(const QModelIndex &index, qreal x, qreal y);
+  void execRefsFilterMenu(qreal x, qreal y);
+  void execSortMenu(qreal x, qreal y);
+  void execSettingsMenu(qreal x, qreal y);
+
   void setModel(QAbstractItemModel *model);
   void storeSelection();
   void restoreSelection();

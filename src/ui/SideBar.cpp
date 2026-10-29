@@ -22,6 +22,7 @@
 #include <QAbstractItemModel>
 #include <QFileDialog>
 #include <QMenu>
+#include <QPointer>
 #include <QPushButton>
 #include <QQuickWidget>
 #include <QSettings>
@@ -797,8 +798,11 @@ void SideBar::open(const QModelIndex &index) {
   // Open existing path.
   QString path = index.data(PathRole).toString();
   if (!path.isEmpty()) {
-    MainWindow::open(path);
-    hideAfterOpen();
+    // An invalid repository is reported with a dialog.
+    QmlSupport::callLater(this, [this, path] {
+      MainWindow::open(path);
+      hideAfterOpen();
+    });
     return;
   }
 
@@ -833,7 +837,12 @@ void SideBar::open(const QModelIndex &index) {
 
 void SideBar::remove(const QModelIndex &index) {
   if (RepoView *tab = index.data(TabRole).value<RepoView *>()) {
-    tab->close();
+    // Closing prompts to save the files of its editors.
+    QPointer<RepoView> view(tab);
+    QmlSupport::callLater(this, [view] {
+      if (view)
+        view->close();
+    });
 
   } else if (index.data(RecentRole).value<RecentRepository *>()) {
     RecentRepositories::instance()->remove(index.row());
@@ -863,6 +872,14 @@ void SideBar::remove(const QModelIndex &index) {
 }
 
 void SideBar::showContextMenu(const QModelIndex &index, qreal x, qreal y) {
+  QPersistentModelIndex persistent(index);
+  QmlSupport::callLater(this, [this, persistent, x, y] {
+    if (persistent.isValid())
+      showMenu(persistent, x, y);
+  });
+}
+
+void SideBar::showMenu(const QModelIndex &index, qreal x, qreal y) {
   QMenu *menu = new QMenu(mMainWindow);
   menu->setAttribute(Qt::WA_DeleteOnClose);
 
@@ -895,11 +912,15 @@ void SideBar::showContextMenu(const QModelIndex &index, qreal x, qreal y) {
 }
 
 void SideBar::showAddMenu(qreal x, qreal y) {
-  QmlSupport::host(mView)->popup(mAddMenu, x, y);
+  QmlSupport::callLater(this, [this, x, y] {
+    QmlSupport::host(mView)->popup(mAddMenu, x, y);
+  });
 }
 
 void SideBar::showOptionsMenu(qreal x, qreal y) {
-  QmlSupport::host(mView)->popup(mOptionsMenu, x, y);
+  QmlSupport::callLater(this, [this, x, y] {
+    QmlSupport::host(mView)->popup(mOptionsMenu, x, y);
+  });
 }
 
 bool SideBar::isExpanded(const QModelIndex &index) const {

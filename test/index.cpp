@@ -79,6 +79,7 @@ void TestIndex::stageAddition() {
 
   // Stage it.
   details->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   QAbstractItemModel *stagedModel = details->stagedFiles();
   QCOMPARE(stagedModel->rowCount(), 1);
@@ -112,6 +113,7 @@ void TestIndex::stageDeletion() {
 
   // Stage it.
   details->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   QAbstractItemModel *stagedModel = details->stagedFiles();
   QCOMPARE(stagedModel->rowCount(), 1);
@@ -160,6 +162,7 @@ void TestIndex::stageDirectory() {
 
   // Stage the directory.
   details->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   // Check for two staged files.
   QAbstractItemModel *stagedModel = details->stagedFiles();

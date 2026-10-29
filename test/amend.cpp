@@ -104,6 +104,7 @@ void TestAmend::testAmendAddFile() {
 
     // Stage the file.
     details->stageFiles(DetailView::UnstagedFiles, 0, true);
+    QCoreApplication::processEvents();
 
     // Commit and refresh.
     details->setCommitMessage("base commit");
@@ -139,6 +140,7 @@ void TestAmend::testAmendAddFile() {
     QAbstractItemModel *model = details->unstagedFiles();
     QCOMPARE(model->rowCount(), 1);
     details->stageFiles(DetailView::UnstagedFiles, 0, true);
+    QCoreApplication::processEvents();
   }
 
   // Check that changes applied after amending

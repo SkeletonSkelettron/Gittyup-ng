@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMenu>
+#include <QPointer>
 #include <QQuickWidget>
 
 EditorWindow::EditorWindow(const git::Repository &repo, QWidget *parent)
@@ -84,9 +85,15 @@ QStringList EditorWindow::menuTitles() const {
 void EditorWindow::showMenu(int index, qreal x, qreal y) {
   MenuBar *menuBar = qobject_cast<MenuBar *>(this->menuBar());
   QList<QMenu *> menus = menuBar ? menuBar->menus() : QList<QMenu *>();
-  if (index >= 0 && index < menus.size())
-    QmlSupport::execMenu(menus.at(index),
-                         QmlSupport::host(mView)->mapToGlobal(x, y));
+  if (index < 0 || index >= menus.size())
+    return;
+
+  QPointer<QMenu> menu = menus.at(index);
+  QPoint pos = QmlSupport::host(mView)->mapToGlobal(x, y);
+  QmlSupport::callLater(this, [menu, pos] {
+    if (menu)
+      QmlSupport::execMenu(menu, pos);
+  });
 }
 
 void EditorWindow::updateWindowTitle() {

@@ -64,6 +64,7 @@ void TestMerge::firstCommit() {
 
   // Stage the file.
   details->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   // Commit and refresh.
   details->setCommitMessage("base commit");
@@ -93,6 +94,7 @@ void TestMerge::secondCommit() {
 
   // Stage the file.
   details->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   // Commit and refresh.
   details->setCommitMessage("conflicting commit b");
@@ -123,6 +125,7 @@ void TestMerge::thirdCommit() {
 
   // Stage the file.
   details->stageFiles(DetailView::UnstagedFiles, 0, true);
+  QCoreApplication::processEvents();
 
   // Commit and refresh.
   details->setCommitMessage("conflicting commit a");

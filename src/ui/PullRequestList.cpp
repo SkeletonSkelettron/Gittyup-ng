@@ -10,6 +10,7 @@
 #include "git/Branch.h"
 #include "git/Remote.h"
 #include "host/Accounts.h"
+#include "qml/QmlSupport.h"
 #include <QDesktopServices>
 #include <QLocale>
 #include <QUrl>
@@ -98,19 +99,24 @@ void PullRequestList::checkout() {
   if (!pr || name.isEmpty())
     return;
 
-  git::Repository repo = mView->repo();
-  git::Reference upstream = repo.lookupRef(name);
+  QString head = pr->head;
+  QmlSupport::callLater(this, [this, head, name] {
+    git::Repository repo = mView->repo();
+    git::Reference upstream = repo.lookupRef(name);
+    if (!upstream.isValid())
+      return;
 
-  // Check out the local branch, or create one that tracks the remote one.
-  git::Branch local = repo.lookupBranch(pr->head, GIT_BRANCH_LOCAL);
-  if (local.isValid()) {
-    if (!local.isHead())
-      mView->checkout(local);
-  } else {
-    mView->createBranch(pr->head, upstream.target(), upstream, true);
-  }
+    // Check out the local branch, or create one that tracks the remote one.
+    git::Branch local = repo.lookupBranch(head, GIT_BRANCH_LOCAL);
+    if (local.isValid()) {
+      if (!local.isHead())
+        mView->checkout(local);
+    } else {
+      mView->createBranch(head, upstream.target(), upstream, true);
+    }
 
-  close();
+    close();
+  });
 }
 
 void PullRequestList::openInBrowser() {

@@ -13,6 +13,7 @@
 #include "dialogs/AccountDialog.h"
 #include "dialogs/CloneDialog.h"
 #include "host/Account.h"
+#include "qml/QmlSupport.h"
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
@@ -79,7 +80,10 @@ void WelcomePage::initRepository() {
   dialog->open();
 }
 
-void WelcomePage::openRecent(const QString &path) { open(path); }
+void WelcomePage::openRecent(const QString &path) {
+  // An invalid repository is reported with a dialog.
+  QmlSupport::callLater(this, [this, path] { open(path); });
+}
 
 void WelcomePage::removeRecent(const QString &path) {
   RecentRepositories *repos = RecentRepositories::instance();

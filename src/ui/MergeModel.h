@@ -175,6 +175,7 @@ private:
   bool parse(const QString &text);
   void setOutput();
   void updateRegion(int conflict);
+  void writeOutput();
 
   RepoView *mView;
   MergeSideModel *mSides[2];

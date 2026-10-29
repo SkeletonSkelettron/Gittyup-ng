@@ -16,6 +16,7 @@
 #include "git/Patch.h"
 #include <QAbstractListModel>
 
+class QPoint;
 class RepoView;
 
 // The diff of a single file as rows of hunk headers and lines. For the
@@ -147,6 +148,8 @@ private:
   QString html(int hunk, int line) const;
   int hunkState(int hunk) const;
   void stage(int changedHunk = -1);
+  void stageLater();
+  void showEditMenu(int oldLine, int newLine, const QPoint &pos);
 
   RepoView *mView;
   git::Diff mDiff;

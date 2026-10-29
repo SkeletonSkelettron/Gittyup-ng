@@ -15,6 +15,7 @@
 class LogEntry;
 class LogModel;
 class QAbstractItemModel;
+class QPoint;
 
 // Controller of the activity log at the bottom of the repository page and
 // of the clone progress. qrc:/qml/LogPanel.qml draws it.
@@ -76,6 +77,7 @@ signals:
   void alertChanged();
 
 private:
+  void showMenu(const QPersistentModelIndex &index, const QPoint &pos);
   void copyIndexes(const QModelIndexList &indexes);
 
   LogModel *mModel;

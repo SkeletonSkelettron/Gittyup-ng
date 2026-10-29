@@ -157,6 +157,8 @@ signals:
 
 private:
   void setCurrent(const git::Reference &ref);
+  void showMenu(RefsModel::Item item, qreal x, qreal y);
+  void toggleHidden(const RefsModel::Item &item);
 
   RepoView *mView;
   git::Repository mRepo;

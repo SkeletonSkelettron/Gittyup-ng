@@ -15,6 +15,7 @@
 #include <QFile>
 #include <QLocale>
 #include <QMenu>
+#include <QPointer>
 #include <QQuickItem>
 #include <QRegularExpression>
 
@@ -98,6 +99,15 @@ void SpellCheck::showMenu(const QString &field, QQuickItem *editor,
   Q_UNUSED(x)
   Q_UNUSED(y)
 
+  QPointer<QQuickItem> target(editor);
+  QmlSupport::callLater(this, [this, field, target, position] {
+    if (target)
+      popupMenu(field, target, position);
+  });
+}
+
+void SpellCheck::popupMenu(const QString &field, QQuickItem *editor,
+                           int position) {
   QMenu menu;
   QString text = editor ? editor->property("text").toString() : QString();
   Word word = wordAt(text, position);

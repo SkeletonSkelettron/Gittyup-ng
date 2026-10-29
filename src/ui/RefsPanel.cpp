@@ -512,8 +512,13 @@ void RefsPanel::open(int row) {
     case RefsModel::Branch:
     case RefsModel::RemoteBranch:
     case RefsModel::Tag:
-      if (!item.head && !mRepo.isBare())
-        mView->checkout(item.ref);
+      if (!item.head && !mRepo.isBare()) {
+        QString name = item.ref.qualifiedName();
+        QmlSupport::callLater(this, [this, name] {
+          if (git::Reference ref = mRepo.lookupRef(name))
+            mView->checkout(ref);
+        });
+      }
       break;
 
     case RefsModel::Submodule: {
@@ -559,7 +564,10 @@ void RefsPanel::toggleHidden(int row) {
   if (row < 0 || row >= mModel->rowCount())
     return;
 
-  const RefsModel::Item &item = mModel->item(row);
+  toggleHidden(mModel->item(row));
+}
+
+void RefsPanel::toggleHidden(const RefsModel::Item &item) {
   QString name;
   if (item.kind == RefsModel::RemoteGroup) {
     name = QString("refs/remotes/%1/").arg(item.name);
@@ -587,8 +595,19 @@ void RefsPanel::showContextMenu(int row, qreal x, qreal y) {
   if (row < 0 || row >= mModel->rowCount())
     return;
 
+  RefsModel::Item item = mModel->item(row);
+  QmlSupport::callLater(this, [this, item, x, y] { showMenu(item, x, y); });
+}
+
+void RefsPanel::showMenu(RefsModel::Item item, qreal x, qreal y) {
+  // The reference may be gone by now.
+  if (item.ref.isValid()) {
+    item.ref = mRepo.lookupRef(item.ref.qualifiedName());
+    if (!item.ref.isValid())
+      return;
+  }
+
   RepoView *view = mView;
-  const RefsModel::Item item = mModel->item(row);
   git::Reference ref = item.ref;
 
   QMenu menu;
@@ -683,7 +702,7 @@ void RefsPanel::showContextMenu(int row, qreal x, qreal y) {
         if (commits->canHide(name)) {
           bool hidden = commits->isHidden(name);
           menu.addAction(hidden ? tr("Show in Graph") : tr("Hide in Graph"),
-                         [this, row] { toggleHidden(row); });
+                         [this, item] { toggleHidden(item); });
         }
 
         if (!commits->hidden().isEmpty())
@@ -817,7 +836,8 @@ void RefsPanel::add(int section) {
         mView->promptToAddTag(head.target());
       break;
     case RefsModel::Stashes:
-      mView->promptToStash();
+      // It stashes right away when the prompt is turned off.
+      QmlSupport::callLater(this, [this] { mView->promptToStash(); });
       break;
     case RefsModel::Submodules:
       mView->configureSettings(ConfigDialog::Submodules);

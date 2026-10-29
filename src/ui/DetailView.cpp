@@ -786,8 +786,14 @@ bool DetailView::showContent(const QString &path) {
 
 void DetailView::stageFiles(int list, int row, bool staged) {
   QStringList files = (row < 0) ? model(list)->allFiles() : model(list)->files(row);
-  if (!files.isEmpty() && mDiff.isValid())
-    mDiff.index().setStaged(files, staged);
+  if (files.isEmpty() || !mDiff.isValid())
+    return;
+
+  // Staging can ask to confirm directories and large files.
+  git::Index index = mDiff.index();
+  QmlSupport::callLater(this, [index, files, staged] {
+    git::Index(index).setStaged(files, staged);
+  });
 }
 
 void DetailView::discardFiles(int list, int row) {
@@ -811,16 +817,20 @@ void DetailView::showFileMenu(int list, int row, qreal x, qreal y) {
   if (files.isEmpty())
     return;
 
-  FileContextMenu menu(mView, files, git::Index());
-  QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
+  QmlSupport::callLater(this, [this, files, x, y] {
+    FileContextMenu menu(mView, files, git::Index());
+    QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
+  });
 }
 
 void DetailView::showTreeMenu(const QString &path, qreal x, qreal y) {
   if (path.isEmpty())
     return;
 
-  FileContextMenu menu(mView, {path}, git::Index());
-  QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
+  QmlSupport::callLater(this, [this, path, x, y] {
+    FileContextMenu menu(mView, {path}, git::Index());
+    QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
+  });
 }
 
 void DetailView::openTreeFile(const QString &path) {
@@ -831,27 +841,31 @@ void DetailView::openTreeFile(const QString &path) {
 }
 
 void DetailView::showOptionsMenu(qreal x, qreal y) {
-  Settings *settings = Settings::instance();
+  QmlSupport::callLater(this, [this, x, y] {
+    Settings *settings = Settings::instance();
 
-  QMenu menu;
-  QAction *list = menu.addAction(tr("Show as List"), [this](bool checked) {
-    setListMode(checked);
+    QMenu menu;
+    QAction *list = menu.addAction(tr("Show as List"), [this](bool checked) {
+      setListMode(checked);
+    });
+    list->setCheckable(true);
+    list->setChecked(listMode());
+
+    QAction *untracked =
+        menu.addAction(tr("Hide Untracked Files"), [settings](bool checked) {
+          settings->setValue(Setting::Id::HideUntracked, checked);
+        });
+    untracked->setCheckable(true);
+    untracked->setChecked(hideUntracked());
+
+    QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
   });
-  list->setCheckable(true);
-  list->setChecked(listMode());
-
-  QAction *untracked =
-      menu.addAction(tr("Hide Untracked Files"), [settings](bool checked) {
-        settings->setValue(Setting::Id::HideUntracked, checked);
-      });
-  untracked->setCheckable(true);
-  untracked->setChecked(hideUntracked());
-
-  QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
 }
 
 void DetailView::showTemplateMenu(qreal x, qreal y) {
-  mTemplates->showMenu(mView->mapFromPage(x, y), mView);
+  QmlSupport::callLater(this, [this, x, y] {
+    mTemplates->showMenu(mView->mapFromPage(x, y), mView);
+  });
 }
 
 void DetailView::setListMode(bool list) {

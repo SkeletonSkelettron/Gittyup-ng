@@ -27,6 +27,7 @@
 #include <QQuickItem>
 #include <QPointer>
 #include <QQuickWidget>
+#include <QTimer>
 #include <QToolTip>
 
 namespace {
@@ -365,6 +366,10 @@ QAction *execMenu(QMenu *menu, const QPoint &pos) {
   action->activate(QAction::Trigger);
 
   return action;
+}
+
+void callLater(QObject *context, std::function<void()> function) {
+  QTimer::singleShot(0, context, std::move(function));
 }
 
 void addEditActions(QMenu *menu, QQuickItem *field) {

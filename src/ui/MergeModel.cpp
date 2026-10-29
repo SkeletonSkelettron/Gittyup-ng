@@ -411,21 +411,35 @@ void MergeModel::save() {
 
   // Conflicts without a choice are removed from the file.
   int unresolved = unresolvedCount();
-  if (unresolved > 0) {
-    ConfirmDialog dialog(mView);
-    dialog.setTitle(tr("Unresolved Conflicts"));
-    dialog.setText(unresolved == 1
-                       ? tr("One conflict has no lines taken from either side.")
-                       : tr("%1 conflicts have no lines taken from either side.")
-                             .arg(unresolved));
-    dialog.setInformativeText(
-        tr("The lines of these conflicts won't be in the file."));
-    dialog.setWarning(true);
-    dialog.setAcceptText(tr("Save Anyway"));
-    if (dialog.exec() != QDialog::Accepted)
-      return;
+  if (unresolved == 0) {
+    writeOutput();
+    return;
   }
 
+  // Not exec(): see QmlSupport::callLater().
+  ConfirmDialog *dialog = new ConfirmDialog(mView);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setTitle(tr("Unresolved Conflicts"));
+  dialog->setText(unresolved == 1
+                      ? tr("One conflict has no lines taken from either side.")
+                      : tr("%1 conflicts have no lines taken from either side.")
+                            .arg(unresolved));
+  dialog->setInformativeText(
+      tr("The lines of these conflicts won't be in the file."));
+  dialog->setWarning(true);
+  dialog->setAcceptText(tr("Save Anyway"));
+
+  // Another file may be loaded by then.
+  QString path = mPath;
+  connect(dialog, &QDialog::accepted, this, [this, path] {
+    if (path == mPath && mDocument)
+      writeOutput();
+  });
+
+  dialog->open();
+}
+
+void MergeModel::writeOutput() {
   QString text = mDocument->toPlainText();
   if (!mTrailingNewline && text.endsWith('\n'))
     text.chop(1);

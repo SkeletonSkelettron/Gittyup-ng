@@ -1513,6 +1513,15 @@ void CommitList::showContextMenu(int row, qreal x, qreal y) {
   if (!mSelection->isSelected(index))
     selectIndexes(QItemSelection(index, index), QString(), true);
 
+  // The row is gone if the model was reset or replaced in the meantime.
+  QPersistentModelIndex persistent(index);
+  QmlSupport::callLater(this, [this, persistent, x, y] {
+    if (persistent.isValid() && persistent.model() == model())
+      execContextMenu(persistent, x, y);
+  });
+}
+
+void CommitList::execContextMenu(const QModelIndex &index, qreal x, qreal y) {
   RepoView *view = mView;
   QPoint pos = view->mapFromPage(x, y);
   git::Commit commit = index.data(CommitRole).value<git::Commit>();
@@ -1778,6 +1787,10 @@ void CommitList::showContextMenu(int row, qreal x, qreal y) {
 }
 
 void CommitList::showRefsFilterMenu(qreal x, qreal y) {
+  QmlSupport::callLater(this, [this, x, y] { execRefsFilterMenu(x, y); });
+}
+
+void CommitList::execRefsFilterMenu(qreal x, qreal y) {
   git::Config config = mView->repo().appConfig();
   int current = config.value<int>(ConfigKeys::kRefsKey,
                                   static_cast<int>(RefsFilter::AllRefs));
@@ -1800,6 +1813,10 @@ void CommitList::showRefsFilterMenu(qreal x, qreal y) {
 }
 
 void CommitList::showSortMenu(qreal x, qreal y) {
+  QmlSupport::callLater(this, [this, x, y] { execSortMenu(x, y); });
+}
+
+void CommitList::execSortMenu(qreal x, qreal y) {
   git::Config config = mView->repo().appConfig();
   bool date = config.value<bool>(ConfigKeys::kSortKey, true);
 
@@ -1819,6 +1836,10 @@ void CommitList::showSortMenu(qreal x, qreal y) {
 }
 
 void CommitList::showSettingsMenu(qreal x, qreal y) {
+  QmlSupport::callLater(this, [this, x, y] { execSettingsMenu(x, y); });
+}
+
+void CommitList::execSettingsMenu(qreal x, qreal y) {
   git::Config config = mView->repo().appConfig();
   Settings *settings = Settings::instance();
 

@@ -53,6 +53,7 @@ private:
     QString text;
   };
 
+  void popupMenu(const QString &field, QQuickItem *editor, int position);
   Word wordAt(const QString &text, int position) const;
   void setDictionary(const QString &name, bool save = true);
   QStringList dictionaries() const;

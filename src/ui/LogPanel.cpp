@@ -115,7 +115,10 @@ bool LogPanel::hasProblems(const QModelIndex &index) const {
   return false;
 }
 
-void LogPanel::activateLink(const QString &link) { emit linkActivated(link); }
+void LogPanel::activateLink(const QString &link) {
+  // Links start operations, like merges and checkouts.
+  QmlSupport::callLater(this, [this, link] { emit linkActivated(link); });
+}
 
 void LogPanel::cancel(const QModelIndex &index) {
   if (index.isValid() && index.data(LogModel::ProgressRole).toInt() >= 0)
@@ -142,6 +145,16 @@ void LogPanel::showMenu(const QModelIndex &index, qreal x, qreal y) {
   Q_UNUSED(x)
   Q_UNUSED(y)
 
+  QPersistentModelIndex entry = index;
+  bool hasEntry = index.isValid();
+  QPoint pos = QCursor::pos();
+  QmlSupport::callLater(this, [this, entry, hasEntry, pos] {
+    if (!hasEntry || entry.isValid())
+      showMenu(entry, pos);
+  });
+}
+
+void LogPanel::showMenu(const QPersistentModelIndex &index, const QPoint &pos) {
   QMenu menu;
   QAction *copyAction =
       menu.addAction(tr("Copy"), this, [this, index] { copy(index); });
@@ -151,7 +164,7 @@ void LogPanel::showMenu(const QModelIndex &index, qreal x, qreal y) {
     menu.addSeparator();
     menu.addAction(tr("Hide Log"), this, &LogPanel::close);
   }
-  QmlSupport::execMenu(&menu, QCursor::pos());
+  QmlSupport::execMenu(&menu, pos);
 }
 
 void LogPanel::close() { emit closeRequested(); }
