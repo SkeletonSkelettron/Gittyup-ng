@@ -150,9 +150,41 @@ bool RefState::operator==(const RefState &rhs) const {
          mUpstreams == rhs.mUpstreams;
 }
 
+bool RefState::canRestore(const Repository &repo, const RefState &current,
+                          const QStringList &names, QString *error) const {
+  // HEAD can't point to a branch that another worktree checked out, and that
+  // branch can't move: its index and its files would stay behind.
+  QStringList branches;
+  if (names.contains("HEAD") && !mHead.isEmpty() && mHead != current.mHead)
+    branches.append(mHead);
+
+  for (const QString &name : names) {
+    auto it = mRefs.constFind(name);
+    auto old = current.mRefs.constFind(name);
+    if (isBranch(name) && it != mRefs.cend() && old != current.mRefs.cend() &&
+        it.value() != old.value())
+      branches.append(name);
+  }
+
+  for (const QString &name : branches) {
+    Reference ref = repo.lookupRef(name);
+    if (ref.isValid() && ref.isCheckedOutElsewhere()) {
+      if (error)
+        *error =
+            tr("'%1' is checked out in another worktree.").arg(shortName(name));
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool RefState::restore(const Repository &repo, const RefState &current,
                        const QStringList &names, const QString &message,
                        QString *error) const {
+  if (!canRestore(repo, current, names, error))
+    return false;
+
   git_repository *raw = repo;
   RepositoryNotifier *notifier = repo.notifier();
   QByteArray log = message.toUtf8();

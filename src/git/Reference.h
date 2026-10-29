@@ -43,6 +43,10 @@ public:
   bool isHead() const;
   bool isStash() const;
 
+  // Whether the HEAD of another worktree of the repository points to this
+  // local branch.
+  bool isCheckedOutElsewhere() const;
+
   QString name(bool decorateDetachedHead = true) const;
   QString qualifiedName() const;
 

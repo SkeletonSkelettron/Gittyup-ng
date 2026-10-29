@@ -198,6 +198,11 @@ bool UndoHistory::apply(const Action &action, bool undo) {
   if (!current.matches(from, names))
     return fail(tr("The branches have changed since."));
 
+  // Check what can't be restored before the working directory changes.
+  QString error;
+  if (!to.canRestore(repo, current, names, &error))
+    return fail(error);
+
   // Move the working directory to the commit of HEAD.
   git::Commit commit;
   if (from.headId() != to.headId() && to.headId().isValid()) {
@@ -225,7 +230,6 @@ bool UndoHistory::apply(const Action &action, bool undo) {
   }
 
   QString message = QString("%1: %2").arg(title.toLower(), action.text);
-  QString error;
   if (!to.restore(repo, current, names, message, &error))
     return fail(error);
 

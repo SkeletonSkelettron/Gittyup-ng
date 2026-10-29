@@ -34,10 +34,11 @@ private slots:
   void reset();
   void localChanges();
   void laterTags();
+  void otherWorktree();
   void cleanupTestCase();
 
 private:
-  QString git(const QStringList &args);
+  QString git(const QStringList &args, const QString &dir = QString());
   void write(const QString &name, const QByteArray &content);
   QByteArray read(const QString &name);
   git::Id head();
@@ -232,15 +233,67 @@ void TestUndo::laterTags() {
   QVERIFY(mRepo->lookupTag("fetched").isValid());
 }
 
+// A branch that another worktree checked out doesn't move, and HEAD doesn't
+// point to it again, which would leave the index and the files of that
+// worktree behind. Nothing changes then.
+void TestUndo::otherWorktree() {
+  git::Commit first = mRepo->lookupCommit(mFirst);
+  git::Commit second = mRepo->lookupBranch("ahead").target();
+  QVERIFY(second.isValid() && second.id() != mFirst);
+
+  mView->createBranch("linked", first);
+  mHistory->check();
+  QVERIFY(mRepo->lookupBranch("linked").setTarget(second, "test").isValid());
+  mHistory->check();
+  QCOMPARE(mHistory->undoText(), QString("Update linked"));
+
+  QTemporaryDir dir;
+  QString path = dir.filePath("linked");
+  git({"worktree", "add", "-q", path, "linked"});
+  QVERIFY(QFile::exists(path + "/a.txt"));
+
+  QVERIFY(!mRepo->lookupBranch("linked").setTarget(first, "test").isValid());
+  QVERIFY(!mHistory->undo());
+  QCOMPARE(mRepo->lookupBranch("linked").target().id(), second.id());
+  QCOMPARE(git({"status", "--porcelain"}, path), QString());
+
+  git({"worktree", "remove", "--force", path});
+  QVERIFY(mHistory->undo());
+  QCOMPARE(mRepo->lookupBranch("linked").target().id(), mFirst);
+
+  // Undo checkouts of another commit, from the branch and from a detached
+  // HEAD, while another worktree checked the branch out.
+  QVERIFY(mHistory->redo());
+  mView->checkout(mRepo->lookupBranch("linked"));
+  mHistory->check();
+  git({"worktree", "add", "-q", path, mMain});
+  QVERIFY(!mHistory->undo());
+  QCOMPARE(mRepo->head().name(), QString("linked"));
+  QCOMPARE(git({"status", "--porcelain"}), QString());
+  git({"worktree", "remove", "--force", path});
+  QVERIFY(mHistory->undo());
+  QCOMPARE(mRepo->head().name(), mMain);
+
+  mView->checkout(second, git::Reference(), true);
+  mHistory->check();
+  git({"worktree", "add", "-q", path, mMain});
+  QVERIFY(!mHistory->undo());
+  QVERIFY(mRepo->head().isDetachedHead());
+  QCOMPARE(git({"status", "--porcelain"}), QString());
+  git({"worktree", "remove", "--force", path});
+  QVERIFY(mHistory->undo());
+  QCOMPARE(mRepo->head().name(), mMain);
+}
+
 void TestUndo::cleanupTestCase() {
   delete mWindow;
   mWindow = nullptr;
 }
 
-// Run git in the repository, for what Gittyup doesn't do itself.
-QString TestUndo::git(const QStringList &args) {
+// Run git in the repository, or in 'dir', for what Gittyup doesn't do itself.
+QString TestUndo::git(const QStringList &args, const QString &dir) {
   QProcess process;
-  process.setWorkingDirectory(mRepo->workdir().path());
+  process.setWorkingDirectory(dir.isEmpty() ? mRepo->workdir().path() : dir);
   process.start("git", args);
   process.waitForFinished();
   return QString::fromUtf8(process.readAllStandardOutput()).trimmed();

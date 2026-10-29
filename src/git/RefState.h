@@ -59,6 +59,12 @@ public:
   bool operator==(const RefState &rhs) const;
   bool operator!=(const RefState &rhs) const { return !(*this == rhs); }
 
+  // Whether restore() can change the references 'names' of 'repo' from
+  // 'current' to this state. It can't point HEAD to a branch that another
+  // worktree checked out, nor move that branch. Sets 'error' when it can't.
+  bool canRestore(const Repository &repo, const RefState &current,
+                  const QStringList &names, QString *error = nullptr) const;
+
   // Change the references 'names' of 'repo', like those of changes(), from
   // 'current' to this state. Other references may have changed since, and
   // stay. The index and the working directory don't change. The reflogs get

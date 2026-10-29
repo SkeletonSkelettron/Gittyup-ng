@@ -54,6 +54,11 @@ bool Reference::isHead() const {
 
 bool Reference::isStash() const { return (qualifiedName() == "refs/stash"); }
 
+bool Reference::isCheckedOutElsewhere() const {
+  // libgit2 counts the HEAD of this worktree too.
+  return isLocalBranch() && !isHead() && git_branch_is_checked_out(d.data());
+}
+
 QString Reference::name(bool decorateDetachedHead) const {
   if (isBranch()) {
     const char *name = nullptr;
@@ -113,6 +118,15 @@ Reference Reference::setTarget(const Commit &commit, const QString &msg) const {
     Repository::setError(GIT_ERROR_REFERENCE, tr("invalid commit"));
     return Reference();
   }
+
+  // update-ref would move it under the index and the files of the other
+  // worktree, which git branch refuses.
+  if (isCheckedOutElsewhere()) {
+    Repository::setError(GIT_ERROR_REFERENCE,
+                         tr("The branch is checked out in another worktree."));
+    return Reference();
+  }
+
   if (!msg.isEmpty()) {
     args.append("-m");
     args.append(msg);
