@@ -76,12 +76,14 @@ public:
   bool amend(const Signature &author, const Signature &committer,
              const QString &commitMessage, const Tree &tree) const;
 
-  // Reset HEAD to this commit.
+  // Reset HEAD to this commit. The caller reads the index again on the main
+  // thread: libgit2 can't read it while another thread uses it.
   bool reset(git_reset_t type = GIT_RESET_MIXED,
              bool triggerReferenceUpdated = true) const;
 
   // Reset HEAD to this commit like git merge --abort. The changes in the
   // index, conflicts included, are undone and other local changes are kept.
+  // Read the index again like after reset().
   bool resetMerge() const;
 
   // favorite commits

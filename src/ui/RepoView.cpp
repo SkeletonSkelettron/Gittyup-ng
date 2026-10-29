@@ -1528,6 +1528,10 @@ void RepoView::merge(MergeFlags flags, const git::AnnotatedCommit &upstream,
   if (!runBusy([&] { merged = mRepo.merge(upstream); }))
     return;
 
+  // git changed the index. libgit2 can't read it on the thread of the merge
+  // while this one uses it.
+  mRepo.index().read();
+
   if (!merged) {
     LogEntry *err = error(parent, tr("merge"), head.name());
 
@@ -1599,6 +1603,8 @@ void RepoView::mergeAbort(LogEntry *parent) {
   bool reset = false;
   if (!runBusy([&] { reset = commit.resetMerge(); }) || !reset)
     return;
+
+  mRepo.index().read();
 
   QString text = tr("merge");
   switch (state) {
@@ -1724,8 +1730,14 @@ void RepoView::squash(const git::AnnotatedCommit &upstream, LogEntry *parent) {
   git::Branch head = mRepo.head();
   Q_ASSERT(head.isValid());
 
-  // Try to merge.
-  if (!mRepo.merge(upstream)) {
+  // Try to merge, like merge().
+  bool merged = false;
+  if (!runBusy([&] { merged = mRepo.merge(upstream); }))
+    return;
+
+  mRepo.index().read();
+
+  if (!merged) {
     LogEntry *err = error(parent, tr("squash"), head.name());
 
     // Add stash hint if the failure was because of uncommitted changes.
@@ -2631,7 +2643,9 @@ void RepoView::reset(const git::Commit &commit, git_reset_t type,
   if (!runBusy([&] { reset = commit.reset(type, false); }))
     return;
 
-  if (!reset)
+  if (reset)
+    mRepo.index().read();
+  else
     error(entry, commitToAmend ? tr("amend") : tr("reset"), head.name());
 
   updateSubmodules(mRepo.submodules(), true, false,

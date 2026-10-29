@@ -1161,9 +1161,8 @@ bool Repository::merge(const AnnotatedCommit &mergeHead) {
   if (forcesDiff3Conflicts())
     args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
 
+  // The caller reads the index again, see Commit::reset().
   RunResult result = Cli(workdir().path()).run(args);
-  Index index = this->index();
-  index.read();
 
   // git exits with 1 for conflicts, which are resolved later like with
   // libgit2. It only fails without MERGE_HEAD, before anything changed.

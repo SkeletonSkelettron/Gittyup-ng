@@ -354,8 +354,6 @@ bool Commit::runReset(QStringList args, bool hard,
     return false;
   }
 
-  repo.index().read();
-
   if (triggerReferenceUpdated)
     emit repo.notifier()->referenceUpdated(repo.head(), hard);
   if (repo.state() != state) {

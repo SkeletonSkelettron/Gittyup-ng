@@ -227,8 +227,9 @@ bool UndoHistory::apply(const Action &action, bool undo) {
   if (!to.restore(repo, current, message, &error))
     return fail(error);
 
-  if (action.mode == Mixed && commit.isValid())
-    commit.reset(GIT_RESET_MIXED);
+  if (action.mode == Mixed && commit.isValid() &&
+      commit.reset(GIT_RESET_MIXED))
+    repo.index().read();
 
   // Offer the message of an undone commit to commit it again.
   if (!action.message.isEmpty()) {
