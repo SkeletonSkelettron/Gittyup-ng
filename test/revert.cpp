@@ -22,8 +22,9 @@
 using namespace Test;
 using namespace QTest;
 
-// Reverts commits that conflict and that can't be reverted. Reverting without
-// a conflict is in CommitAuthorCommitter.
+// Reverts commits that conflict and that can't be reverted, and refuses
+// staged changes like cherry-picking. Reverting without a conflict is in
+// CommitAuthorCommitter.
 class TestRevert : public QObject {
   Q_OBJECT
 
@@ -32,6 +33,8 @@ private slots:
   void conflictIsLeft();
   void mergeCommitFails();
   void viewShowsConflict();
+  void stagedChangesAreKept();
+  void stagedSubmoduleIsKept();
   void cleanupTestCase();
 
 private:
@@ -114,6 +117,66 @@ void TestRevert::viewShowsConflict() {
 
   git({"revert", "--abort"});
   mRepo->index().read();
+}
+
+// Reverting and cherry-picking apply the commit to the index. Staged changes
+// would be committed with it, and lost when it's aborted: both refuse them.
+void TestRevert::stagedChangesAreKept() {
+  git({"checkout", "-q", "-b", "side"});
+  commit("picked.txt", "picked\n");
+  git::Commit picked = mRepo->head().target();
+  git({"checkout", "-q", "-"});
+  commit("reverted.txt", "reverted\n");
+  git::Commit reverted = mRepo->head().target();
+
+  QFile file(mRepo->workdir().filePath("staged.txt"));
+  QVERIFY(file.open(QFile::WriteOnly));
+  file.write("staged\n");
+  file.close();
+  git({"add", "staged.txt"});
+  mRepo->index().read();
+
+  RepoView *view = mWindow->currentView();
+  view->revert(reverted);
+  view->cherryPick(picked);
+
+  QCOMPARE(mRepo->state(), int(GIT_REPOSITORY_STATE_NONE));
+  QCOMPARE(mRepo->head().target().id(), reverted.id());
+  QVERIFY(QFile::exists(mRepo->workdir().filePath("reverted.txt")));
+  QVERIFY(!QFile::exists(mRepo->workdir().filePath("picked.txt")));
+  QCOMPARE(git({"diff", "--cached", "--name-only"}), QString("staged.txt"));
+
+  QStringList texts = errors(logRoot());
+  QVERIFY(texts.contains("Unable to revert commit"));
+  QCOMPARE(texts.filter("You have staged changes").size(), 1);
+}
+
+// A staged submodule counts too, also when the configuration leaves
+// submodules out of diffs.
+void TestRevert::stagedSubmoduleIsKept() {
+  // Only the submodule is staged.
+  git({"reset", "-q"});
+  QStringList sub = {
+      "-c", "user.name=Test", "-c", "user.email=test@example.com", "-C", "sm"};
+  git({"init", "-q", "sm"});
+  QFile file(mRepo->workdir().filePath("sm/a.txt"));
+  QVERIFY(file.open(QFile::WriteOnly));
+  file.write("one\n");
+  file.close();
+  git(sub + QStringList{"add", "a.txt"});
+  git(sub + QStringList{"commit", "-qm", "One"});
+  git({"add", "sm"});
+  git({"commit", "-qm", "Add sm"});
+  git(sub + QStringList{"commit", "-q", "--allow-empty", "-m", "Two"});
+  git({"add", "sm"});
+  git({"config", "diff.ignoreSubmodules", "all"});
+  mRepo->index().read();
+
+  QVERIFY(!mRepo->stagedChangesError().isEmpty());
+  QVERIFY(!mRepo->cherryPick(mRepo->lookupBranch("side").target()));
+  QCOMPARE(git({"diff", "--cached", "--name-only", "--ignore-submodules=none"}),
+           QString("sm"));
+  git({"config", "--unset", "diff.ignoreSubmodules"});
 }
 
 void TestRevert::cleanupTestCase() {

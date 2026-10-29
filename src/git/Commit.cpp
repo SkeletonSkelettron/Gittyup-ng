@@ -259,6 +259,13 @@ bool Commit::revert() const {
   if (repo.forcesDiff3Conflicts())
     args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
 
+  // Like cherry-pick, see Repository::cherryPick().
+  QString staged = repo.stagedChangesError();
+  if (!staged.isEmpty()) {
+    emit repo.notifier()->gitCommandFailed(tr("revert commit"), staged);
+    return false;
+  }
+
   git::Cli cli(repo.workdir().path());
   RunResult result = cli.run(args);
 

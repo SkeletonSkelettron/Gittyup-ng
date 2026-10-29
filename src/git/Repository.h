@@ -227,6 +227,10 @@ public:
   // cherry-pick
   bool cherryPick(const Commit &commit);
 
+  // The error for staged changes, which cherry-pick and revert would mix with
+  // the changes of the commit and lose when aborted, or an empty string.
+  QString stagedChangesError() const;
+
   // checkout
   bool checkout(const Commit &commit, CheckoutCallbacks *callbacks = nullptr,
                 const QStringList &paths = QStringList(),

@@ -1295,6 +1295,14 @@ bool Repository::cherryPick(const Commit &commit) {
   if (forcesDiff3Conflicts())
     args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
 
+  // git picks onto the index with --no-commit. libgit2 and git without it
+  // refuse staged changes.
+  QString staged = stagedChangesError();
+  if (!staged.isEmpty()) {
+    git_error_set_str(GIT_ERROR_CHERRYPICK, staged.toUtf8());
+    return false;
+  }
+
   Cli cli(workdir().path());
   RunResult result = cli.run(args);
 
@@ -1316,6 +1324,19 @@ bool Repository::cherryPick(const Commit &commit) {
     emit d->notifier->stateChanged();
 
   return true;
+}
+
+QString Repository::stagedChangesError() const {
+  // Also submodules, which the configuration may leave out of diffs.
+  QStringList args = {"diff", "--cached", "--quiet",
+                      "--ignore-submodules=none"};
+  RunResult result = Cli(workdir().path()).run(args);
+  if (result.exitCode == 0)
+    return QString();
+
+  return (result.exitCode == 1)
+             ? tr("You have staged changes. Commit or stash them first.")
+             : commandError(result.errors);
 }
 
 bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
