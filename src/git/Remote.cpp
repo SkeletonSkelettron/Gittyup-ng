@@ -641,7 +641,10 @@ Result Remote::push(Callbacks *callbacks, const QStringList &refspecs) {
     return Result(GIT_ENONFASTFORWARD,
                   "The remote contains commits that you don't have locally.");
 
-  if (result.exitCode != 0 && !rejected)
+  // The log lists the references that the remote rejected.
+  if (rejected)
+    return Result(-1, tr("The remote rejected the push."));
+  if (result.exitCode != 0)
     return Result(-1, QString::fromUtf8(result.errors).trimmed());
 
   return 0;

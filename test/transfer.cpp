@@ -43,6 +43,15 @@ void commit(const QString &dir, const QString &name) {
   runGit(dir, {"commit", "-qm", "Add " + name});
 }
 
+void script(const QString &path, const QByteArray &content) {
+  QFile file(path);
+  QVERIFY(file.open(QFile::WriteOnly));
+  file.write("#!/bin/sh\n" + content);
+  file.close();
+  QVERIFY(file.setPermissions(QFile::ReadOwner | QFile::WriteOwner |
+                              QFile::ExeOwner));
+}
+
 // The entry that the view logged last.
 LogEntry *lastEntry(RepoView *view) {
   for (LogEntry *entry : view->findChildren<LogEntry *>()) {
@@ -70,6 +79,7 @@ class TestTransfer : public QObject {
 
 private slots:
   void pushStaleTracking();
+  void pushRejected();
 };
 
 // The remote-tracking branch may be old: another process may have deleted
@@ -100,6 +110,45 @@ void TestTransfer::pushStaleTracking() {
   QVERIFY(!contains(entry, "Everything up-to-date."));
   QCOMPARE(runGit(remoteDir.path(), {"rev-parse", "refs/heads/" + main}),
            repo->head().target().id().toString());
+}
+
+// A push that the remote rejects doesn't set the upstream of the branch.
+void TestTransfer::pushRejected() {
+#ifdef Q_OS_WIN
+  QSKIP("The hook of the remote is a shell script");
+#endif
+
+  ScratchRepository repo;
+  QString dir = repo->workdir().path();
+  commit(dir, "file.txt");
+  QString main = repo->head().name();
+
+  QTemporaryDir remoteDir;
+  runGit(remoteDir.path(), {"init", "-q", "--bare"});
+  git::Remote remote = repo->addRemote("origin", remoteDir.path());
+  runGit(dir, {"push", "-q", "origin", main});
+  QVERIFY(!git::Branch(repo->head()).upstream().isValid());
+  QString before =
+      runGit(remoteDir.path(), {"rev-parse", "refs/heads/" + main});
+
+  QDir(remoteDir.path()).mkpath("hooks");
+  script(remoteDir.filePath("hooks/pre-receive"), "echo denied >&2\nexit 1\n");
+  commit(dir, "second.txt");
+
+  // A fetch of the window would run before.
+  repo->appConfig().setValue("autofetch.enable", false);
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(qWaitForWindowExposed(&window));
+  RepoView *view = window.currentView();
+  view->push(remote);
+  LogEntry *entry = lastEntry(view);
+  QVERIFY(entry);
+  QTRY_VERIFY(entry->progress() < 0);
+  QVERIFY(contains(entry, "[remote rejected]"));
+  QCOMPARE(runGit(remoteDir.path(), {"rev-parse", "refs/heads/" + main}),
+           before);
+  QVERIFY(!git::Branch(repo->head()).upstream().isValid());
 }
 
 TEST_MAIN(TestTransfer)
