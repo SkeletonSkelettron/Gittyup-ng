@@ -14,6 +14,7 @@
 #include "git2/errors.h"
 #include "git2/refs.h"
 #include "git2/repository.h"
+#include <algorithm>
 
 namespace git {
 
@@ -182,16 +183,31 @@ bool RefState::canRestore(const Repository &repo, const RefState &current,
 bool RefState::restore(const Repository &repo, const RefState &current,
                        const QStringList &names, const QString &message,
                        QString *error) const {
-  if (!canRestore(repo, current, names, error))
+  QString text;
+  if (change(repo, current, names, message, text))
+    return true;
+
+  // Change back what was changed already, so that it can be tried again.
+  QString ignored;
+  current.change(repo, RefState(repo), names, message, ignored);
+
+  if (error)
+    *error = text;
+  return false;
+}
+
+bool RefState::change(const Repository &repo, const RefState &current,
+                      const QStringList &names, const QString &message,
+                      QString &error) const {
+  if (!canRestore(repo, current, names, &error))
     return false;
 
   git_repository *raw = repo;
   RepositoryNotifier *notifier = repo.notifier();
   QByteArray log = message.toUtf8();
 
-  auto fail = [error](const QString &text) {
-    if (error)
-      *error = text;
+  auto fail = [&error](const QString &text) {
+    error = text;
     return false;
   };
 
@@ -212,7 +228,49 @@ bool RefState::restore(const Repository &repo, const RefState &current,
     }
   }
 
-  // Create and move references first so that HEAD can point to them.
+  auto remove = [&](const QString &name) {
+    Reference ref = repo.lookupRef(name);
+    if (!ref.isValid())
+      return true;
+
+    emit notifier->referenceAboutToBeRemoved(ref);
+
+    git_reference *handle = ref;
+    int result = isBranch(name) ? git_branch_delete(handle)
+                                : git_reference_delete(handle);
+    if (result) {
+      return fail(
+          tr("Unable to remove '%1' - %2").arg(shortName(name), lastError()));
+    }
+
+    emit notifier->referenceRemoved(shortName(name));
+    return true;
+  };
+
+  // A reference can't be created while another one has its name as a
+  // directory, or the name of one of its directories, like 'a' and 'a/b'
+  // after a rename. Remove those first. HEAD points to its branch below.
+  bool restoresHead = names.contains("HEAD");
+  QStringList blocking;
+  for (const QString &name : removed) {
+    bool blocks = std::any_of(
+        created.cbegin(), created.cend(), [&name](const QString &other) {
+          return other.startsWith(name + '/') || name.startsWith(other + '/');
+        });
+    if (!blocks)
+      continue;
+
+    if (restoresHead && name == current.mHead &&
+        git_repository_set_head_detached(raw, current.mHeadId))
+      return fail(tr("Unable to restore HEAD - %1").arg(lastError()));
+
+    if (!remove(name))
+      return false;
+
+    blocking.append(name);
+  }
+
+  // Create and move references next so that HEAD can point to them.
   for (const QString &name : created + moved) {
     bool exists = current.mRefs.contains(name);
     if (!exists)
@@ -221,8 +279,8 @@ bool RefState::restore(const Repository &repo, const RefState &current,
     git_reference *ref = nullptr;
     if (git_reference_create(&ref, raw, name.toUtf8(), mRefs.value(name), 1,
                              log)) {
-      return fail(tr("Unable to restore '%1' - %2")
-                      .arg(shortName(name), lastError()));
+      return fail(
+          tr("Unable to restore '%1' - %2").arg(shortName(name), lastError()));
     }
 
     git_reference_free(ref);
@@ -236,8 +294,7 @@ bool RefState::restore(const Repository &repo, const RefState &current,
   }
 
   // Point HEAD to its branch or commit.
-  if (names.contains("HEAD") &&
-      (mHead != current.mHead || mHeadId != current.mHeadId)) {
+  if (restoresHead && (mHead != current.mHead || mHeadId != current.mHeadId)) {
     int result = 0;
     if (!mHead.isEmpty()) {
       if (mHead != current.mHead)
@@ -252,21 +309,8 @@ bool RefState::restore(const Repository &repo, const RefState &current,
 
   // Remove the references that didn't exist.
   for (const QString &name : removed) {
-    Reference ref = repo.lookupRef(name);
-    if (!ref.isValid())
-      continue;
-
-    emit notifier->referenceAboutToBeRemoved(ref);
-
-    git_reference *handle = ref;
-    int result = isBranch(name) ? git_branch_delete(handle)
-                                : git_reference_delete(handle);
-    if (result) {
-      return fail(tr("Unable to remove '%1' - %2")
-                      .arg(shortName(name), lastError()));
-    }
-
-    emit notifier->referenceRemoved(shortName(name));
+    if (!blocking.contains(name) && !remove(name))
+      return false;
   }
 
   // Branches that are created again get their upstreams back, which were

@@ -35,6 +35,7 @@ private slots:
   void localChanges();
   void laterTags();
   void laterUpstreams();
+  void nestedRename();
   void otherWorktree();
   void cleanupTestCase();
 
@@ -273,6 +274,41 @@ void TestUndo::laterUpstreams() {
 
   for (const QString &name : names)
     git({"config", "--remove-section", QString("branch.%1").arg(name)});
+  mHistory->check();
+}
+
+// A branch renamed into a directory of its old name, which can't exist next
+// to it, is renamed back, also when it's checked out.
+void TestUndo::nestedRename() {
+  git::Branch branch =
+      mView->createBranch("nested", mRepo->lookupCommit(mFirst));
+  mHistory->check();
+  QVERIFY(branch.rename("nested/inner").isValid());
+  mHistory->check();
+  QCOMPARE(mHistory->undoText(),
+           QString("Rename Branch nested to nested/inner"));
+
+  QVERIFY(mHistory->undo());
+  QVERIFY(mRepo->lookupBranch("nested").isValid());
+  QVERIFY(!mRepo->lookupBranch("nested/inner").isValid());
+  QVERIFY(mHistory->redo());
+  QVERIFY(!mRepo->lookupBranch("nested").isValid());
+  QVERIFY(mRepo->lookupBranch("nested/inner").isValid());
+
+  mView->checkout(mRepo->lookupBranch("nested/inner"));
+  mHistory->check();
+  QVERIFY(mRepo->lookupBranch("nested/inner").rename("nested").isValid());
+  QCOMPARE(mRepo->head().name(), QString("nested"));
+  mHistory->check();
+
+  QVERIFY(mHistory->undo());
+  QCOMPARE(mRepo->head().name(), QString("nested/inner"));
+  QVERIFY(!mRepo->lookupBranch("nested").isValid());
+  QVERIFY(mHistory->redo());
+  QCOMPARE(mRepo->head().name(), QString("nested"));
+  QVERIFY(!mRepo->lookupBranch("nested/inner").isValid());
+
+  mView->checkout(mRepo->lookupBranch(mMain));
   mHistory->check();
 }
 

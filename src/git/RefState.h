@@ -69,7 +69,8 @@ public:
   // 'current' to this state. Branches that are created get their upstreams.
   // Other references and upstreams may have changed since, and stay. The
   // index and the working directory don't change. The reflogs get 'message'.
-  // Returns false and sets 'error' when something couldn't be changed.
+  // Returns false and sets 'error' when something couldn't be changed, after
+  // changing back what was.
   bool restore(const Repository &repo, const RefState &current,
                const QStringList &names, const QString &message,
                QString *error = nullptr) const;
@@ -78,6 +79,10 @@ public:
   static bool isTag(const QString &name);
 
 private:
+  bool change(const Repository &repo, const RefState &current,
+              const QStringList &names, const QString &message,
+              QString &error) const;
+
   bool mValid = false;
   QString mHead;
   Id mHeadId;
