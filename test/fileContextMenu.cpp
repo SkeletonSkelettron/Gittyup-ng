@@ -611,8 +611,8 @@ void TestFileContextMenu::testRemoveUntrackedFolder() {
 }
 
 // Checking out files of a commit keeps untracked files and changes, staged
-// ones too, also of files in the way of their directories and of directories
-// in the way of them, like libgit2 did. The view reports them.
+// ones too like renames, also of files in the way of their directories and
+// of directories in the way of them, like libgit2 did. The view reports them.
 void TestFileContextMenu::testCheckoutKeepsLocalFiles() {
   Test::ScratchRepository repo;
   QDir dir = repo->workdir();
@@ -634,7 +634,8 @@ void TestFileContextMenu::testCheckoutKeepsLocalFiles() {
   };
 
   // The second commit deletes or changes the files of the first.
-  QStringList changed = {"changed.txt", "kept/file.txt", "staged.txt"};
+  QStringList changed = {"changed.txt", "kept/file.txt", "staged.txt",
+                         "renamed.txt"};
   for (const QString &name :
        changed + QStringList{"deleted.txt", "dir/file.txt", "e"})
     QVERIFY(write(name, "old\n"));
@@ -654,18 +655,23 @@ void TestFileContextMenu::testCheckoutKeepsLocalFiles() {
   QVERIFY(QDir(dir.filePath("kept")).removeRecursively());
   QVERIFY(write("staged.txt", "staged\n"));
   runGit({"add", "staged.txt"});
+  runGit({"mv", "renamed.txt", "moved.txt"});
 
   int strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_DONT_UPDATE_INDEX;
-  for (const QString &path :
-       {"deleted.txt", "dir/file.txt", "e", "kept", "staged.txt"})
+  for (const QString &path : {"deleted.txt", "dir/file.txt", "e", "kept",
+                              "staged.txt", "renamed.txt"})
     QVERIFY(!repo->checkout(first, nullptr, {path}, strategy));
-  QVERIFY(!repo->checkout(first, nullptr, {"staged.txt"}, GIT_CHECKOUT_SAFE));
+  for (const QString &path : {"staged.txt", "renamed.txt"})
+    QVERIFY(!repo->checkout(first, nullptr, {path}, GIT_CHECKOUT_SAFE));
   QCOMPARE(read("deleted.txt"), QByteArray("untracked\n"));
   QCOMPARE(read("dir"), QByteArray("untracked\n"));
   QCOMPARE(read("e/x"), QByteArray("changed\n"));
   QVERIFY(!dir.exists("kept"));
   QCOMPARE(read("staged.txt"), QByteArray("staged\n"));
   QCOMPARE(runGit({"show", ":staged.txt"}), QString("staged"));
+  QVERIFY(!dir.exists("renamed.txt"));
+  QCOMPARE(runGit({"status", "--porcelain", "--", "renamed.txt", "moved.txt"}),
+           QString("R  renamed.txt -> moved.txt"));
 
   MainWindow window(repo);
   window.show();

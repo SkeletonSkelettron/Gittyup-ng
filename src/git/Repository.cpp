@@ -101,11 +101,13 @@ bool gitAccepts(const QString &path) {
 }
 
 // Collects the paths that differ between the index and the workdir, as
-// 'git status' lists them, and the staged state of the files that it lists.
-// git checks the workdir much faster than libgit2 does on Windows, where it
-// caches file system data (core.fscache). Returns false if git can't tell.
+// 'git status' lists them, the staged state of the files that it lists, and
+// the original paths of renames in 'sources'. git checks the workdir much
+// faster than libgit2 does on Windows, where it caches file system data
+// (core.fscache). Returns false if git can't tell.
 bool workdirChanges(const QString &workdir, bool untracked, QStringList &paths,
-                    QMap<QString, Index::StagedState> &states) {
+                    QMap<QString, Index::StagedState> &states,
+                    QStringList *sources = nullptr) {
   // Don't refresh the index: that would race with Gittyup's own writes.
   QStringList args = {"--no-optional-locks", "status", "--porcelain=v2", "-z"};
   args.append(untracked ? "--untracked-files=all" : "--untracked-files=no");
@@ -129,6 +131,8 @@ bool workdirChanges(const QString &workdir, bool untracked, QStringList &paths,
       case '2': // renamed or copied
         fields = 9;
         ++i; // The next record is the original path.
+        if (sources && i < records.size())
+          sources->append(QString::fromUtf8(records.at(i)));
         break;
       case 'u': // unmerged
         fields = 10;
@@ -1475,18 +1479,22 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
   // of a directory, and a directory in the way of a file.
   if (!force) {
     QStringList files;
+    QStringList sources;
     QMap<QString, Index::StagedState> states;
-    if (!workdirChanges(workdir().path(), true, files, states)) {
+    if (!workdirChanges(workdir().path(), true, files, states, &sources)) {
       setError(GIT_ERROR_CHECKOUT,
                tr("Unable to read the status of the files"));
       return false;
     }
 
     // The files that differ from HEAD. git status tells the staged state of
-    // those that differ only in the index.
+    // those that differ only in the index, and the original paths of renames
+    // that are staged.
     QSet<QString> changed(files.cbegin(), files.cend());
     for (auto it = states.cbegin(); it != states.cend(); ++it)
       changed.insert(it.key());
+    for (const QString &source : sources)
+      changed.insert(source);
 
     auto overwrites = [&changed](const QString &path) {
       if (changed.contains(path))
