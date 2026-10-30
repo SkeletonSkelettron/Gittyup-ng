@@ -127,8 +127,13 @@ Commit Rewrite::apply(const Commit &onto, const QList<Step> &steps,
       QList<Commit> previousParents = current.parents();
       base = previousParents.value(0);
     } else {
-      // Drop commits whose changes are already there.
-      if (git_oid_equal(&treeId, git_commit_tree_id(current)))
+      // Drop commits whose changes are already there, but not the ones
+      // without changes on purpose: git rebase keeps the commits that start
+      // empty.
+      bool empty = parents.size() == 1 &&
+                   git_oid_equal(git_commit_tree_id(step.commit),
+                                 git_commit_tree_id(parents.first()));
+      if (!empty && git_oid_equal(&treeId, git_commit_tree_id(current)))
         continue;
 
       message = (step.action == Reword) ? step.message : step.commit.message();

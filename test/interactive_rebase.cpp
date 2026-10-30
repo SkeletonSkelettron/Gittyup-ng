@@ -9,6 +9,7 @@
 #include "git/Branch.h"
 #include "git/Commit.h"
 #include "git/Index.h"
+#include "git/Tree.h"
 #include "ui/InteractiveRebase.h"
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
@@ -29,6 +30,7 @@ private slots:
   void reorder();
   void conflict();
   void otherBranch();
+  void rewordEmpty();
   void cleanupTestCase();
 
 private:
@@ -172,6 +174,25 @@ void TestInteractiveRebase::otherBranch() {
   QCOMPARE(side.parents().first().id(), base.id());
   QCOMPARE(mRepo->head().qualifiedName(), mMain);
   QVERIFY(!exists("s2.txt"));
+}
+
+// A commit without changes on purpose stays when it's reworded, like git
+// rebase keeps the commits that start empty.
+void TestInteractiveRebase::rewordEmpty() {
+  git::Commit base = head();
+  git::Commit empty = mRepo->commit("Empty marker");
+  QVERIFY(empty.isValid());
+  QCOMPARE(git::Object(empty.tree()).id(), git::Object(base.tree()).id());
+
+  QVERIFY(mRebase->open(mMain, base, base.shortId()));
+  mRebase->setAction(0, InteractiveRebase::Reword);
+  mRebase->setMessage(0, "Renamed marker\n");
+  QVERIFY(mRebase->start());
+
+  git::Commit reworded = head();
+  QCOMPARE(reworded.summary(), QString("Renamed marker"));
+  QCOMPARE(reworded.parents().size(), 1);
+  QCOMPARE(reworded.parents().first().id(), base.id());
 }
 
 void TestInteractiveRebase::cleanupTestCase() {
