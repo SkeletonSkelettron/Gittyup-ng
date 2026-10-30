@@ -34,18 +34,17 @@ void Submodule::initialize() const {
 }
 
 void Submodule::deinitialize() const {
-  // Remove git config entry.
+  // git removes the configuration of exactly this submodule and its working
+  // directory. A repository in the working directory moves into the one of
+  // the parent first, with the commits that only it has.
   Repository repo(git_submodule_owner(d.data()));
-  Config config = repo.gitConfig();
-  QString regex = QString("submodule\\.%1\\..*").arg(name());
-  Config::Iterator it = config.glob(regex);
-  while (Config::Entry entry = it.next())
-    config.remove(entry.name());
-
-  // Remove submodule workdir.
-  QDir dir = repo.workdir();
-  if (dir.cd(path()) && dir.removeRecursively())
-    dir.mkpath(".");
+  RunResult result = Cli(repo.workdir().path())
+                         .run({"--literal-pathspecs", "submodule", "deinit",
+                               "--force", "--", path()});
+  repo.invalidateSubmoduleCache();
+  if (result.exitCode != 0)
+    emit repo.notifier()->gitCommandFailed(tr("deinitialize submodule"),
+                                           QString::fromUtf8(result.errors));
 }
 
 QString Submodule::name() const { return git_submodule_name(d.data()); }

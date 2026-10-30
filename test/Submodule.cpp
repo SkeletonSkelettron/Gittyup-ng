@@ -22,6 +22,7 @@
 #include <QToolButton>
 #include <QMenu>
 #include <QLineEdit>
+#include <QProcess>
 #include "dialogs/ConfirmDialog.h"
 
 #define INIT_REPO(repoPath)                                                    \
@@ -40,6 +41,41 @@
 using namespace Test;
 using namespace QTest;
 
+namespace {
+
+// Run git in 'dir' as a user that may clone local submodules.
+QString runGit(const QString &dir, const QStringList &args,
+               int *exitCode = nullptr) {
+  QProcess process;
+  process.setWorkingDirectory(dir);
+  process.start("git", QStringList{"-c", "user.name=Test", "-c",
+                                   "user.email=test@example.com", "-c",
+                                   "protocol.file.allow=always"} +
+                           args);
+  process.waitForFinished(-1);
+  if (exitCode)
+    *exitCode = process.exitCode();
+  return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+}
+
+void write(const QString &path, const QByteArray &content) {
+  QFile file(path);
+  QVERIFY(file.open(QFile::WriteOnly));
+  file.write(content);
+}
+
+// A repository with a commit, for submodules to clone.
+QString source(const QTemporaryDir &root) {
+  QString path = root.filePath("source");
+  runGit(root.path(), {"init", "-q", path});
+  write(path + "/file.txt", "origin\n");
+  runGit(path, {"add", "."});
+  runGit(path, {"commit", "-qm", "origin"});
+  return path;
+}
+
+} // namespace
+
 class TestSubmodule : public QObject {
   Q_OBJECT
 
@@ -47,6 +83,8 @@ private slots:
   void updateSubmoduleClone();
   void noUpdateSubmoduleClone();
   void discardFile();
+  void deinitializeKeepsHistory();
+  void deinitializeOnlyItself();
 
 private:
 };
@@ -215,6 +253,57 @@ void TestSubmodule::discardFile() {
   QFile file(repo.workdir().filePath("GittyupTestRepo/README.md"));
   QVERIFY(file.open(QFile::ReadOnly));
   QCOMPARE(file.readAll(), "Changing content of submodule readme\n");
+}
+
+// A submodule whose repository is in its working directory keeps its
+// commits when it's deinitialized, also the ones that its origin doesn't
+// have: git moves the repository into the one of the parent first.
+void TestSubmodule::deinitializeKeepsHistory() {
+  QTemporaryDir root;
+  QString origin = source(root);
+  QString parent = root.filePath("parent");
+  runGit(root.path(), {"init", "-q", parent});
+  runGit(parent, {"clone", "-q", origin, "sm"});
+  write(parent + "/sm/file.txt", "local\n");
+  runGit(parent + "/sm", {"commit", "-qam", "local"});
+  QString id = runGit(parent + "/sm", {"rev-parse", "HEAD"});
+  runGit(parent, {"submodule", "add", "-q", origin, "sm"});
+  runGit(parent, {"commit", "-qm", "Add sm"});
+  QVERIFY(QFileInfo(parent + "/sm/.git").isDir());
+
+  git::Repository repo = git::Repository::open(parent);
+  git::Submodule submodule = repo.lookupSubmodule("sm");
+  QVERIFY(submodule.isValid());
+  submodule.deinitialize();
+
+  int exitCode = -1;
+  runGit(parent, {"config", "--get", "submodule.sm.url"}, &exitCode);
+  QCOMPARE(exitCode, 1);
+  QVERIFY(QDir(parent + "/sm").isEmpty());
+  runGit(parent, {"--git-dir=.git/modules/sm", "cat-file", "-e", id},
+         &exitCode);
+  QCOMPARE(exitCode, 0);
+}
+
+// Deinitializing a submodule leaves the others, also the ones whose names
+// it matches as a pattern.
+void TestSubmodule::deinitializeOnlyItself() {
+  QTemporaryDir root;
+  QString origin = source(root);
+  QString parent = root.filePath("parent");
+  runGit(root.path(), {"init", "-q", parent});
+  for (const QString &name : {"a.b", "axb"})
+    runGit(parent, {"submodule", "add", "-q", origin, name});
+  runGit(parent, {"commit", "-qm", "Add submodules"});
+
+  git::Repository repo = git::Repository::open(parent);
+  repo.lookupSubmodule("a.b").deinitialize();
+
+  int exitCode = -1;
+  runGit(parent, {"config", "--get", "submodule.a.b.url"}, &exitCode);
+  QCOMPARE(exitCode, 1);
+  QCOMPARE(runGit(parent, {"config", "--get", "submodule.axb.url"}), origin);
+  QVERIFY(QFile::exists(parent + "/axb/file.txt"));
 }
 
 TEST_MAIN(TestSubmodule)

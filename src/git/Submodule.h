@@ -13,6 +13,7 @@
 #include "Remote.h"
 #include "Result.h"
 #include "git2/submodule.h"
+#include <QCoreApplication>
 #include <QSharedPointer>
 
 namespace git {
@@ -21,6 +22,8 @@ class Id;
 class Repository;
 
 class Submodule {
+  Q_DECLARE_TR_FUNCTIONS(Submodule)
+
 public:
   Submodule();
 
@@ -29,6 +32,7 @@ public:
 
   bool isInitialized() const;
   void initialize() const;
+  // Removes the working directory of the submodule, uncommitted changes too.
   void deinitialize() const;
 
   QString name() const;
