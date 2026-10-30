@@ -1,0 +1,96 @@
+Test project /home/misha/repos/Gittyup/build
+      Start  1: bare_repo
+ 1/44 Test  #1: bare_repo ........................   Passed    0.21 sec
+      Start  2: init_repo
+ 2/44 Test  #2: init_repo ........................   Passed    2.69 sec
+      Start  3: merge
+ 3/44 Test  #3: merge ............................   Passed    1.56 sec
+      Start  4: external_tools_dialog
+ 4/44 Test  #4: external_tools_dialog ............   Passed    0.09 sec
+      Start  5: branches_panel
+ 5/44 Test  #5: branches_panel ...................   Passed    1.22 sec
+      Start  6: editor
+ 6/44 Test  #6: editor ...........................   Passed    0.11 sec
+      Start  7: index
+ 7/44 Test  #7: index ............................   Passed    0.75 sec
+      Start  8: line_endings
+ 8/44 Test  #8: line_endings .....................   Passed    0.25 sec
+      Start  9: log
+ 9/44 Test  #9: log ..............................   Passed    0.04 sec
+      Start 10: main_window
+10/44 Test #10: main_window ......................   Passed    0.19 sec
+      Start 11: new_branch_dialog
+11/44 Test #11: new_branch_dialog ................   Passed    0.07 sec
+      Start 12: sanity
+12/44 Test #12: sanity ...........................   Passed    0.04 sec
+      Start 13: Diff
+13/44 Test #13: Diff .............................   Passed    0.03 sec
+      Start 14: DiffView
+14/44 Test #14: DiffView .........................   Passed    0.95 sec
+      Start 15: EditorLineInfos
+15/44 Test #15: EditorLineInfos ..................   Passed    2.90 sec
+      Start 16: CommitAuthorCommitter
+16/44 Test #16: CommitAuthorCommitter ............   Passed    0.25 sec
+      Start 17: rebase
+17/44 Test #17: rebase ...........................   Passed    3.08 sec
+      Start 18: TreeView
+18/44 Test #18: TreeView .........................   Passed    0.98 sec
+      Start 19: Submodule
+19/44 Test #19: Submodule ........................   Passed    3.02 sec
+      Start 20: referencelist
+20/44 Test #20: referencelist ....................   Passed    1.43 sec
+      Start 21: amend
+21/44 Test #21: amend ............................   Passed    0.45 sec
+      Start 22: SshConfig
+22/44 Test #22: SshConfig ........................   Passed    0.04 sec
+      Start 23: store
+23/44 Test #23: store ............................   Passed    0.03 sec
+      Start 24: fileContextMenu
+24/44 Test #24: fileContextMenu ..................   Passed    1.39 sec
+      Start 25: Setting
+25/44 Test #25: Setting ..........................   Passed    0.04 sec
+      Start 26: commitMessageTemplate
+26/44 Test #26: commitMessageTemplate ............   Passed    0.13 sec
+      Start 27: commitEditor
+27/44 Test #27: commitEditor .....................   Passed    0.03 sec
+      Start 28: qml_views
+28/44 Test #28: qml_views ........................   Passed    6.08 sec
+      Start 29: undo
+29/44 Test #29: undo .............................   Passed    1.85 sec
+      Start 30: refdrop
+30/44 Test #30: refdrop ..........................   Passed    0.33 sec
+      Start 31: interactive_rebase
+31/44 Test #31: interactive_rebase ...............   Passed    0.38 sec
+      Start 32: signing
+32/44 Test #32: signing ..........................   Passed    0.29 sec
+      Start 33: pull_branch
+33/44 Test #33: pull_branch ......................   Passed    0.52 sec
+      Start 34: ssh_credentials
+34/44 Test #34: ssh_credentials ..................   Passed    0.60 sec
+      Start 35: open_repository
+35/44 Test #35: open_repository ..................   Passed    0.05 sec
+      Start 36: workdir_refresh
+36/44 Test #36: workdir_refresh ..................   Passed   17.19 sec
+      Start 37: tags
+37/44 Test #37: tags .............................   Passed    0.25 sec
+      Start 38: remotes
+38/44 Test #38: remotes ..........................   Passed    0.17 sec
+      Start 39: stashes
+39/44 Test #39: stashes ..........................   Passed    0.33 sec
+      Start 40: revert
+40/44 Test #40: revert ...........................   Passed    0.36 sec
+      Start 41: theme
+41/44 Test #41: theme ............................   Passed    0.04 sec
+      Start 42: take_side
+42/44 Test #42: take_side ........................   Passed    0.64 sec
+      Start 43: transfer
+43/44 Test #43: transfer .........................   Passed    0.81 sec
+      Start 44: Filter
+44/44 Test #44: Filter ...........................   Passed    0.06 sec
+
+100% tests passed, 0 tests failed out of 44
+
+Label Time Summary:
+NO_WIN32_OFFSCREEN    =   1.39 sec*proc (1 test)
+
+Total Test time (real) =  51.93 sec

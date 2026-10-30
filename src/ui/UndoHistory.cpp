@@ -6,12 +6,14 @@
 //
 
 #include "UndoHistory.h"
+#include "CheckoutSnapshot.h"
 #include "DetailView.h"
 #include "RepoView.h"
 #include "git/Commit.h"
 #include "git/Repository.h"
 #include "log/LogEntry.h"
 #include <QTextDocumentFragment>
+#include <memory>
 
 namespace {
 
@@ -205,12 +207,18 @@ bool UndoHistory::apply(const Action &action, bool undo) {
 
   // Move the working directory to the commit of HEAD.
   git::Commit commit;
+  std::unique_ptr<undo_detail::CheckoutSnapshot> snapshot;
   if (from.headId() != to.headId() && to.headId().isValid()) {
     commit = repo.lookupCommit(to.headId());
     if (!commit.isValid())
       return fail(tr("The commit %1 doesn't exist.").arg(shortId(to.headId())));
 
     if (action.mode == Checkout) {
+      snapshot = std::make_unique<undo_detail::CheckoutSnapshot>();
+      if (!snapshot->capture(repo, repo.lookupCommit(current.headId()), commit,
+                             error))
+        return fail(error);
+
       Callbacks callbacks;
       if (!repo.checkout(commit, &callbacks)) {
         QStringList conflicts = callbacks.conflicts();
@@ -226,16 +234,22 @@ bool UndoHistory::apply(const Action &action, bool undo) {
         mView->setLogVisible(true);
         return finish(false);
       }
+      if (!snapshot->afterCheckout(error))
+        return fail(error);
     }
   }
 
-  // The references change back when they can't all change, like while
-  // another git process locks one. So do the index and the files.
+  // Restore the actual local index and working files, which need not have
+  // matched HEAD before the checkout, when reference restoration fails.
   QString message = QString("%1: %2").arg(title.toLower(), action.text);
   if (!to.restore(repo, current, names, message, &error)) {
-    if (action.mode == Checkout && commit.isValid() && from.headId().isValid())
-      repo.checkout(repo.lookupCommit(from.headId()), nullptr, QStringList(),
-                    GIT_CHECKOUT_SAFE, commit);
+    if (snapshot) {
+      QString recoveryError;
+      if (!snapshot->restore(recoveryError))
+        error += '\n' + recoveryError;
+      repo.index().read();
+      mView->refresh(false);
+    }
     return fail(error);
   }
 

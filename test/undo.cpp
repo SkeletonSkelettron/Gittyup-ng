@@ -7,6 +7,7 @@
 
 #include "Test.h"
 #include "git/Branch.h"
+#include "git/Cli.h"
 #include "git/Commit.h"
 #include "git/Config.h"
 #include "git/Index.h"
@@ -18,6 +19,7 @@
 #include "ui/UndoHistory.h"
 #include <QFile>
 #include <QProcess>
+#include <filesystem>
 
 using namespace Test;
 using namespace QTest;
@@ -38,6 +40,9 @@ private slots:
   void nestedRename();
   void otherWorktree();
   void lockedHead();
+  void lockedHeadLocalState_data();
+  void lockedHeadLocalState();
+  void lockedHeadSubmodule();
   void firstCommit();
   void cleanupTestCase();
 
@@ -391,6 +396,192 @@ void TestUndo::lockedHead() {
   QCOMPARE(git({"status", "--porcelain"}), QString());
   QVERIFY(mHistory->undo());
   QCOMPARE(mRepo->head().name(), mMain);
+}
+
+void TestUndo::lockedHeadLocalState_data() {
+  addColumn<QByteArray>("staged");
+  addColumn<QByteArray>("working");
+  addColumn<bool>("deletedDirectory");
+  newRow("clean") << QByteArray() << QByteArray() << false;
+  newRow("staged-target") << QByteArray("B\n") << QByteArray("B\n") << false;
+  newRow("staged-and-unstaged")
+      << QByteArray("B\n") << QByteArray("C\n") << false;
+  newRow("locally-deleted-directory") << QByteArray() << QByteArray() << true;
+}
+
+// A failed metadata update restores the actual files and index, including
+// staged content that already matched the destination and missing paths.
+void TestUndo::lockedHeadLocalState() {
+  QFETCH(QByteArray, staged);
+  QFETCH(QByteArray, working);
+  QFETCH(bool, deletedDirectory);
+  ScratchRepository repo;
+  QDir dir = repo->workdir();
+  auto run = [&dir](const QStringList &args) {
+    return git::Cli(dir.path()).run(args);
+  };
+  auto put = [&dir](const QString &name, const QByteArray &content) {
+    QFile file(dir.filePath(name));
+    return QDir().mkpath(QFileInfo(file).absolutePath()) &&
+           file.open(QFile::WriteOnly) && file.write(content) == content.size();
+  };
+  auto bytes = [](const QString &path) {
+    QFile file(path);
+    return file.open(QFile::ReadOnly) ? file.readAll() : QByteArray();
+  };
+  QVERIFY(put("file.txt", "A\n"));
+  QVERIFY(put("removed/child.txt", "removed in B\n"));
+  QVERIFY(put("file-to-dir", "old file\n"));
+  QVERIFY(put("dir-to-file/child.txt", "old child\n"));
+  QVERIFY(put("executable", "old executable\n"));
+#ifndef Q_OS_WIN
+  auto linkPath = std::filesystem::path(dir.filePath("link").toStdString());
+  std::error_code error;
+  std::filesystem::create_symlink("../missing-a", linkPath, error);
+  QVERIFY2(!error, error.message().c_str());
+  QVERIFY(QFile::setPermissions(dir.filePath("executable"),
+                                QFile::permissions(dir.filePath("executable")) |
+                                    QFile::ExeOwner | QFile::ExeGroup |
+                                    QFile::ExeOther));
+#endif
+  QCOMPARE(run({"add", "."}).exitCode, 0);
+  QCOMPARE(run({"commit", "-qm", "A"}).exitCode, 0);
+  QString main = repo->head().name();
+  auto topic = repo->createBranch("topic");
+  QVERIFY(topic.isValid());
+
+  QVERIFY(put("file.txt", "B\n"));
+  QVERIFY(QDir(dir.filePath("removed")).removeRecursively());
+  QVERIFY(QFile::remove(dir.filePath("file-to-dir")));
+  QVERIFY(put("file-to-dir/child.txt", "new child\n"));
+  QVERIFY(QDir(dir.filePath("dir-to-file")).removeRecursively());
+  QVERIFY(put("dir-to-file", "new file\n"));
+  QVERIFY(put("executable", "new executable\n"));
+  QVERIFY(put("added/child.txt", "new file\n"));
+#ifndef Q_OS_WIN
+  QVERIFY(QFile::remove(dir.filePath("link")));
+  std::filesystem::create_symlink("../missing-b", linkPath, error);
+  QVERIFY2(!error, error.message().c_str());
+  QVERIFY(QFile::setPermissions(
+      dir.filePath("executable"),
+      QFile::permissions(dir.filePath("executable")) &
+          ~(QFile::ExeOwner | QFile::ExeGroup | QFile::ExeOther)));
+#endif
+  QCOMPARE(run({"add", "-A"}).exitCode, 0);
+  QCOMPARE(run({"commit", "-qm", "B"}).exitCode, 0);
+
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(qWaitForWindowExposed(&window));
+  RepoView *view = window.currentView();
+  view->checkout(topic);
+  QCOMPARE(repo->head().name(), QString("topic"));
+  QCOMPARE(bytes(dir.filePath("file.txt")), QByteArray("A\n"));
+  QCOMPARE(bytes(dir.filePath("removed/child.txt")),
+           QByteArray("removed in B\n"));
+  UndoHistory *history = view->undoHistory();
+  history->check();
+  QVERIFY(history->canUndo());
+  QCOMPARE(history->undoText(), QString("Checkout topic"));
+
+  if (!staged.isEmpty()) {
+    QVERIFY(put("file.txt", staged));
+    QCOMPARE(run({"add", "file.txt"}).exitCode, 0);
+    QVERIFY(put("file.txt", working));
+  }
+  if (deletedDirectory)
+    QVERIFY(QDir(dir.filePath("removed")).removeRecursively());
+
+  const QStringList statusArgs = {"--no-optional-locks", "status",
+                                  "--porcelain=v1", "-z",
+                                  "--untracked-files=all"};
+  QByteArray beforeStatus = run(statusArgs).output;
+  QByteArray beforeIndex = bytes(repo->dir().filePath("index"));
+  QVERIFY(!beforeIndex.isEmpty());
+  QByteArray beforeFile = bytes(dir.filePath("file.txt"));
+  QFile::Permissions beforeMode =
+      QFile::permissions(dir.filePath("executable"));
+  QFile lock(repo->dir().filePath("HEAD.lock"));
+  QVERIFY(lock.open(QFile::WriteOnly));
+  lock.close();
+
+  QVERIFY(!history->undo());
+  QVERIFY(lock.remove());
+  QCOMPARE(repo->head().name(), QString("topic"));
+  QCOMPARE(bytes(dir.filePath("file.txt")), beforeFile);
+  QCOMPARE(run(statusArgs).output, beforeStatus);
+  QCOMPARE(QFileInfo::exists(dir.filePath("removed")), !deletedDirectory);
+  if (!deletedDirectory)
+    QCOMPARE(bytes(dir.filePath("removed/child.txt")),
+             QByteArray("removed in B\n"));
+  QCOMPARE(bytes(dir.filePath("file-to-dir")), QByteArray("old file\n"));
+  QCOMPARE(bytes(dir.filePath("dir-to-file/child.txt")),
+           QByteArray("old child\n"));
+  QCOMPARE(bytes(dir.filePath("executable")), QByteArray("old executable\n"));
+  QCOMPARE(QFile::permissions(dir.filePath("executable")), beforeMode);
+  QVERIFY(!QFileInfo::exists(dir.filePath("added")));
+#ifndef Q_OS_WIN
+  QCOMPARE(std::filesystem::read_symlink(linkPath, error).generic_string(),
+           std::string("../missing-a"));
+  QVERIFY2(!error, error.message().c_str());
+#endif
+  QCOMPARE(bytes(repo->dir().filePath("index")), beforeIndex);
+  QVERIFY(history->canUndo());
+  QVERIFY(!history->canRedo());
+  QVERIFY(history->undo());
+  QCOMPARE(repo->head().name(), main);
+}
+
+// Nonrecursive checkouts only change the index when an initialized submodule
+// is added or removed. Recovery leaves the child repository intact as well.
+void TestUndo::lockedHeadSubmodule() {
+  ScratchRepository child, repo;
+  QFile file(child->workdir().filePath("child.txt"));
+  QVERIFY(file.open(QFile::WriteOnly));
+  file.write("child\n");
+  file.close();
+  child->index().setStaged({"child.txt"}, true);
+  QVERIFY(child->commit("Child"));
+  git::Cli cli(repo->workdir().path());
+  QCOMPARE(cli.run({"commit", "--allow-empty", "-qm", "Base"}).exitCode, 0);
+  QString main = repo->head().name();
+  auto without = repo->createBranch("without-submodule");
+  QVERIFY(without.isValid());
+  QCOMPARE(cli.run({"-c", "protocol.file.allow=always", "submodule", "add",
+                    "-q", child->workdir().path(), "sm"})
+               .exitCode,
+           0);
+  QCOMPARE(cli.run({"commit", "-qam", "Add submodule"}).exitCode, 0);
+  repo->gitConfig().setValue("submodule.recurse", true);
+
+  MainWindow window(repo);
+  RepoView *view = window.currentView();
+  view->checkout(without);
+  UndoHistory *history = view->undoHistory();
+  history->check();
+  QVERIFY(history->canUndo());
+  QString childPath = repo->workdir().filePath("sm");
+  auto read = [](const QString &path) {
+    QFile file(path);
+    return file.open(QFile::ReadOnly) ? file.readAll() : QByteArray();
+  };
+  const QByteArray childGit = read(childPath + "/.git");
+  QVERIFY(!childGit.isEmpty());
+  for (bool undo : {true, false}) {
+    QByteArray index = read(repo->dir().filePath("index"));
+    QString beforeHead = repo->head().name();
+    QFile lock(repo->dir().filePath("HEAD.lock"));
+    QVERIFY(lock.open(QFile::WriteOnly));
+    lock.close();
+    QVERIFY(!(undo ? history->undo() : history->redo()));
+    QVERIFY(lock.remove());
+    QCOMPARE(repo->head().name(), beforeHead);
+    QCOMPARE(read(repo->dir().filePath("index")), index);
+    QCOMPARE(read(childPath + "/.git"), childGit);
+    QCOMPARE(read(childPath + "/child.txt"), QByteArray("child\n"));
+    QVERIFY(undo ? history->undo() : history->redo());
+    QCOMPARE(repo->head().name(), undo ? main : QString("without-submodule"));
+  }
 }
 
 // The first commit of a repository is undone too: its branch is unborn

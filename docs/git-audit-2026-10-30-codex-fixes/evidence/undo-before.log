@@ -1,0 +1,32 @@
+********* Start testing of TestUndo *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260819 (Red Hat 16.2.1-2)), fedora 44
+QWARN  : TestUndo::initTestCase() This plugin does not support propagateSizeHints()
+PASS   : TestUndo::initTestCase()
+QWARN  : TestUndo::lockedHeadLocalState(clean) This plugin does not support propagateSizeHints()
+FAIL!  : TestUndo::lockedHeadLocalState(clean) Compared values are not the same
+   Actual   (bytes(repo->dir().filePath("index"))): "DIRC\x00\x00\x00\x02\x00\x00\x00\x06j\xE4\xB2\xF1\nK1\x8Bj\xE4\xB2\xF1\nK1\x8B\x00\x00\x00""2\x00\x0B\x03#\x00\x00\x81\xA4\x00\x00\x03\xE8\x00\x00\x03\xE8\x00\x00\x00\nF\x97\x93\xD4\xA5\xAE""B\x88\xB6\xE9\x89\xDB\x85URY\xF8\x0B""d\xDA\x00\x15""di"...
+   Expected (beforeIndex)                         : "DIRC\x00\x00\x00\x02\x00\x00\x00\x06j\xE4\xB2\xF1\b\x9F\xEC\xFAj\xE4\xB2\xF1\b\x9F\xEC\xFA\x00\x00\x00""2\x00\x0B\x03\r\x00\x00\x81\xA4\x00\x00\x03\xE8\x00\x00\x03\xE8\x00\x00\x00\nF\x97\x93\xD4\xA5\xAE""B\x88\xB6\xE9\x89\xDB\x85URY\xF8\x0B""d\xDA"...
+   Loc: [/home/misha/repos/Gittyup/test/undo.cpp(527)]
+QWARN  : TestUndo::lockedHeadLocalState(clean) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+QWARN  : TestUndo::lockedHeadLocalState(staged-target) This plugin does not support propagateSizeHints()
+FAIL!  : TestUndo::lockedHeadLocalState(staged-target) Compared values are not the same
+   Actual   (bytes(dir.filePath("file.txt"))): "A\n"
+   Expected (beforeFile)                     : "B\n"
+   Loc: [/home/misha/repos/Gittyup/test/undo.cpp(510)]
+QWARN  : TestUndo::lockedHeadLocalState(staged-target) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+QWARN  : TestUndo::lockedHeadLocalState(staged-and-unstaged) This plugin does not support propagateSizeHints()
+QWARN  : TestUndo::lockedHeadLocalState(staged-and-unstaged) git read-tree failed: 128 error: Entry 'file.txt' not uptodate. Cannot merge.
+FAIL!  : TestUndo::lockedHeadLocalState(staged-and-unstaged) Compared values are not the same
+   Actual   (run(statusArgs).output): "A  added/child.txt\x00""A  dir-to-file\x00""D  dir-to-file/child.txt\x00M  executable\x00""D  file-to-dir\x00""A  file-to-dir/child.txt\x00MM file.txt\x00M  link\x00""D  removed/child.txt\x00"
+   Expected (beforeStatus)          : "MM file.txt\x00"
+   Loc: [/home/misha/repos/Gittyup/test/undo.cpp(511)]
+QWARN  : TestUndo::lockedHeadLocalState(staged-and-unstaged) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+QWARN  : TestUndo::lockedHeadLocalState(locally-deleted-directory) This plugin does not support propagateSizeHints()
+FAIL!  : TestUndo::lockedHeadLocalState(locally-deleted-directory) Compared values are not the same
+   Actual   (run(statusArgs).output): ""
+   Expected (beforeStatus)          : " D removed/child.txt\x00"
+   Loc: [/home/misha/repos/Gittyup/test/undo.cpp(511)]
+QWARN  : TestUndo::lockedHeadLocalState(locally-deleted-directory) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+PASS   : TestUndo::cleanupTestCase()
+Totals: 2 passed, 4 failed, 0 skipped, 0 blacklisted, 745ms
+********* Finished testing of TestUndo *********

@@ -1,0 +1,21 @@
+********* Start testing of TestUndo *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260819 (Red Hat 16.2.1-2)), fedora 44
+QWARN  : TestUndo::initTestCase() This plugin does not support propagateSizeHints()
+PASS   : TestUndo::initTestCase()
+QWARN  : TestUndo::lockedHeadLocalState(clean) This plugin does not support propagateSizeHints()
+QWARN  : TestUndo::lockedHeadLocalState(clean) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+PASS   : TestUndo::lockedHeadLocalState(clean)
+QWARN  : TestUndo::lockedHeadLocalState(staged-target) This plugin does not support propagateSizeHints()
+QWARN  : TestUndo::lockedHeadLocalState(staged-target) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+PASS   : TestUndo::lockedHeadLocalState(staged-target)
+QWARN  : TestUndo::lockedHeadLocalState(staged-and-unstaged) This plugin does not support propagateSizeHints()
+QWARN  : TestUndo::lockedHeadLocalState(staged-and-unstaged) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+PASS   : TestUndo::lockedHeadLocalState(staged-and-unstaged)
+QWARN  : TestUndo::lockedHeadLocalState(locally-deleted-directory) This plugin does not support propagateSizeHints()
+QWARN  : TestUndo::lockedHeadLocalState(locally-deleted-directory) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+PASS   : TestUndo::lockedHeadLocalState(locally-deleted-directory)
+QWARN  : TestUndo::lockedHeadSubmodule() QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+PASS   : TestUndo::lockedHeadSubmodule()
+PASS   : TestUndo::cleanupTestCase()
+Totals: 7 passed, 0 failed, 0 skipped, 0 blacklisted, 1047ms
+********* Finished testing of TestUndo *********

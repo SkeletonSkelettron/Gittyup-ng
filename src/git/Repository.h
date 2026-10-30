@@ -27,6 +27,7 @@
 #include <QSet>
 #include <QSharedPointer>
 #include <QStringConverter>
+#include <optional>
 
 struct git_repository;
 class QProcess;
@@ -203,8 +204,10 @@ public:
   FilterList filters(const QString &path, const Blob &blob = Blob()) const;
 
   // The content of the file at 'path' like git adds it: with the line endings
-  // and the clean filters of its attributes. 'content' when they fail.
-  QByteArray cleanContent(const QString &path, const QByteArray &content) const;
+  // and the clean filters of its attributes. A failed filter has no result;
+  // its error remains available through lastError().
+  std::optional<QByteArray> cleanContent(const QString &path,
+                                         const QByteArray &content) const;
 
   // merge/rebase
   Commit mergeBase(const Commit &lhs, const Commit &rhs) const;

@@ -173,6 +173,7 @@ private:
   QList<QList<QVariantList>> mDiagnostics;
 
   QString mNotice;
+  QString mStagingError;
   QString mOldImage;
   QString mNewImage;
   QString mOldImageInfo;

@@ -1178,15 +1178,18 @@ FilterList Repository::filters(const QString &path, const Blob &blob) const {
   return FilterList(filters);
 }
 
-QByteArray Repository::cleanContent(const QString &path,
-                                    const QByteArray &content) const {
+std::optional<QByteArray>
+Repository::cleanContent(const QString &path, const QByteArray &content) const {
   git_filter_list *filters = nullptr;
   if (git_filter_list_load(&filters, d->repo, nullptr, path.toUtf8(),
-                           GIT_FILTER_TO_ODB, GIT_FILTER_DEFAULT) ||
-      !filters)
+                           GIT_FILTER_TO_ODB, GIT_FILTER_DEFAULT)) {
+    git_filter_list_free(filters);
+    return std::nullopt;
+  }
+  if (!filters)
     return content;
 
-  QByteArray result = content;
+  std::optional<QByteArray> result;
   git_buf buf = GIT_BUF_INIT;
   if (!git_filter_list_apply_to_buffer(&buf, filters, content.constData(),
                                        content.size()))
@@ -1433,7 +1436,9 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
     if (!force)
       cli.run({"update-index", "-q", "--refresh"});
 
-    QStringList args = {"read-tree", "-u"};
+    // Like git_checkout_tree, this doesn't update child repositories. Make
+    // that explicit even when the user enables submodule.recurse.
+    QStringList args = {"read-tree", "--no-recurse-submodules", "-u"};
     if (force) {
       args << "--reset" << target;
     } else if (unborn) {
