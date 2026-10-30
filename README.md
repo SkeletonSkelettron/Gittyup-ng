@@ -59,8 +59,8 @@ Gittyup-ng starts from the master branch of Gittyup of 24 September 2026. On top
 * **Merge editor**: conflicts are resolved by taking lines or whole conflicts from either side into an output
   that can be edited. The panes scroll together, the output waits while the conflicts scroll by, each side has
   a color of its own, and the syntax is highlighted.
-* **Undo and redo** (Ctrl+Z) of the actions that move HEAD, branches, tags or upstreams, like commits, resets,
-  merges and checkouts.
+* **Undo and redo** (Ctrl+Z) of the actions that move HEAD, branches or tags, like commits, resets, merges and
+  checkouts. Branches that come back get their upstreams again.
 * **Drag and drop**: dropping a branch onto another branch fast-forwards, merges or rebases, and dropping it onto
   a remote pushes it.
 * **Interactive rebase**: commits are picked, reworded, squashed, dropped and reordered in place of the graph.

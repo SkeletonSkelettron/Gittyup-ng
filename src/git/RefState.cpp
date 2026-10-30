@@ -269,16 +269,17 @@ bool RefState::restore(const Repository &repo, const RefState &current,
     emit notifier->referenceRemoved(shortName(name));
   }
 
-  // Restore the upstreams of the branches.
+  // Branches that are created again get their upstreams back, which were
+  // removed with them.
   git_config *config = nullptr;
   if (!git_repository_config(&config, raw)) {
-    for (auto it = mRefs.cbegin(); it != mRefs.cend(); ++it) {
-      if (!isBranch(it.key()))
+    for (const QString &name : created) {
+      if (!isBranch(name))
         continue;
 
-      QString name = shortName(it.key());
-      QPair<QString, QString> upstream = mUpstreams.value(name);
-      QString key = QString("branch.%1.").arg(name);
+      QString branch = shortName(name);
+      QPair<QString, QString> upstream = mUpstreams.value(branch);
+      QString key = QString("branch.%1.").arg(branch);
       if (configString(config, key + "remote") != upstream.first)
         setConfigString(config, key + "remote", upstream.first);
       if (configString(config, key + "merge") != upstream.second)

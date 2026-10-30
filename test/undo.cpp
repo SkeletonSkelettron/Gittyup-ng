@@ -34,6 +34,7 @@ private slots:
   void reset();
   void localChanges();
   void laterTags();
+  void laterUpstreams();
   void otherWorktree();
   void cleanupTestCase();
 
@@ -231,6 +232,48 @@ void TestUndo::laterTags() {
   QVERIFY(mHistory->redo());
   QVERIFY(mRepo->lookupBranch("tagged").isValid());
   QVERIFY(mRepo->lookupTag("fetched").isValid());
+}
+
+// Upstreams that change after an action aren't actions. They stay when it's
+// undone and redone, also the one of the branch that it moved.
+void TestUndo::laterUpstreams() {
+  git::Branch branch =
+      mView->createBranch("tracked", mRepo->lookupCommit(mFirst));
+  mHistory->check();
+  git::Commit second = mRepo->lookupBranch("ahead").target();
+  QVERIFY(branch.setTarget(second, "test").isValid());
+  mHistory->check();
+  QCOMPARE(mHistory->undoText(), QString("Update tracked"));
+
+  QStringList names = {"tracked", mMain};
+  for (const QString &name : names) {
+    QString key = QString("branch.%1.").arg(name);
+    mRepo->gitConfig().setValue(key + "remote", QString("origin"));
+    mRepo->gitConfig().setValue(key + "merge", QString("refs/heads/upstream"));
+  }
+  mHistory->check();
+  QCOMPARE(mHistory->undoText(), QString("Update tracked"));
+
+  auto upstreams = [this, &names] {
+    QStringList merges;
+    for (const QString &name : names) {
+      QString key = QString("branch.%1.merge").arg(name);
+      merges.append(mRepo->gitConfig().value<QString>(key));
+    }
+    return merges;
+  };
+
+  QStringList expected = {"refs/heads/upstream", "refs/heads/upstream"};
+  QVERIFY(mHistory->undo());
+  QCOMPARE(mRepo->lookupBranch("tracked").target().id(), mFirst);
+  QCOMPARE(upstreams(), expected);
+  QVERIFY(mHistory->redo());
+  QCOMPARE(mRepo->lookupBranch("tracked").target().id(), second.id());
+  QCOMPARE(upstreams(), expected);
+
+  for (const QString &name : names)
+    git({"config", "--remove-section", QString("branch.%1").arg(name)});
+  mHistory->check();
 }
 
 // A branch that another worktree checked out doesn't move, and HEAD doesn't

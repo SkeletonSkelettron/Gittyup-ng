@@ -66,10 +66,10 @@ public:
                   const QStringList &names, QString *error = nullptr) const;
 
   // Change the references 'names' of 'repo', like those of changes(), from
-  // 'current' to this state. Other references may have changed since, and
-  // stay. The index and the working directory don't change. The reflogs get
-  // 'message'. Returns false and sets 'error' when something couldn't be
-  // changed.
+  // 'current' to this state. Branches that are created get their upstreams.
+  // Other references and upstreams may have changed since, and stay. The
+  // index and the working directory don't change. The reflogs get 'message'.
+  // Returns false and sets 'error' when something couldn't be changed.
   bool restore(const Repository &repo, const RefState &current,
                const QStringList &names, const QString &message,
                QString *error = nullptr) const;
