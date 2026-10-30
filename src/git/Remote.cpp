@@ -655,9 +655,12 @@ Result Remote::push(Callbacks *callbacks, const Reference &src,
   if (!dst.isEmpty()) {
     refspec += ":" + dst;
   } else {
-    QString key = QString("branch.%1.merge").arg(src.name());
-    QString upstream = repo.gitConfig().value<QString>(key);
-    if (!upstream.isEmpty())
+    // The branch of the upstream is only on the remote of the upstream.
+    // Other remotes get the branch of the same name, like git pushes it.
+    Config config = repo.gitConfig();
+    QString key = QString("branch.%1.").arg(src.name());
+    QString upstream = config.value<QString>(key + "merge");
+    if (!upstream.isEmpty() && config.value<QString>(key + "remote") == name())
       refspec += ":" + upstream;
   }
 

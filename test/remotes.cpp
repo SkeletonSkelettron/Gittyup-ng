@@ -10,6 +10,7 @@
 #include "Test.h"
 #include "git/Branch.h"
 #include "git/Commit.h"
+#include "git/Config.h"
 #include "git/Index.h"
 #include "git/Remote.h"
 #include <QFile>
@@ -33,6 +34,7 @@ private slots:
   void setNameTaken();
   void deleteRemote();
   void deleteMissingRemote();
+  void pushToOtherRemote();
 
 private:
   void commit(git::Repository repo);
@@ -140,6 +142,27 @@ void TestRemotes::deleteMissingRemote() {
 
   QCOMPARE(mRepo->remotes().size(), 1);
   QCOMPARE(removed.count(), 0);
+}
+
+// The branch of the upstream is pushed to on the remote of the upstream.
+// Other remotes get the branch of the same name.
+void TestRemotes::pushToOtherRemote() {
+  QTemporaryDir dir;
+  git::Repository bare = git::Repository::init(dir.path(), true);
+  QVERIFY(bare.isValid());
+  git::Remote backup = mRepo->addRemote("backup", dir.path());
+  QVERIFY(backup.isValid());
+
+  QString key = QString("branch.%1.").arg(mMain);
+  mRepo->gitConfig().setValue(key + "remote", QString("origin"));
+  mRepo->gitConfig().setValue(key + "merge", QString("refs/heads/trunk"));
+  QCOMPARE(backup.push(nullptr, head()).error(), 0);
+  QVERIFY(bare.lookupBranch(mMain).isValid());
+  QVERIFY(!bare.lookupBranch("trunk").isValid());
+
+  mRepo->gitConfig().setValue(key + "remote", QString("backup"));
+  QCOMPARE(backup.push(nullptr, head()).error(), 0);
+  QVERIFY(bare.lookupBranch("trunk").isValid());
 }
 
 void TestRemotes::commit(git::Repository repo) {
