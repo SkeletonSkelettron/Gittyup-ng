@@ -52,11 +52,13 @@ void TestOpenRepository::gitRefuses() {
   QSKIP("git is found outside of the path on Windows");
 #endif
 
-  // Without git, libgit2 decides, and says why.
+  // Without git, libgit2 decides, and says why. The repositories that git
+  // opened are remembered, so open another one.
+  ScratchRepository other;
   QByteArray path = qgetenv("PATH");
   qputenv("PATH", "");
   git_fs_path__set_owner(kOwnerOther);
-  git::Repository repo = git::Repository::open(mRepo->workdir().path());
+  git::Repository repo = git::Repository::open(other->workdir().path());
   QString error = git::Repository::lastError();
   qputenv("PATH", path);
 
