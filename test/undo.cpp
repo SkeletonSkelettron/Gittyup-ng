@@ -38,6 +38,7 @@ private slots:
   void nestedRename();
   void otherWorktree();
   void lockedHead();
+  void firstCommit();
   void cleanupTestCase();
 
 private:
@@ -390,6 +391,37 @@ void TestUndo::lockedHead() {
   QCOMPARE(git({"status", "--porcelain"}), QString());
   QVERIFY(mHistory->undo());
   QCOMPARE(mRepo->head().name(), mMain);
+}
+
+// The first commit of a repository is undone too: its branch is unborn
+// again, and the files of the commit stay staged, like before it.
+void TestUndo::firstCommit() {
+  ScratchRepository repo;
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(qWaitForWindowExposed(&window));
+  RepoView *view = window.currentView();
+  UndoHistory *history = view->undoHistory();
+
+  QFile file(repo->workdir().filePath("first.txt"));
+  QVERIFY(file.open(QFile::WriteOnly));
+  file.write("first\n");
+  file.close();
+  repo->index().setStaged({"first.txt"}, true);
+  QVERIFY(view->commit(QString("First")));
+  history->check();
+  QVERIFY(history->canUndo());
+
+  QString dir = repo->workdir().path();
+  QVERIFY(history->undo());
+  QVERIFY(repo->isHeadUnborn());
+  QCOMPARE(git({"status", "--porcelain"}, dir), QString("A  first.txt"));
+  QCOMPARE(view->detailView()->commitMessage(), QString("First"));
+
+  QVERIFY(history->redo());
+  QVERIFY(!repo->isHeadUnborn());
+  QCOMPARE(repo->head().target().summary(), QString("First"));
+  QCOMPARE(git({"status", "--porcelain"}, dir), QString());
 }
 
 void TestUndo::cleanupTestCase() {

@@ -235,9 +235,12 @@ bool RefState::change(const Repository &repo, const RefState &current,
 
     emit notifier->referenceAboutToBeRemoved(ref);
 
+    // libgit2 refuses to delete the branch of HEAD, which is unborn again
+    // when the first commit is undone.
+    bool unborn = (name == current.mHead && name == mHead);
     git_reference *handle = ref;
-    int result = isBranch(name) ? git_branch_delete(handle)
-                                : git_reference_delete(handle);
+    int result = (isBranch(name) && !unborn) ? git_branch_delete(handle)
+                                             : git_reference_delete(handle);
     if (result) {
       return fail(
           tr("Unable to remove '%1' - %2").arg(shortName(name), lastError()));
