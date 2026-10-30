@@ -10,6 +10,7 @@
 #include "Filter.h"
 #include "Command.h"
 #include "Config.h"
+#include "git2/config.h"
 #include "git2/errors.h"
 #include "git2/filter.h"
 #include "git2/repository.h"
@@ -54,6 +55,7 @@ struct Stream {
   const git_filter *filter;
   const git_filter_source *filter_source;
   QProcess process;
+  bool required = false;
 
   // The content for an optional filter: it passes through unchanged when the
   // filter fails, like git does, also when the content couldn't be written.
@@ -70,12 +72,10 @@ static int stream_close(git_writestream *s) {
   struct Stream *stream = reinterpret_cast<struct Stream *>(s);
   stream->process.closeWriteChannel();
 
-  const FilterInfo *info = reinterpret_cast<const FilterInfo *>(stream->filter);
-
   QByteArray writeBuf;
   bool finished = stream->process.waitForFinished();
   if (stream->failed || !finished || stream->process.exitCode()) {
-    if (info->required) {
+    if (stream->required) {
       git_error_set_str(GIT_ERROR_FILTER,
                         stream->process.readAllStandardError());
       /* close stream before erroring out taking care
@@ -102,8 +102,7 @@ static int stream_close(git_writestream *s) {
 
 static int stream_write(git_writestream *s, const char *buffer, size_t len) {
   struct Stream *stream = reinterpret_cast<struct Stream *>(s);
-  const FilterInfo *info = reinterpret_cast<const FilterInfo *>(stream->filter);
-  if (!info->required)
+  if (!stream->required)
     stream->input.append(buffer, len);
 
   const size_t res = stream->process.write(buffer, len);
@@ -112,7 +111,7 @@ static int stream_write(git_writestream *s, const char *buffer, size_t len) {
 
   // An optional filter fails when the stream closes.
   stream->failed = true;
-  return info->required ? -1 : 0;
+  return stream->required ? -1 : 0;
 }
 
 int Stream::init(git_filter *self, const git_filter_source *src,
@@ -127,20 +126,42 @@ int Stream::init(git_filter *self, const git_filter_source *src,
   const FilterInfo *info = reinterpret_cast<const FilterInfo *>(self);
   git_filter_mode_t mode = git_filter_source_mode(src);
   QString command = (mode == GIT_FILTER_SMUDGE) ? info->smudge : info->clean;
+  required = info->required;
+
+  // The configuration of the repository may override the global driver,
+  // which the filter was registered for.
+  git_repository *repo = git_filter_source_repo(src);
+  git_config *config = nullptr;
+  if (!git_repository_config_snapshot(&config, repo)) {
+    QByteArray key = "filter." + info->name + '.';
+    git_buf buf = GIT_BUF_INIT;
+    QByteArray name = key + (mode == GIT_FILTER_SMUDGE ? "smudge" : "clean");
+    if (!git_config_get_string_buf(&buf, config, name))
+      command = QString::fromUtf8(buf.ptr, buf.size);
+    git_buf_dispose(&buf);
+
+    int value = 0;
+    if (!git_config_get_bool(&value, config, key + "required"))
+      required = value;
+    git_config_free(config);
+  }
+
+  // Like git, without a command the content passes through.
+  if (command.isEmpty())
+    return GIT_PASSTHROUGH;
 
   // Substitute path.
   command.replace("%f", quote(git_filter_source_path(src)));
 
   QString bash = Command::bashPath();
   if (bash.isEmpty())
-    return info->required ? GIT_EUSER : GIT_PASSTHROUGH;
+    return required ? GIT_EUSER : GIT_PASSTHROUGH;
 
-  git_repository *repo = git_filter_source_repo(src);
   process.setWorkingDirectory(git_repository_workdir(repo));
 
   process.start(bash, {"-c", command});
   if (!process.waitForStarted())
-    return info->required ? GIT_EUSER : GIT_PASSTHROUGH;
+    return required ? GIT_EUSER : GIT_PASSTHROUGH;
   return 0;
 }
 

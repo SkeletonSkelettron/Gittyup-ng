@@ -8,6 +8,7 @@
 #include "Test.h"
 
 #include "git/Commit.h"
+#include "git/Config.h"
 #include "git/Reference.h"
 #include "git/Repository.h"
 #include "git2/filter.h"
@@ -51,6 +52,10 @@ struct FakeHome {
     out << "    clean = cat\n";
     out << "    smudge = false\n";
     out << "    required = true\n";
+    // A filter that repositories override.
+    out << "[filter \"gittyupscope\"]\n";
+    out << "    clean = sed s/global/token/\n";
+    out << "    smudge = sed s/token/global/\n";
     gitconfig.close();
 
     qputenv("HOME", dir.path().toLocal8Bit());
@@ -66,6 +71,40 @@ FakeHome &fakeHome() {
 // Force construction (and therefore the $HOME override) before main().
 FakeHome &gFakeHomeInit = fakeHome();
 
+// Filter 'input' like libgit2 does when it checks out the file at 'path',
+// or cleans it to compare it with the index. It's 1 without a filter.
+int filter(git_repository *repo, const char *path, const QByteArray &input,
+           QByteArray &result, git_filter_mode_t mode = GIT_FILTER_SMUDGE) {
+  git_filter_list *filters = nullptr;
+  if (git_filter_list_load(&filters, repo, nullptr, path, mode,
+                           GIT_FILTER_DEFAULT) ||
+      !filters)
+    return 1;
+
+  git_buf buf = GIT_BUF_INIT;
+  int error = git_filter_list_apply_to_buffer(&buf, filters, input.constData(),
+                                              input.size());
+  result = QByteArray(buf.ptr, buf.size);
+  git_buf_dispose(&buf);
+  git_filter_list_free(filters);
+  return error;
+}
+
+// The repository at 'path' with attributes for the test filters.
+git_repository *open(const QString &path) {
+  QFile attributes(path + "/.gitattributes");
+  if (!attributes.open(QFile::WriteOnly))
+    return nullptr;
+  attributes.write("optional.txt filter=gittyupoptional\n"
+                   "required.txt filter=gittyuprequired\n"
+                   "scope.txt filter=gittyupscope\n");
+  attributes.close();
+
+  git_repository *repo = nullptr;
+  git_repository_open(&repo, path.toUtf8());
+  return repo;
+}
+
 } // namespace
 
 class TestFilter : public QObject {
@@ -74,6 +113,7 @@ class TestFilter : public QObject {
 private slots:
   void rejectsShellInjectionInFilename();
   void failingFilters();
+  void repositoryOverride();
 };
 
 // Regression test: a filename embedding a single quote, combined with a
@@ -130,37 +170,51 @@ void TestFilter::rejectsShellInjectionInFilename() {
 // like git does. A required one fails.
 void TestFilter::failingFilters() {
   Test::ScratchRepository repo;
-  QFile attributes(repo->workdir().filePath(".gitattributes"));
-  QVERIFY(attributes.open(QFile::WriteOnly));
-  attributes.write("optional.txt filter=gittyupoptional\n"
-                   "required.txt filter=gittyuprequired\n");
-  attributes.close();
-
-  git_repository *raw = nullptr;
-  QVERIFY(!git_repository_open(&raw, repo->workdir().path().toUtf8()));
-
-  // Smudge the content like libgit2 does when it checks the file out. It's
-  // 1 without a filter.
-  auto smudge = [raw](const char *path, QByteArray &result) {
-    git_filter_list *filters = nullptr;
-    if (git_filter_list_load(&filters, raw, nullptr, path,
-                             GIT_FILTER_TO_WORKTREE, GIT_FILTER_DEFAULT) ||
-        !filters)
-      return 1;
-
-    git_buf buf = GIT_BUF_INIT;
-    int error = git_filter_list_apply_to_buffer(&buf, filters, "content\n", 8);
-    result = QByteArray(buf.ptr, buf.size);
-    git_buf_dispose(&buf);
-    git_filter_list_free(filters);
-    return error;
-  };
+  git_repository *raw = open(repo->workdir().path());
+  QVERIFY(raw);
 
   QByteArray result;
-  QCOMPARE(smudge("optional.txt", result), 0);
+  QCOMPARE(filter(raw, "optional.txt", "content\n", result), 0);
   QCOMPARE(result, QByteArray("content\n"));
-  QVERIFY(smudge("required.txt", result) < 0);
+  QVERIFY(filter(raw, "required.txt", "content\n", result) < 0);
   git_repository_free(raw);
+}
+
+// The configuration of a repository overrides the global one of a filter,
+// like git does, and only for that repository.
+void TestFilter::repositoryOverride() {
+  Test::ScratchRepository local;
+  local->gitConfig().setValue("filter.gittyupscope.clean",
+                              QString("sed s/local/token/"));
+  local->gitConfig().setValue("filter.gittyupscope.smudge",
+                              QString("sed s/token/local/"));
+  local->gitConfig().setValue("filter.gittyupoptional.required", true);
+  Test::ScratchRepository global;
+  git_repository *localRepo = open(local->workdir().path());
+  git_repository *globalRepo = open(global->workdir().path());
+  QVERIFY(localRepo && globalRepo);
+
+  QByteArray result;
+  QCOMPARE(filter(localRepo, "scope.txt", "token\n", result), 0);
+  QCOMPARE(result, QByteArray("local\n"));
+  QCOMPARE(filter(globalRepo, "scope.txt", "token\n", result), 0);
+  QCOMPARE(result, QByteArray("global\n"));
+
+  // Files that the override checked out don't look changed.
+  QCOMPARE(filter(localRepo, "scope.txt", "local\n", result, GIT_FILTER_CLEAN),
+           0);
+  QCOMPARE(result, QByteArray("token\n"));
+  QCOMPARE(
+      filter(globalRepo, "scope.txt", "global\n", result, GIT_FILTER_CLEAN), 0);
+  QCOMPARE(result, QByteArray("token\n"));
+
+  // The optional filter is required in one of them.
+  QVERIFY(filter(localRepo, "optional.txt", "content\n", result) < 0);
+  QCOMPARE(filter(globalRepo, "optional.txt", "content\n", result), 0);
+  QCOMPARE(result, QByteArray("content\n"));
+
+  git_repository_free(localRepo);
+  git_repository_free(globalRepo);
 }
 
 TEST_MAIN(TestFilter)
