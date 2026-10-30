@@ -1,3 +1,38 @@
+### v0.0.7 - 2026-10-30
+
+#### Added
+
+* Take Ours and Take Theirs in the context menu of conflicted files, after confirming it. A file that the chosen side deleted is deleted
+
+#### Changed
+
+* Merging runs git instead of libgit2, and merging and aborting a merge run in the background without freezing the window
+* The references, the search index and the pull requests are read in the background when a repository opens
+
+#### Fixed
+
+* Double-clicking a branch, or dropping a branch onto another one and checking it out, could abort Gittyup-ng
+* Listing the changed files after a big merge or checkout took minutes
+* Aborting a merge failed when a file was changed on one side and deleted on the other
+* Files that one side deleted or both sides added didn't show as conflicts
+* Checking out files of a commit overwrote untracked files, staged changes and files in the way. It refuses now and lists them
+* Staging files dropped what other git programs had staged since
+* Cherry-picking and reverting committed staged changes with the commit, and canceling deleted them. They refuse staged changes now
+* Merging before the current merge was concluded committed it with the wrong parent
+* Amending a commit after the branch had moved on dropped the newer commits, and a signed commit could drop a commit that another program made while it was signed
+* Fast-forwards, checkouts and undo moved or checked out branches that another worktree had checked out
+* Undo deleted tags fetched since and reset upstreams changed since, couldn't undo renaming a branch into a folder of its old name or the first commit, and left the files changed when it failed
+* Pushing to another remote than the one of the upstream pushed to the name of the upstream branch
+* Push said "Everything up-to-date." without pushing when the remote-tracking branch was out of date, and a push that the remote rejected set the upstream
+* Canceling a fetch froze the window until git finished
+* Rebases ignored the committer that the commit settings override
+* Deinitializing a submodule could delete the commits that only its repository had, and the settings of other submodules
+* Staging lines of a new file kept CRLF line endings where the attributes ask for LF
+* Rewording an empty commit dropped it
+* Filters that fail although they aren't required stopped the operation, and filters ignored the commands of the repository's settings
+
+----
+
 ### v0.0.6 - 2026-10-29
 
 #### Added
