@@ -1978,12 +1978,6 @@ void RepoView::push(const git::Remote &rmt, const git::Reference &src,
     return;
   }
 
-  if (!tags && upstream.isValid() && ref.target() == upstream.target() &&
-      (dst.isEmpty() || dst == ref.qualifiedName())) {
-    entry->addEntry(tr("Everything up-to-date."));
-    return;
-  }
-
   mWatcher = new QFutureWatcher<git::Result>(this);
   connect(
       mWatcher, &QFutureWatcher<git::Result>::finished, mWatcher,

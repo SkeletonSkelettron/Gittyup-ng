@@ -131,6 +131,7 @@ test(NAME stashes)
 test(NAME revert)
 test(NAME theme)
 test(NAME take_side)
+test(NAME transfer)
 
 # Test case not compatible with Windows
 if(NOT WIN32)
