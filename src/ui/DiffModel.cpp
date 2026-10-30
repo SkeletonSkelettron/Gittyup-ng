@@ -150,10 +150,15 @@ void DiffModel::load() {
         mContent = load ? file.readAll() : file.read(kMaxReadBinary);
         binary = git::Blob::isBinary(mContent.left(kMaxReadBinary));
         // The patch refers to the content, keep it until the patch is reset.
-        if (load && !binary)
-          mPatch = git::Patch::fromBuffers(QByteArray(), mContent, mPath, mPath);
-        else if (!binary)
+        // Like the diffs of tracked files, it has the content that git adds,
+        // so that staged lines get the line endings of the attributes.
+        if (load && !binary) {
+          mContent = mView->repo().cleanContent(mPath, mContent);
+          mPatch =
+              git::Patch::fromBuffers(QByteArray(), mContent, mPath, mPath);
+        } else if (!binary) {
           mCanLoadAnyway = true;
+        }
       }
     }
 

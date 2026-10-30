@@ -12,6 +12,7 @@
 #include "dialogs/ConfirmDialog.h"
 #include "ui/ChangedFilesModel.h"
 #include "ui/DetailView.h"
+#include "ui/DiffModel.h"
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
 #include "conf/Settings.h"
@@ -46,6 +47,7 @@ private slots:
   void stageDirectory();
   void discardUntracked();
   void stageKeepsStagedByGit();
+  void stageLinesOfNewFile();
   void cleanupTestCase();
 
 private:
@@ -239,6 +241,44 @@ void TestIndex::stageKeepsStagedByGit() {
   QVERIFY(staged.contains("mine"));
   QVERIFY(staged.contains("theirs"));
   QCOMPARE(index.isStaged("theirs"), git::Index::Staged);
+}
+
+// Lines of a new file are staged like git adds the file, with the line
+// endings that its attributes ask for.
+void TestIndex::stageLinesOfNewFile() {
+  ScratchRepository repo;
+  QDir dir = repo->workdir();
+  auto git = [&dir](const QStringList &args) {
+    QProcess process;
+    process.setWorkingDirectory(dir.path());
+    process.start("git", args);
+    process.waitForFinished();
+    return process.readAllStandardOutput();
+  };
+
+  QFile attributes(dir.filePath(".gitattributes"));
+  QVERIFY(attributes.open(QFile::WriteOnly));
+  attributes.write("*.txt text eol=lf\n");
+  attributes.close();
+  git({"add", ".gitattributes"});
+  git({"commit", "-qm", "Add attributes"});
+
+  QFile file(dir.filePath("file.txt"));
+  QVERIFY(file.open(QFile::WriteOnly));
+  file.write("first\r\nsecond\r\n");
+  file.close();
+
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(qWaitForWindowExposed(&window));
+  git::Index index = repo->index();
+  index.read();
+  DiffModel model(window.currentView());
+  model.setDiff(repo->status(index, nullptr, false), "file.txt");
+  QCOMPARE(model.hunkCount(), 1);
+
+  model.toggleLine(model.row(0, 0));
+  QTRY_COMPARE(git({"show", ":file.txt"}), QByteArray("first\n"));
 }
 
 void TestIndex::cleanupTestCase() { mWindow->close(); }

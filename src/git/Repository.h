@@ -202,6 +202,10 @@ public:
   // filter
   FilterList filters(const QString &path, const Blob &blob = Blob()) const;
 
+  // The content of the file at 'path' like git adds it: with the line endings
+  // and the clean filters of its attributes. 'content' when they fail.
+  QByteArray cleanContent(const QString &path, const QByteArray &content) const;
+
   // merge/rebase
   Commit mergeBase(const Commit &lhs, const Commit &rhs) const;
   bool merge(const AnnotatedCommit &mergeHead);

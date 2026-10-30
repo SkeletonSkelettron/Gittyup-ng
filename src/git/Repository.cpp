@@ -1178,6 +1178,24 @@ FilterList Repository::filters(const QString &path, const Blob &blob) const {
   return FilterList(filters);
 }
 
+QByteArray Repository::cleanContent(const QString &path,
+                                    const QByteArray &content) const {
+  git_filter_list *filters = nullptr;
+  if (git_filter_list_load(&filters, d->repo, nullptr, path.toUtf8(),
+                           GIT_FILTER_TO_ODB, GIT_FILTER_DEFAULT) ||
+      !filters)
+    return content;
+
+  QByteArray result = content;
+  git_buf buf = GIT_BUF_INIT;
+  if (!git_filter_list_apply_to_buffer(&buf, filters, content.constData(),
+                                       content.size()))
+    result = QByteArray(buf.ptr, buf.size);
+  git_buf_dispose(&buf);
+  git_filter_list_free(filters);
+  return result;
+}
+
 Commit Repository::mergeBase(const Commit &lhs, const Commit &rhs) const {
   git_oid id;
   if (git_merge_base(&id, d->repo, lhs, rhs))
