@@ -1211,7 +1211,8 @@ bool Repository::merge(const AnnotatedCommit &mergeHead) {
  * If no current rebase is ongoing an invalid Rebase object is returned
  * \return
  */
-Rebase Repository::rebaseOpen() {
+Rebase Repository::rebaseOpen(const QString &overrideUser,
+                              const QString &overrideEmail) {
   git_rebase *rebase = nullptr;
   git_rebase_options opts = GIT_REBASE_OPTIONS_INIT; // TODO: check quite option
   // Sign the commits when the configuration asks for it.
@@ -1221,7 +1222,7 @@ Rebase Repository::rebaseOpen() {
     opts.checkout_options.checkout_strategy |=
         GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
   git_rebase_open(&rebase, d->repo, &opts);
-  return Rebase(d->repo, rebase);
+  return Rebase(d->repo, rebase, overrideUser, overrideEmail);
 }
 
 void Repository::rebaseAbort() {
@@ -1252,12 +1253,14 @@ void Repository::rebase(const AnnotatedCommit &mergeHead,
   }
 
   // start rebasing
-  rebaseContinue(QStringLiteral(""));
+  rebaseContinue(QStringLiteral(""), overrideUser, overrideEmail);
 }
 
-void Repository::rebaseContinue(const QString &commitMessage) {
+void Repository::rebaseContinue(const QString &commitMessage,
+                                const QString &overrideUser,
+                                const QString &overrideEmail) {
 
-  Rebase r = rebaseOpen();
+  Rebase r = rebaseOpen(overrideUser, overrideEmail);
   if (!r.isValid()) {
     // rebase anymore available. maybe rebased externally
     return;

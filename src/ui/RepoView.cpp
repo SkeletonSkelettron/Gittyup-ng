@@ -1651,7 +1651,8 @@ void RepoView::continueRebase() {
     // create a log entry
     mRebase = addLogEntry(tr(""), tr("Continue ongoing rebase"));
   }
-  mRepo.rebaseContinue(mDetails->commitMessage());
+  mRepo.rebaseContinue(mDetails->commitMessage(), mDetails->overrideUser(),
+                       mDetails->overrideEmail());
 }
 
 void RepoView::rebase(const git::AnnotatedCommit &upstream, LogEntry *parent) {

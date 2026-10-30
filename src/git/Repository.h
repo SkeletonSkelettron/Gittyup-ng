@@ -216,12 +216,17 @@ public:
     FinishedSuccessfully // successfully finished
   };
 
+  // The commits of a rebase are committed by the override user and email
+  // when they are given, also when it continues.
   void rebase(const AnnotatedCommit &mergeHead,
               const QString &overrideUser = QString(),
               const QString &overrideEmail = QString());
-  Rebase rebaseOpen();
+  Rebase rebaseOpen(const QString &overrideUser = QString(),
+                    const QString &overrideEmail = QString());
   void rebaseAbort();
-  void rebaseContinue(const QString &commitMessage);
+  void rebaseContinue(const QString &commitMessage,
+                      const QString &overrideUser = QString(),
+                      const QString &overrideEmail = QString());
   bool rebaseOngoing();
 
   // cherry-pick

@@ -19,6 +19,7 @@
 #include "git/Commit.h"
 #include "git/Tree.h"
 #include "git/Patch.h"
+#include "git/Signature.h"
 #include "git/Command.h"
 
 #include "log/LogEntry.h"
@@ -77,6 +78,7 @@ private slots:
                                               // cli and finish in the GUI
   void abortMR();
   void commitDuringRebase();
+  void overrideCommitter();
 
 private:
   git::Repository mRepo;
@@ -886,6 +888,52 @@ void TestRebase::commitDuringRebase() {
   QCOMPARE(rebaseAboutToRebase, 1);
   QCOMPARE(rebaseCommitSuccess, 1);
   QCOMPARE(rebaseConflict, 0);
+}
+
+// The commits get the override user and email as committer, also when the
+// rebase continues after a conflict.
+void TestRebase::overrideCommitter() {
+  // Without a view, which logs only the rebases that it starts itself.
+  QString path = Test::extractRepository("rebaseConflicts.zip");
+  QVERIFY(!path.isEmpty());
+  mRepo = git::Repository::open(path);
+  QVERIFY(mRepo.isValid());
+  Test::initRepo(mRepo);
+
+  QString user = "Override User";
+  QString email = "override@example.test";
+  auto committer = [this](const QString &name) {
+    return mRepo.lookupRef(name).target().committer();
+  };
+
+  auto main = mRepo.lookupRef(QString("refs/heads/main")).annotatedCommit();
+  EXECUTE_GIT_COMMAND(path, "checkout -q noConflict", 0);
+  mRepo.index().read();
+  mRepo.rebase(main, user, email);
+  QCOMPARE(mRepo.rebaseOngoing(), false);
+  QCOMPARE(committer("refs/heads/noConflict").name(), user);
+  QCOMPARE(committer("refs/heads/noConflict").email(), email);
+
+  EXECUTE_GIT_COMMAND(path, "checkout -q singleCommitConflict", 0);
+  mRepo.index().read();
+  mRepo.rebase(main, user, email);
+  QCOMPARE(mRepo.rebaseOngoing(), true);
+
+  // Resolve the conflict.
+  git::Diff diff = mRepo.status(mRepo.index(), nullptr, false);
+  QCOMPARE(diff.count(), 1);
+  QString name = diff.patch(0).name();
+  QFile file(mRepo.workdir().filePath(name));
+  QVERIFY(file.open(QIODevice::WriteOnly));
+  QVERIFY(file.write("resolved\n") != -1);
+  file.close();
+  mRepo.index().setStaged({name}, true);
+
+  mRepo.rebaseContinue("Resolved", user, email);
+  QCOMPARE(mRepo.rebaseOngoing(), false);
+  QString branch = "refs/heads/singleCommitConflict";
+  QCOMPARE(committer(branch).name(), user);
+  QCOMPARE(committer(branch).email(), email);
 }
 
 TEST_MAIN(TestRebase)
