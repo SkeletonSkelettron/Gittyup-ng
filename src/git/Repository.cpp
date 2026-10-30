@@ -1381,7 +1381,8 @@ QString Repository::stagedChangesError() const {
 }
 
 bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
-                          const QStringList &paths, int strategy) {
+                          const QStringList &paths, int strategy,
+                          const Commit &base) {
   // git read-tree checks out a whole tree like git_checkout_tree: it updates
   // the index and the workdir, but not HEAD.
   if (paths.isEmpty()) {
@@ -1390,13 +1391,15 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
 
     Cli cli(workdir().path());
     QString target = commit.isValid() ? commit.id().toString() : "HEAD";
+    QString from = base.isValid() ? base.id().toString() : "HEAD";
+    bool unborn = !base.isValid() && isHeadUnborn();
     int flags = callbacks ? callbacks->flags() : GIT_CHECKOUT_NOTIFY_NONE;
 
     // The files that change, like libgit2 reports the updated ones.
     QList<QPair<char, QString>> files;
-    if ((flags & GIT_CHECKOUT_NOTIFY_UPDATED) && !isHeadUnborn()) {
+    if ((flags & GIT_CHECKOUT_NOTIFY_UPDATED) && !unborn) {
       RunResult result =
-          cli.run({"diff-tree", "-r", "-z", "--name-status", "HEAD", target});
+          cli.run({"diff-tree", "-r", "-z", "--name-status", from, target});
       QList<QByteArray> fields = result.output.split('\0');
       for (int i = 0; i + 1 < fields.size(); i += 2) {
         char status = fields.at(i).isEmpty() ? 'M' : fields.at(i).at(0);
@@ -1415,11 +1418,10 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
     QStringList args = {"read-tree", "-u"};
     if (force) {
       args << "--reset" << target;
-    } else if (isHeadUnborn()) {
+    } else if (unborn) {
       args << "-m" << target;
     } else {
-      args << "-m"
-           << "HEAD" << target;
+      args << "-m" << from << target;
     }
 
     RunResult result = cli.run(args);

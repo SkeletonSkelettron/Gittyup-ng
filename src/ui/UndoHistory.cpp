@@ -229,9 +229,15 @@ bool UndoHistory::apply(const Action &action, bool undo) {
     }
   }
 
+  // The references change back when they can't all change, like while
+  // another git process locks one. So do the index and the files.
   QString message = QString("%1: %2").arg(title.toLower(), action.text);
-  if (!to.restore(repo, current, names, message, &error))
+  if (!to.restore(repo, current, names, message, &error)) {
+    if (action.mode == Checkout && commit.isValid() && from.headId().isValid())
+      repo.checkout(repo.lookupCommit(from.headId()), nullptr, QStringList(),
+                    GIT_CHECKOUT_SAFE, commit);
     return fail(error);
+  }
 
   if (action.mode == Mixed && commit.isValid() &&
       commit.reset(GIT_RESET_MIXED))

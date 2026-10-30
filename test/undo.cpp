@@ -37,6 +37,7 @@ private slots:
   void laterUpstreams();
   void nestedRename();
   void otherWorktree();
+  void lockedHead();
   void cleanupTestCase();
 
 private:
@@ -367,6 +368,26 @@ void TestUndo::otherWorktree() {
   QVERIFY(mRepo->head().isDetachedHead());
   QCOMPARE(git({"status", "--porcelain"}), QString());
   git({"worktree", "remove", "--force", path});
+  QVERIFY(mHistory->undo());
+  QCOMPARE(mRepo->head().name(), mMain);
+}
+
+// When HEAD can't change after the files changed, like while another git
+// process locks it, undoing fails and changes the files and the index back.
+void TestUndo::lockedHead() {
+  mView->checkout(mRepo->lookupBranch("ahead"));
+  mHistory->check();
+  QCOMPARE(mHistory->undoText(), QString("Checkout ahead"));
+
+  QFile lock(mRepo->dir().filePath("HEAD.lock"));
+  QVERIFY(lock.open(QFile::WriteOnly));
+  lock.close();
+  QVERIFY(!mHistory->undo());
+  QVERIFY(lock.remove());
+
+  QCOMPARE(mRepo->head().name(), QString("ahead"));
+  QCOMPARE(read("a.txt"), QByteArray("one\n"));
+  QCOMPARE(git({"status", "--porcelain"}), QString());
   QVERIFY(mHistory->undo());
   QCOMPARE(mRepo->head().name(), mMain);
 }

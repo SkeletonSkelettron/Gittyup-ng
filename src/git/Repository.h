@@ -237,9 +237,12 @@ public:
   QString stagedChangesError() const;
 
   // checkout
+  // Check out a whole commit over HEAD, or over 'base' when the index and
+  // the workdir have the tree of another commit, or files of the commit.
   bool checkout(const Commit &commit, CheckoutCallbacks *callbacks = nullptr,
                 const QStringList &paths = QStringList(),
-                int strategy = GIT_CHECKOUT_SAFE);
+                int strategy = GIT_CHECKOUT_SAFE,
+                const Commit &base = Commit());
 
   // Clean up after merge/rebase/cherry-pick/etc.
   int state() const;
