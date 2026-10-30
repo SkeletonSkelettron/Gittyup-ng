@@ -16,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QObject>
 #include <QSet>
+#include <atomic>
 
 class LogEntry;
 
@@ -29,7 +30,7 @@ public:
                   const QString &name = QString(), QObject *parent = nullptr,
                   const git::Repository &repo = git::Repository());
 
-  bool isCanceled() const { return mCanceled; }
+  bool isCanceled() const override { return mCanceled; }
   void setCanceled(bool canceled);
 
   void storeDeferredCredentials();
@@ -108,7 +109,7 @@ private:
   QElapsedTimer mTimer;
   QString mSideband;
   size_t mBytesReceived = 0;
-  bool mCanceled = false;
+  std::atomic<bool> mCanceled{false};
   bool mInteractive = true;
 
   // The encrypted identity file whose passphrase is asked for.

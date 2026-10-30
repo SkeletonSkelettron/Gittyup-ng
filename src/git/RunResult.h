@@ -15,6 +15,8 @@ struct RunResult {
   QByteArray output;
   QByteArray errors;
   int exitCode = -1;
+  // git was stopped before it finished, see Cli::run().
+  bool canceled = false;
 };
 
 } // namespace git

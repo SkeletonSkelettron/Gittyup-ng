@@ -721,15 +721,16 @@ void RepoView::cancelRemoteTransfer() {
   if (!mCallbacks)
     return;
 
+  // git stops soon, and the log tells how the transfer ended.
   mCallbacks->setCanceled(true);
-  QCoreApplication::processEvents();
-  if (mWatcher && mWatcher->isRunning())
-    mWatcher->waitForFinished();
 }
 
 void RepoView::cancelBackgroundTasks() {
   cancelIndexing();
   cancelRemoteTransfer();
+  QCoreApplication::processEvents();
+  if (mWatcher && mWatcher->isRunning())
+    mWatcher->waitForFinished();
   mCommits->cancelStatus();
   mDetails->cancelBackgroundTasks();
 }
@@ -1171,8 +1172,9 @@ QFuture<git::Result> RepoView::fetch(const git::Remote &rmt, bool tags,
       [this, remote, entry, interactive, parent] {
         entry->setBusy(false);
 
+        // A transfer that ended before it was canceled is done.
         git::Result result = mWatcher->result();
-        if (mCallbacks->isCanceled()) {
+        if (mCallbacks->isCanceled() && !result) {
           entry->addEntry(LogEntry::Error, tr("Fetch canceled."));
         } else if (!result) {
           error(entry, tr("fetch from"), remote.name(), result.errorString());
@@ -1986,7 +1988,7 @@ void RepoView::push(const git::Remote &rmt, const git::Reference &src,
         entry->setBusy(false);
 
         git::Result result = mWatcher->result();
-        if (mCallbacks->isCanceled()) {
+        if (mCallbacks->isCanceled() && !result) {
           entry->addEntry(LogEntry::Error, tr("Push canceled."));
         } else if (int err = result.error()) {
           QString name = remote.name();

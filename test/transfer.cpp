@@ -15,6 +15,7 @@
 #include "log/LogEntry.h"
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
+#include <QElapsedTimer>
 #include <QFile>
 #include <QProcess>
 
@@ -73,13 +74,14 @@ bool contains(LogEntry *entry, const QString &text) {
 
 } // namespace
 
-// Pushes to remotes: the log tells what the remote did.
+// Pushes to remotes and fetches from them: the log tells what the remote did.
 class TestTransfer : public QObject {
   Q_OBJECT
 
 private slots:
   void pushStaleTracking();
   void pushRejected();
+  void fetchCanceled();
 };
 
 // The remote-tracking branch may be old: another process may have deleted
@@ -149,6 +151,61 @@ void TestTransfer::pushRejected() {
   QCOMPARE(runGit(remoteDir.path(), {"rev-parse", "refs/heads/" + main}),
            before);
   QVERIFY(!git::Branch(repo->head()).upstream().isValid());
+}
+
+// Canceling a fetch stops git right away: nothing is fetched then.
+void TestTransfer::fetchCanceled() {
+#ifdef Q_OS_WIN
+  QSKIP("The upload pack of the remote is a shell script");
+#endif
+
+  ScratchRepository source;
+  QString sourceDir = source->workdir().path();
+  commit(sourceDir, "file.txt");
+  QString main = source->head().name();
+
+  ScratchRepository repo;
+  QString dir = repo->workdir().path();
+  git::Remote remote = repo->addRemote("origin", sourceDir);
+  runGit(dir, {"fetch", "-q", "origin"});
+  QString fetched = runGit(dir, {"rev-parse", "origin/" + main});
+  commit(sourceDir, "second.txt");
+
+  // The remote waits before it sends anything.
+  QTemporaryDir scripts;
+  QString started = scripts.filePath("started");
+  script(scripts.filePath("upload-pack"),
+         QString(": > '%1'\nsleep 5\nexec git upload-pack \"$@\"\n")
+             .arg(started)
+             .toUtf8());
+  repo->gitConfig().setValue("remote.origin.uploadpack",
+                             scripts.filePath("upload-pack"));
+
+  // A fetch of the window would run before.
+  repo->appConfig().setValue("autofetch.enable", false);
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(qWaitForWindowExposed(&window));
+  RepoView *view = window.currentView();
+  QElapsedTimer timer;
+  timer.start();
+  view->fetch(remote);
+  LogEntry *entry = lastEntry(view);
+  QVERIFY(entry);
+  QTRY_VERIFY(QFile::exists(started));
+
+  view->cancelRemoteTransfer();
+  QTRY_VERIFY(entry->progress() < 0);
+  QVERIFY2(timer.elapsed() < 3000,
+           qPrintable(QString::number(timer.elapsed())));
+  QVERIFY(contains(entry, "Fetch canceled."));
+  QCOMPARE(runGit(dir, {"rev-parse", "origin/" + main}), fetched);
+
+  // git left no locks behind.
+  repo->gitConfig().remove("remote.origin.uploadpack");
+  runGit(dir, {"fetch", "-q", "origin"});
+  QCOMPARE(runGit(dir, {"rev-parse", "origin/" + main}),
+           source->head().target().id().toString());
 }
 
 TEST_MAIN(TestTransfer)

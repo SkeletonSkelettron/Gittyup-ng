@@ -39,7 +39,8 @@ QString Cli::gitPath() {
 Cli::Cli(const QString &repositoryPath) : mRepositoryPath(repositoryPath) {}
 
 RunResult Cli::run(const QStringList &arguments, const QByteArray &input,
-                   const QMap<QString, QString> &envs) {
+                   const QMap<QString, QString> &envs,
+                   const std::function<bool()> &canceled) {
   RunResult result;
   QProcess process;
   QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -64,7 +65,20 @@ RunResult Cli::run(const QStringList &arguments, const QByteArray &input,
     return result;
   }
   process.closeWriteChannel();
-  process.waitForFinished(-1);
+  while (!process.waitForFinished(canceled ? 50 : -1) &&
+         process.state() != QProcess::NotRunning) {
+    if (canceled()) {
+      // git removes its lock files when it's terminated, killing it doesn't.
+      process.terminate();
+      if (!process.waitForFinished(2000)) {
+        process.kill();
+        process.waitForFinished();
+      }
+
+      result.canceled = true;
+      return result;
+    }
+  }
 
   if (process.exitStatus() == QProcess::CrashExit) {
     result.errors = process.errorString().toUtf8();

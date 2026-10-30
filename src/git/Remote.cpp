@@ -528,9 +528,14 @@ Result Remote::fetch(Callbacks *callbacks, bool tags, bool prune) {
     args.append("--tags");
   args.append(name());
 
+  // git stops when the fetch is canceled, before it changes references.
   git::Cli cli(repo.workdir().path());
-  RunResult result = cli.run(args);
+  RunResult result = cli.run(args, {}, {}, [callbacks] {
+    return callbacks && callbacks->isCanceled();
+  });
 
+  if (result.canceled)
+    return Result(GIT_EUSER, tr("The fetch was canceled."));
   if (result.exitCode != 0)
     return Result(-1, QString::fromUtf8(result.errors).trimmed());
 

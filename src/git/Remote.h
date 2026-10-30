@@ -78,6 +78,9 @@ public:
 
     virtual bool transfer(int total, int current, size_t bytes) { return true; }
 
+    // git stops the transfers that are canceled, see Cli::run().
+    virtual bool isCanceled() const { return false; }
+
     virtual bool resolve(int total, int current) { return true; }
 
     virtual void update(const QString &name, const Id &a, const Id &b) {}
