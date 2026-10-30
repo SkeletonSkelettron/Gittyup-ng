@@ -1,3 +1,16 @@
+### v0.0.8 - 2026-10-30
+
+#### Changed
+
+* Checkouts leave the submodules as they are even when submodule.recurse is set, as they did before checking out ran git
+
+#### Fixed
+
+* Undo that failed, like while another git process locked a branch, didn't put back the staged changes, the files deleted locally and the modes and links of the files as they were
+* Staging lines of a new file whose required clean filter fails staged the unfiltered file, or broke when the filter began to fail after the file was shown. It shows the filter's error now and doesn't stage
+
+----
+
 ### v0.0.7 - 2026-10-30
 
 #### Added
