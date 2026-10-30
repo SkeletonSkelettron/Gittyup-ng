@@ -10,6 +10,8 @@
 #include "git/Commit.h"
 #include "git/Reference.h"
 #include "git/Repository.h"
+#include "git2/filter.h"
+#include "git2/repository.h"
 
 #include <QDir>
 #include <QFile>
@@ -41,6 +43,14 @@ struct FakeHome {
     out << "[filter \"gittyupsecuritytest\"]\n";
     out << "    clean = cat\n";
     out << "    smudge = printf 'ARG=[%s]' %f > \"" << argsOutPath << "\"\n";
+    // Filters whose smudge fails.
+    out << "[filter \"gittyupoptional\"]\n";
+    out << "    clean = cat\n";
+    out << "    smudge = false\n";
+    out << "[filter \"gittyuprequired\"]\n";
+    out << "    clean = cat\n";
+    out << "    smudge = false\n";
+    out << "    required = true\n";
     gitconfig.close();
 
     qputenv("HOME", dir.path().toLocal8Bit());
@@ -63,6 +73,7 @@ class TestFilter : public QObject {
 
 private slots:
   void rejectsShellInjectionInFilename();
+  void failingFilters();
 };
 
 // Regression test: a filename embedding a single quote, combined with a
@@ -113,6 +124,43 @@ void TestFilter::rejectsShellInjectionInFilename() {
   args.close();
 
   QCOMPARE(content, QString("ARG=[%1]").arg(maliciousName));
+}
+
+// When an optional filter fails, the content passes through it unchanged,
+// like git does. A required one fails.
+void TestFilter::failingFilters() {
+  Test::ScratchRepository repo;
+  QFile attributes(repo->workdir().filePath(".gitattributes"));
+  QVERIFY(attributes.open(QFile::WriteOnly));
+  attributes.write("optional.txt filter=gittyupoptional\n"
+                   "required.txt filter=gittyuprequired\n");
+  attributes.close();
+
+  git_repository *raw = nullptr;
+  QVERIFY(!git_repository_open(&raw, repo->workdir().path().toUtf8()));
+
+  // Smudge the content like libgit2 does when it checks the file out. It's
+  // 1 without a filter.
+  auto smudge = [raw](const char *path, QByteArray &result) {
+    git_filter_list *filters = nullptr;
+    if (git_filter_list_load(&filters, raw, nullptr, path,
+                             GIT_FILTER_TO_WORKTREE, GIT_FILTER_DEFAULT) ||
+        !filters)
+      return 1;
+
+    git_buf buf = GIT_BUF_INIT;
+    int error = git_filter_list_apply_to_buffer(&buf, filters, "content\n", 8);
+    result = QByteArray(buf.ptr, buf.size);
+    git_buf_dispose(&buf);
+    git_filter_list_free(filters);
+    return error;
+  };
+
+  QByteArray result;
+  QCOMPARE(smudge("optional.txt", result), 0);
+  QCOMPARE(result, QByteArray("content\n"));
+  QVERIFY(smudge("required.txt", result) < 0);
+  git_repository_free(raw);
 }
 
 TEST_MAIN(TestFilter)

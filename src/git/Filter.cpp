@@ -54,6 +54,11 @@ struct Stream {
   const git_filter *filter;
   const git_filter_source *filter_source;
   QProcess process;
+
+  // The content for an optional filter: it passes through unchanged when the
+  // filter fails, like git does, also when the content couldn't be written.
+  QByteArray input;
+  bool failed = false;
 };
 
 static void stream_free(git_writestream *stream) {
@@ -67,34 +72,28 @@ static int stream_close(git_writestream *s) {
 
   const FilterInfo *info = reinterpret_cast<const FilterInfo *>(stream->filter);
 
-  int error = GIT_OK;
-  if (!stream->process.waitForFinished() || stream->process.exitCode()) {
-    git_error_set_str(GIT_ERROR_FILTER, stream->process.readAllStandardError());
-    error = info->required ? GIT_EUSER : GIT_PASSTHROUGH;
-  }
-
   QByteArray writeBuf;
-  if (error == GIT_PASSTHROUGH) {
-    // writeBuf = &stream->input;
-    //  TODO: must be implemented!!!!
-    //  Problem is that we don't have the complete data.
-    //  Shall we really store the complete data, or maybe just reading the file
-    //  again?
-    assert(false);
-    return error;
-  } else if (error == 0) {
-    writeBuf = stream->process.readAll();
+  bool finished = stream->process.waitForFinished();
+  if (stream->failed || !finished || stream->process.exitCode()) {
+    if (info->required) {
+      git_error_set_str(GIT_ERROR_FILTER,
+                        stream->process.readAllStandardError());
+      /* close stream before erroring out taking care
+       * to preserve the original error */
+      // git_error *last_error;
+      // git_error_save(&last_error);
+      stream->next->close(stream->next);
+      // git_error_restore(last_error);
+      return GIT_EUSER;
+    }
+
+    writeBuf = stream->input;
   } else {
-    /* close stream before erroring out taking care
-     * to preserve the original error */
-    // git_error *last_error;
-    // git_error_save(&last_error);
-    stream->next->close(stream->next);
-    // git_error_restore(last_error);
-    return error;
+    writeBuf = stream->process.readAll();
   }
 
-  error = stream->next->write(stream->next, writeBuf.data(), writeBuf.length());
+  int error =
+      stream->next->write(stream->next, writeBuf.data(), writeBuf.length());
   if (error == GIT_OK) {
     error = stream->next->close(stream->next);
   }
@@ -103,10 +102,17 @@ static int stream_close(git_writestream *s) {
 
 static int stream_write(git_writestream *s, const char *buffer, size_t len) {
   struct Stream *stream = reinterpret_cast<struct Stream *>(s);
+  const FilterInfo *info = reinterpret_cast<const FilterInfo *>(stream->filter);
+  if (!info->required)
+    stream->input.append(buffer, len);
+
   const size_t res = stream->process.write(buffer, len);
-  if (res != len)
-    return -1;
-  return 0;
+  if (res == len)
+    return 0;
+
+  // An optional filter fails when the stream closes.
+  stream->failed = true;
+  return info->required ? -1 : 0;
 }
 
 int Stream::init(git_filter *self, const git_filter_source *src,
