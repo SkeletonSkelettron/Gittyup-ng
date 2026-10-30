@@ -313,8 +313,8 @@ void TestUndo::nestedRename() {
 }
 
 // A branch that another worktree checked out doesn't move, and HEAD doesn't
-// point to it again, which would leave the index and the files of that
-// worktree behind. Nothing changes then.
+// point to it, also not again, which would leave the index and the files of
+// that worktree behind. Nothing changes then.
 void TestUndo::otherWorktree() {
   git::Commit first = mRepo->lookupCommit(mFirst);
   git::Commit second = mRepo->lookupBranch("ahead").target();
@@ -340,9 +340,16 @@ void TestUndo::otherWorktree() {
   QVERIFY(mHistory->undo());
   QCOMPARE(mRepo->lookupBranch("linked").target().id(), mFirst);
 
+  // Nor checking it out here.
+  QVERIFY(mHistory->redo());
+  git({"worktree", "add", "-q", path, "linked"});
+  mView->checkout(mRepo->lookupBranch("linked"));
+  QCOMPARE(mRepo->head().name(), mMain);
+  QCOMPARE(git({"status", "--porcelain"}), QString());
+  git({"worktree", "remove", "--force", path});
+
   // Undo checkouts of another commit, from the branch and from a detached
   // HEAD, while another worktree checked the branch out.
-  QVERIFY(mHistory->redo());
   mView->checkout(mRepo->lookupBranch("linked"));
   mHistory->check();
   git({"worktree", "add", "-q", path, mMain});

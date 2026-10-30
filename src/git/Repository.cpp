@@ -555,6 +555,15 @@ bool Repository::setHead(const Reference &ref) {
   if (!ref.isLocalBranch())
     return setHeadDetached(ref.target());
 
+  // Like git checkout, and libgit2 from a branch: committing in either
+  // worktree would move the branch under the index and the files of the
+  // other one.
+  if (ref.isCheckedOutElsewhere()) {
+    setError(GIT_ERROR_REFERENCE,
+             tr("'%1' is checked out in another worktree.").arg(ref.name()));
+    return false;
+  }
+
   QString msg = checkoutMessage(*this, ref.name());
   QStringList args = {"symbolic-ref", "-m", msg, "HEAD", ref.qualifiedName()};
 

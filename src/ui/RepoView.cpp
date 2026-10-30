@@ -2295,6 +2295,15 @@ void RepoView::checkout(const git::Commit &commit, const git::Reference &ref,
   }
 
   LogEntry *entry = addLogEntry(name, tr("Checkout"));
+
+  // Before the files change, see Repository::setHead().
+  if (!detach && ref.isCheckedOutElsewhere()) {
+    entry->addEntry(
+        LogEntry::Error,
+        tr("'%1' is checked out in another worktree.").arg(ref.name()));
+    return;
+  }
+
   CheckoutCallbacks callbacks(entry, GIT_CHECKOUT_NOTIFY_DIRTY);
   bool checkedOut = false;
   bool ran = runBusy([&] {
