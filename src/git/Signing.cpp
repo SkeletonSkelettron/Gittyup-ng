@@ -245,33 +245,43 @@ int createCommit(git_oid *id, git_repository *repo, const char *updateRef,
   if (!updateRef)
     return 0;
 
-  // Move the reference like git_commit_create() does.
+  // Move the reference from the first parent like git_commit_create() does.
   QByteArray summary = QByteArray(message).split('\n').value(0);
   QByteArray log = (count == 0 ? QByteArray("commit (initial): ")
                     : count > 1 ? QByteArray("commit (merge): ")
                                 : QByteArray("commit: ")) +
                    summary;
-  return updateReference(repo, updateRef, id, log.constData());
+  const git_oid *current = count ? git_commit_id(parents[0]) : nullptr;
+  return updateReference(repo, updateRef, id, current, log.constData());
 }
 
-int updateReference(git_repository *repo, const char *name,
-                    const git_oid *id, const char *log) {
+int updateReference(git_repository *repo, const char *name, const git_oid *id,
+                    const git_oid *current, const char *log) {
+  // The branch that HEAD points to.
+  QByteArray target = name;
   git_reference *ref = nullptr;
-  git_reference *updated = nullptr;
-  int result = 0;
-  if (!git_reference_lookup(&ref, repo, name) &&
-      git_reference_type(ref) == GIT_REFERENCE_SYMBOLIC) {
-    result = git_reference_create(&updated, repo,
-                                  git_reference_symbolic_target(ref), id, 1,
-                                  log);
-  } else if (ref) {
-    result = git_reference_set_target(&updated, ref, id, log);
-  } else {
-    result = git_reference_create(&updated, repo, name, id, 1, log);
+  if (!git_reference_lookup(&ref, repo, name)) {
+    if (git_reference_type(ref) == GIT_REFERENCE_SYMBOLIC)
+      target = git_reference_symbolic_target(ref);
+    git_reference_free(ref);
   }
 
-  git_reference_free(ref);
+  // libgit2 compares while it holds the lock of the reference.
+  git_reference *updated = nullptr;
+  int result = current
+                   ? git_reference_create_matching(&updated, repo, target, id,
+                                                   1, current, log)
+                   : git_reference_create(&updated, repo, target, id, 0, log);
   git_reference_free(updated);
+
+  if (result == GIT_EMODIFIED || result == GIT_EEXISTS) {
+    QString branch = QString::fromUtf8(target);
+    if (branch.startsWith("refs/heads/"))
+      branch.remove(0, 11);
+    QString error = tr("'%1' changed while the commit was made.").arg(branch);
+    git_error_set_str(GIT_ERROR_REFERENCE, error.toUtf8().constData());
+  }
+
   return result;
 }
 

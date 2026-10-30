@@ -37,9 +37,12 @@ int createCommit(git_oid *id, git_repository *repo, const char *updateRef,
                  const char *message, const git_tree *tree, size_t count,
                  const git_commit *parents[]);
 
-// Point the reference 'name', or the branch it points to, at 'id'.
-int updateReference(git_repository *repo, const char *name,
-                    const git_oid *id, const char *log);
+// Point the reference 'name', or the branch it points to, at 'id' if it still
+// points at 'current', or doesn't exist yet when 'current' is null, like
+// git_commit_create() moves it. Signing takes time, and another process may
+// have moved it meanwhile.
+int updateReference(git_repository *repo, const char *name, const git_oid *id,
+                    const git_oid *current, const char *log);
 
 // Creates the commits of rebases, as git_rebase_options::commit_create_cb
 // with the repository as payload.

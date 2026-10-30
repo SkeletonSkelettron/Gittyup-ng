@@ -26,6 +26,7 @@ private slots:
   void testAmendDialog();
   void testAmendDialog2();
   void testAmendDialogNewLineInMessage();
+  void testAmendStale();
 };
 
 using namespace git;
@@ -289,6 +290,42 @@ void TestAmend::testAmendDialogNewLineInMessage() {
                 "Test commit message\nNewLine");
 
   QCOMPARE(d.getInfo().commitMessage, "Test commit message\nNewLine");
+}
+
+// The amend dialog stays open while HEAD moves on. Amending the commit that
+// it shows fails then, and keeps the commits that came since.
+void TestAmend::testAmendStale() {
+  Test::ScratchRepository repo;
+  auto commit = [&repo](const QString &name) {
+    QFile file(repo->workdir().filePath(name));
+    if (!file.open(QFile::WriteOnly))
+      return git::Commit();
+    file.write(name.toUtf8() + "\n");
+    file.close();
+    repo->index().setStaged({name}, true);
+    return repo->commit(QString("Add %1").arg(name));
+  };
+
+  git::Commit first = commit("a.txt");
+  QVERIFY(first.isValid());
+
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(QTest::qWaitForWindowExposed(&window));
+  RepoView *view = window.currentView();
+  view->promptToAmend(first);
+  AmendDialog *dialog = view->findChild<AmendDialog *>();
+  QVERIFY(dialog);
+
+  git::Commit second = commit("b.txt");
+  QVERIFY(second.isValid());
+  dialog->accept();
+  QCOMPARE(repo->head().target().id(), second.id());
+  QCOMPARE(repo->head().target().parents().value(0).id(), first.id());
+
+  git::Signature signature = repo->defaultSignature();
+  QVERIFY(!repo->amend(first, signature, signature, "Stale"));
+  QCOMPARE(repo->head().target().id(), second.id());
 }
 
 TEST_MAIN(TestAmend)

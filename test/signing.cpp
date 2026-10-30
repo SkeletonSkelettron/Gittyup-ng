@@ -33,6 +33,7 @@ private slots:
   void missingKey();
   void gpg();
   void rebase();
+  void concurrentUpdate();
 
 private:
   git::Commit commit(const QString &name);
@@ -191,6 +192,47 @@ void TestSigning::rebase() {
   QCOMPARE(rebased.summary(), QString("Add e.txt"));
   QCOMPARE(rebased.parents().first().id(), tip.id());
   QCOMPARE(rebased.signatureKind(), QString("SSH"));
+}
+
+// A commit that another git process puts on the branch while the commit is
+// signed stays there: the commit fails like git's.
+void TestSigning::concurrentUpdate() {
+#ifdef Q_OS_WIN
+  QSKIP("The signer is a shell script");
+#endif
+
+  git::Config config = mRepo->gitConfig();
+  config.setValue("commit.gpgsign", true);
+  config.setValue("gpg.format", QString("ssh"));
+  config.setValue("user.signingkey", mKey + ".pub");
+
+  QString dir = mRepo->workdir().path();
+  QString base = mRepo->head().target().id().toString();
+  QProcess git;
+  git.setWorkingDirectory(dir);
+  git.start(GIT_EXECUTABLE,
+            {"commit-tree", base + "^{tree}", "-p", base, "-m", "Concurrent"});
+  QVERIFY(git.waitForFinished());
+  QString concurrent = QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+  QVERIFY(!concurrent.isEmpty());
+
+  // The signer moves the branch, then signs.
+  QFile signer(mKeys.filePath("signer"));
+  QVERIFY(signer.open(QFile::WriteOnly));
+  signer.write(QString("#!/bin/sh\n'%1' -C '%2' update-ref HEAD %3 || exit 1\n"
+                       "exec '%4' \"$@\"\n")
+                   .arg(GIT_EXECUTABLE, dir, concurrent,
+                        QStandardPaths::findExecutable("ssh-keygen"))
+                   .toUtf8());
+  signer.close();
+  QVERIFY(signer.setPermissions(QFile::ReadOwner | QFile::WriteOwner |
+                                QFile::ExeOwner));
+  config.setValue("gpg.ssh.program", signer.fileName());
+
+  git::Commit commit = this->commit("concurrent.txt");
+  config.remove("gpg.ssh.program");
+  QVERIFY(!commit.isValid());
+  QCOMPARE(mRepo->head().target().id().toString(), concurrent);
 }
 
 git::Commit TestSigning::commit(const QString &name) {

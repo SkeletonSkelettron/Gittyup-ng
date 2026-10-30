@@ -315,9 +315,12 @@ bool Commit::amend(const Signature &author, const Signature &committer,
   int error = Signing::createCommit(
       &oid, repo, nullptr, authorSig, committerSig, message.constData(),
       newTree, parents.size(), (const git_commit **)parents.data());
+  // HEAD may have moved on since the amend started, like while the dialog of
+  // the amend is open. Its commits stay then.
   if (!error) {
     QByteArray log = "commit (amend): " + message.split('\n').value(0);
-    error = Signing::updateReference(repo, "HEAD", &oid, log.constData());
+    error = Signing::updateReference(repo, "HEAD", &oid, git_commit_id(*this),
+                                     log.constData());
   }
 
   git_tree_free(oldTree);
