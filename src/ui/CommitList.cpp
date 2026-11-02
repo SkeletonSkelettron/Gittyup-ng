@@ -149,6 +149,14 @@ public:
 
     // Connect watcher to signal when the status diff finishes.
     connect(&mStatus, &QFutureWatcher<git::Diff>::finished, [this] {
+      // A newer status waited for this one, which is out of date.
+      if (mStatusPending) {
+        mStatusPending = false;
+        mStatusCallbacks.setCanceled(false);
+        startStatus();
+        return;
+      }
+
       mTimer.stop();
       dispatchResetWalker(true);
     });
@@ -199,8 +207,13 @@ public:
     // The status sees the workdir as it is from now on.
     emit statusStarted();
 
-    // Cancel existing status diff.
-    cancelStatus();
+    // Stop a running status and start again when it ends. git status can't
+    // be stopped, and waiting for it froze the window.
+    if (mStatus.isRunning()) {
+      mStatusCallbacks.setCanceled(true);
+      mStatusPending = true;
+      return;
+    }
 
     // Reload the index before starting the status thread. Allowing
     // it to reload on the thread frequently corrupts the index.
@@ -232,6 +245,7 @@ public:
   }
 
   void cancelStatus() {
+    mStatusPending = false;
     if (!mStatus.isRunning())
       return;
 
@@ -941,6 +955,8 @@ private:
 
   // The number of statuses that were started.
   int mStatusCount = 0;
+  // A status starts when the running one ends.
+  bool mStatusPending = false;
 
   DiffCallbacks mStatusCallbacks;
   QFutureWatcher<git::Diff> mStatus;
