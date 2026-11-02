@@ -479,6 +479,7 @@ private:
   Index *mIndex;
   QProcess mIndexer;
   bool mRestartIndexer = false;
+  bool mIndexPending = false;
 
   History *mHistory;
   UndoHistory *mUndo = nullptr;

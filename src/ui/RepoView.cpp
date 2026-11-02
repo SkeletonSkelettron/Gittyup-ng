@@ -568,6 +568,14 @@ bool RepoView::runBusy(const std::function<void()> &work) {
 
   mBusy = false;
   emit busyChanged();
+
+  // Index what the operation changed after the caller is done, which may
+  // start another one.
+  if (mIndexPending) {
+    mIndexPending = false;
+    QTimer::singleShot(0, this, &RepoView::startIndexing);
+  }
+
   return true;
 }
 
@@ -1006,6 +1014,13 @@ void RepoView::findPrevious() { mDetails->findPrevious(); }
 void RepoView::startIndexing() {
   if (!mRepo.appConfig().value<bool>("index.enable", true))
     return;
+
+  // Starting a process took seconds while git wrote thousands of files, and
+  // the spinner of the operation stopped. Start after it, see runBusy().
+  if (mBusy) {
+    mIndexPending = true;
+    return;
+  }
 
   if (mIndexer.state() != QProcess::NotRunning) {
     mRestartIndexer = true;
