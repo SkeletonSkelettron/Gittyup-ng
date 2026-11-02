@@ -127,6 +127,7 @@ set_target_properties(
              RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 if(WIN32)
+  target_sources(app PRIVATE CrashHandler.cpp)
   target_link_libraries(app dbghelp)
 elseif(APPLE)
   set_target_properties(

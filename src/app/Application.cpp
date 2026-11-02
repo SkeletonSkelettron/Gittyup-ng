@@ -52,54 +52,10 @@ bool Application::mIsInTest = false;
 #include <unistd.h>
 
 #elif defined(Q_OS_WIN)
+#include "CrashHandler.h"
 #include <windows.h>
-#include <dbghelp.h>
-#include <strsafe.h>
 #include <QWindow>
 #include <io.h>
-
-static LPTOP_LEVEL_EXCEPTION_FILTER defaultFilter = nullptr;
-
-static LONG WINAPI exceptionFilter(PEXCEPTION_POINTERS info) {
-  // Protect against reentering.
-  static bool entered = false;
-  if (entered)
-    ExitProcess(1);
-  entered = true;
-
-  // Write dump file.
-  SYSTEMTIME localTime;
-  GetLocalTime(&localTime);
-
-  wchar_t temp[MAX_PATH];
-  GetTempPath(MAX_PATH, temp);
-
-  wchar_t dir[MAX_PATH];
-  const wchar_t *gittyup_name = L"%s" GITTYUP_NAME;
-  StringCchPrintf(dir, MAX_PATH, gittyup_name, temp);
-  CreateDirectory(dir, NULL);
-
-  wchar_t fileName[MAX_PATH];
-  const wchar_t *s = L"%s\\%s-%s-%04d%02d%02d-%02d%02d%02d-%ld-%ld.dmp";
-  StringCchPrintf(fileName, MAX_PATH, s, dir, GITTYUP_NAME, GITTYUP_VERSION,
-                  localTime.wYear, localTime.wMonth, localTime.wDay,
-                  localTime.wHour, localTime.wMinute, localTime.wSecond,
-                  GetCurrentProcessId(), GetCurrentThreadId());
-
-  HANDLE dumpFile =
-      CreateFile(fileName, GENERIC_READ | GENERIC_WRITE,
-                 FILE_SHARE_WRITE | FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
-
-  MINIDUMP_EXCEPTION_INFORMATION expParam;
-  expParam.ThreadId = GetCurrentThreadId();
-  expParam.ExceptionPointers = info;
-  expParam.ClientPointers = TRUE;
-
-  MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), dumpFile,
-                    MiniDumpWithDataSegs, &expParam, NULL, NULL);
-
-  return defaultFilter ? defaultFilter(info) : EXCEPTION_CONTINUE_SEARCH;
-}
 #endif
 
 namespace {
@@ -320,7 +276,7 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
 
 #elif defined(Q_OS_WIN)
   // FIXME: Install in main before anything else?
-  defaultFilter = SetUnhandledExceptionFilter(&exceptionFilter);
+  CrashHandler::install(isInTest());
 
 #elif defined(Q_OS_LINUX)
   QIcon icon;
