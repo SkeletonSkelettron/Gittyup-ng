@@ -56,6 +56,7 @@
 #include <QTimer>
 #include <QFile>
 #include <QProcess>
+#include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWidget>
 #include <QStyleHints>
@@ -92,6 +93,7 @@ private slots:
   void search();
   void menu();
   void submenu();
+  void menuGarbage();
   void solo();
   void hide();
   void palette();
@@ -415,6 +417,59 @@ void TestQmlViews::submenu() {
   QVERIFY(submenuOpened);
   QVERIFY(firstHovered);
   QVERIFY(submenuClosed);
+  QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
+}
+
+// The entries of an open menu stay when JavaScript collects its garbage.
+// They were left to it, and the menu shrank to its last entry.
+void TestQmlViews::menuGarbage() {
+  QMenu menu;
+  menu.addAction("First");
+  menu.addSeparator();
+  menu.addAction("Second");
+  QMenu *more = menu.addMenu("More");
+  more->addAction("Third");
+  menu.addAction("Last");
+
+  QQuickWidget *view = mWindow->quickView();
+  QPoint pos = view->mapToGlobal(QPoint(300, 300));
+
+  // The entries of the open menus, with the size of submenus in brackets.
+  auto entries = [view] {
+    QStringList entries;
+    QList<QQuickItem *> items = {view->quickWindow()->contentItem()};
+    while (!items.isEmpty()) {
+      QQuickItem *item = items.takeFirst();
+      if (item->inherits("QQuickMenuSeparator")) {
+        entries.append("-");
+      } else if (item->inherits("QQuickMenuItem")) {
+        QString text = item->property("text").toString();
+        if (QObject *submenu = item->property("subMenu").value<QObject *>())
+          text += QString("[%1]").arg(submenu->property("count").toInt());
+        entries.append(text);
+      }
+      items.append(item->childItems());
+    }
+
+    entries.sort();
+    return entries;
+  };
+
+  QStringList before;
+  QStringList after;
+  QTimer::singleShot(200, [&] {
+    before = entries();
+    view->engine()->collectGarbage();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    after = entries();
+    keyClick(view, Qt::Key_Escape);
+  });
+
+  QmlSupport::execMenu(&menu, pos);
+
+  QStringList expected = {"-", "First", "Last", "More[1]", "Second"};
+  QCOMPARE(before, expected);
+  QCOMPARE(after, expected);
   QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
 }
 

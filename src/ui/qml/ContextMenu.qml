@@ -127,13 +127,16 @@ Controls.Menu {
         Separator {}
     }
 
+    // The entries and submenus are children of the menu. Without a parent
+    // they belong to JavaScript, and a garbage collection while the menu is
+    // open deletes them: the menu shrinks to its last entry.
     Component.onCompleted: {
         for (const item of root.items) {
             if (item.separator) {
-                root.addItem(separatorComponent.createObject(null))
+                root.addItem(separatorComponent.createObject(root.contentItem))
             } else if (item.submenu) {
                 const component = Qt.createComponent("ContextMenu.qml")
-                const menu = component.createObject(null, {
+                const menu = component.createObject(root, {
                     title: item.text,
                     items: item.submenu,
                     submenu: true
@@ -141,7 +144,7 @@ Controls.Menu {
                 menu.activated.connect(root.activated)
                 root.addMenu(menu)
             } else {
-                const entry = entryComponent.createObject(null, {
+                const entry = entryComponent.createObject(root.contentItem, {
                     text: item.text,
                     shortcut: item.shortcut,
                     enabled: item.enabled,
