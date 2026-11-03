@@ -1,0 +1,38 @@
+{
+  "completed_at": "2026-10-30T19:21:27.558816+04:00",
+  "base_commit": "ed2e86c8c919f99fcbb2f78a8d953030d14e9569",
+  "tracked_diff_sha256": "7679808f6986704f3d8c13964b17e91827e3a2315f2387d83edeeb2388baca3a",
+  "extra_files": {
+    "src/ui/CheckoutSnapshot.h": "45b8c9217c746b040934c48c9e78d3a57cb44654eb7ba6153fbc93e3f351760d"
+  },
+  "builds": [
+    {
+      "command": "cmake --build build --target check_build -j4",
+      "exit_code": 0
+    },
+    {
+      "command": "cmake --build build --target gittyup -j4",
+      "exit_code": 0,
+      "binary": "build/gittyup-ng"
+    }
+  ],
+  "ctest": {
+    "command": "ctest --test-dir build --output-on-failure --timeout 120 -j1 -E '^ui_screenshot$'",
+    "exit_code": 0,
+    "passed": 44,
+    "failed": 0,
+    "seconds": 51.93,
+    "log": "ctest.log"
+  },
+  "new_cases": {
+    "undo_local_states": 4,
+    "undo_submodule_add_remove": 1,
+    "required_filter_failure_timings": 2
+  },
+  "original_reproducers": {
+    "undo_local_state": 0,
+    "required_filter_partial": 0
+  },
+  "diff_check_exit": 0,
+  "snapshot_matches_at_completion": true
+}

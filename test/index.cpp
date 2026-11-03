@@ -16,6 +16,9 @@
 #include "ui/MainWindow.h"
 #include "ui/RepoView.h"
 #include "conf/Settings.h"
+#include "git/Config.h"
+#include "git2/sys/filter.h"
+#include "git2/sys/errors.h"
 #include <QFile>
 #include <QProcess>
 #include <QTextStream>
@@ -37,6 +40,42 @@ static ConfirmDialog *confirmDialog(QWidget *parent) {
   return nullptr;
 }
 
+namespace {
+
+// A required clean driver that can fail after the preview was loaded, without
+// depending on a shell or changing the user's global filter configuration.
+class FailingCleanFilter {
+public:
+  FailingCleanFilter() {
+    filter.attributes = "filter=gittyup-index-required";
+    filter.check = [](git_filter *self, void **,
+                      const git_filter_source *source, const char **) {
+      auto *driver = reinterpret_cast<FailingCleanFilter *>(self);
+      return driver->fail && git_filter_source_mode(source) == GIT_FILTER_TO_ODB
+                 ? 0
+                 : GIT_PASSTHROUGH;
+    };
+    filter.stream = [](git_writestream **, git_filter *, void **,
+                       const git_filter_source *, git_writestream *) {
+      git_error_set_str(GIT_ERROR_FILTER, "Required clean filter failed");
+      return static_cast<int>(GIT_EUSER);
+    };
+    registered = !git_filter_register("gittyup-index-required", &filter,
+                                      GIT_FILTER_DRIVER_PRIORITY);
+  }
+
+  ~FailingCleanFilter() {
+    if (registered)
+      git_filter_unregister("gittyup-index-required");
+  }
+
+  git_filter filter = GIT_FILTER_INIT;
+  bool fail = false;
+  bool registered = false;
+};
+
+} // namespace
+
 class TestIndex : public QObject {
   Q_OBJECT
 
@@ -48,6 +87,8 @@ private slots:
   void discardUntracked();
   void stageKeepsStagedByGit();
   void stageLinesOfNewFile();
+  void stageLinesRejectsCleanFailure_data();
+  void stageLinesRejectsCleanFailure();
   void cleanupTestCase();
 
 private:
@@ -277,6 +318,79 @@ void TestIndex::stageLinesOfNewFile() {
   model.setDiff(repo->status(index, nullptr, false), "file.txt");
   QCOMPARE(model.hunkCount(), 1);
 
+  model.toggleLine(model.row(0, 0));
+  QTRY_COMPARE(git({"show", ":file.txt"}), QByteArray("first\n"));
+}
+
+void TestIndex::stageLinesRejectsCleanFailure_data() {
+  QTest::addColumn<bool>("failAtLoad");
+  QTest::newRow("when-loading") << true;
+  QTest::newRow("after-loading") << false;
+}
+
+// A required clean failure never stages raw content or changes the worktree,
+// even when the driver starts failing after a usable preview was loaded.
+void TestIndex::stageLinesRejectsCleanFailure() {
+  QFETCH(bool, failAtLoad);
+  ScratchRepository repo;
+  FailingCleanFilter driver;
+  QVERIFY(driver.registered);
+  QDir dir = repo->workdir();
+  auto write = [&dir](const QString &name, const QByteArray &content) {
+    QFile file(dir.filePath(name));
+    return file.open(QFile::WriteOnly) && file.write(content) == content.size();
+  };
+  auto read = [](const QString &path) {
+    QFile file(path);
+    return file.open(QFile::ReadOnly) ? file.readAll() : QByteArray();
+  };
+  auto git = [&dir](const QStringList &args) {
+    QProcess process;
+    process.setWorkingDirectory(dir.path());
+    process.start("git", args);
+    process.waitForFinished();
+    return process.readAllStandardOutput();
+  };
+
+  QVERIFY(write(".gitattributes", "file.txt filter=gittyup-index-required\n"));
+  repo->gitConfig().setValue("filter.gittyup-index-required.required", true);
+  repo->index().setStaged({".gitattributes"}, true);
+  QVERIFY(repo->commit("Add attributes"));
+  QVERIFY(write("staged.txt", "keep staged\n"));
+  repo->index().setStaged({"staged.txt"}, true);
+  QVERIFY(write("file.txt", "first\nsecond\n"));
+
+  MainWindow window(repo);
+  git::Index index = repo->index();
+  index.read();
+  const QString indexPath = repo->dir().filePath("index");
+  const QByteArray beforeIndex = read(indexPath);
+  QVERIFY(!beforeIndex.isEmpty());
+  DiffModel model(window.currentView());
+  driver.fail = failAtLoad;
+  model.setDiff(repo->status(index, nullptr, false), "file.txt");
+  QCOMPARE(model.hunkCount(), 1);
+
+  if (failAtLoad) {
+    QVERIFY(!model.isEditable());
+  } else {
+    QVERIFY(model.isEditable());
+    driver.fail = true;
+  }
+  model.toggleLine(model.row(0, 0));
+  QTRY_VERIFY(!model.isEditable());
+  QVERIFY(model.notice().contains("Required clean filter failed"));
+  QCOMPARE(read(indexPath), beforeIndex);
+  QCOMPARE(read(dir.filePath("file.txt")), QByteArray("first\nsecond\n"));
+  QCOMPARE(git({"diff", "--cached", "--name-only"}),
+           QByteArray("staged.txt\n"));
+  QCOMPARE(git({"show", ":staged.txt"}), QByteArray("keep staged\n"));
+
+  // A corrected driver allows a fresh preview to be staged normally.
+  driver.fail = false;
+  model.setDiff(repo->status(index, nullptr, false), "file.txt");
+  QVERIFY(model.isEditable());
+  QVERIFY(model.notice().isEmpty());
   model.toggleLine(model.row(0, 0));
   QTRY_COMPARE(git({"show", ":file.txt"}), QByteArray("first\n"));
 }

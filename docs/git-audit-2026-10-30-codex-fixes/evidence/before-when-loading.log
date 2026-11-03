@@ -1,0 +1,12 @@
+********* Start testing of TestIndex *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260819 (Red Hat 16.2.1-2)), fedora 44
+QWARN  : TestIndex::initTestCase() This plugin does not support propagateSizeHints()
+PASS   : TestIndex::initTestCase()
+FAIL!  : TestIndex::stageLinesRejectsCleanFailure(when-loading) '!model.isEditable()' returned FALSE. ()
+   Loc: [/home/misha/repos/Gittyup/test/index.cpp(375)]
+QWARN  : TestIndex::stageLinesRejectsCleanFailure(when-loading) QProcess: Destroyed while process ("/home/misha/repos/Gittyup/build/test/gittyup-indexer") is still running.
+PASS   : TestIndex::cleanupTestCase()
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 230ms
+********* Finished testing of TestIndex *********
+
+process_returncode=1

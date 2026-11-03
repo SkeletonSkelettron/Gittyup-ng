@@ -1,0 +1,4 @@
+STAGED_ROLLBACK_NATIVE exit=128 head=topic file=B index=B status=M  file.txt
+STAGED_ROLLBACK before_file=B before_index=B before_status=M  file.txt undo=0 head=topic after_file=B after_index=B after_status=M  file.txt
+
+process_returncode=0

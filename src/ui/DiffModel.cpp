@@ -87,7 +87,8 @@ QString DiffModel::status() const {
 }
 
 bool DiffModel::isEditable() const {
-  return mDiff.isValid() && mDiff.isStatusDiff() && mPatch.isValid();
+  return mDiff.isValid() && mDiff.isStatusDiff() && mPatch.isValid() &&
+         mStagingError.isEmpty();
 }
 
 bool DiffModel::isConflicted() const {
@@ -126,6 +127,7 @@ void DiffModel::load() {
   mStyles.clear();
   mDiagnostics.clear();
   mNotice.clear();
+  mStagingError.clear();
   clearImages();
   mCanLoadAnyway = false;
   mUntracked = false;
@@ -153,7 +155,14 @@ void DiffModel::load() {
         // Like the diffs of tracked files, it has the content that git adds,
         // so that staged lines get the line endings of the attributes.
         if (load && !binary) {
-          mContent = mView->repo().cleanContent(mPath, mContent);
+          auto content = mView->repo().cleanContent(mPath, mContent);
+          if (content) {
+            mContent = *content;
+          } else {
+            mStagingError = git::Repository::lastError();
+            if (mStagingError.isEmpty())
+              mStagingError = tr("Unable to filter the working copy.");
+          }
           mPatch =
               git::Patch::fromBuffers(QByteArray(), mContent, mPath, mPath);
         } else if (!binary) {
@@ -212,6 +221,9 @@ void DiffModel::load() {
                                : tr("No changes to show");
     }
   }
+
+  if (!mStagingError.isEmpty())
+    mNotice = tr("Cannot stage this file: %1").arg(mStagingError);
 
   endResetModel();
   emit diffChanged();
@@ -521,6 +533,9 @@ void DiffModel::stageLater() {
 void DiffModel::stage(int changedHunk) {
   Q_UNUSED(changedHunk)
 
+  if (!isEditable())
+    return;
+
   git::Index index = mDiff.index();
   if (!index.isValid())
     return;
@@ -549,7 +564,18 @@ void DiffModel::stage(int changedHunk) {
   // changed, the old and the new version are in the diff. Staging only the
   // new one keeps the old one in the file.
   git::Repository repo = mView->repo();
-  git::Blob blob = repo.lookupBlob(repo.workdirId(mPath));
+  git::Id id = repo.workdirId(mPath);
+  git::Blob blob = id.isValid() ? repo.lookupBlob(id) : git::Blob();
+  if (!blob.isValid()) {
+    mStagingError = git::Repository::lastError();
+    if (mStagingError.isEmpty())
+      mStagingError = tr("Unable to read and filter the working copy.");
+    mNotice = tr("Cannot stage this file: %1").arg(mStagingError);
+    updateIndex({mPath});
+    emit diffChanged();
+    emit repo.notifier()->gitCommandFailed(tr("stage lines"), mStagingError);
+    return;
+  }
 
   QList<QList<QByteArray>> image;
   git::Patch::populatePreimage(image, blob.content());

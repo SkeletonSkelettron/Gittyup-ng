@@ -1,0 +1,18 @@
+{
+  "commit": "ed2e86c8c919f99fcbb2f78a8d953030d14e9569",
+  "diff_sha256": "7679808f6986704f3d8c13964b17e91827e3a2315f2387d83edeeb2388baca3a",
+  "extra_files": {
+    "src/ui/CheckoutSnapshot.h": "45b8c9217c746b040934c48c9e78d3a57cb44654eb7ba6153fbc93e3f351760d"
+  },
+  "source_trees": {
+    "src": "e5aba72c90a06196a6477dbeaff3501027b7d85f",
+    "test": "394674b8b8e75285c9b8fa07ba96939e0424a2b7"
+  },
+  "build_files": {
+    "CMakeLists.txt": "60ce08577a1a6693edf5c6991d9269db1e165d5446b85f37a91b3394e241513a",
+    "src/CMakeLists.txt": "38857326401caeb5e5f390d5924a9481266668e245021fa138a619c61386b6c2",
+    "src/git/CMakeLists.txt": "3924130843e142750877ee9c8bedb27d85805d7c12e9d6548d2e58a097eb3f39",
+    "src/ui/CMakeLists.txt": "35409b2f12d31d179e027c2c6f1d1e67f2f3f9e209af6c9d58862602ab4fd7f3",
+    "test/CMakeLists.txt": "b1f9356c99ce412c3bf0e4981b31711c70929605b8cd24ace6d93c917853acf9"
+  }
+}

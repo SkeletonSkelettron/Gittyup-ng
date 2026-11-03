@@ -1,0 +1,6 @@
+native_add_exit=128 cached_paths=cleanContent_has_result=0
+hunks=1 rows=3 line0_hex=66697273740a
+editable_before_attempt=0 notice=Cannot stage this file: Unable to filter the working copy.
+stage_attempt_returned=1 cached_blob_exit=128 cached_blob_hex=
+
+process_returncode=0

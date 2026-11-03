@@ -1,0 +1,15 @@
+********* Start testing of TestIndex *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260819 (Red Hat 16.2.1-2)), fedora 44
+QWARN  : TestIndex::initTestCase() This plugin does not support propagateSizeHints()
+PASS   : TestIndex::initTestCase()
+index: /home/misha/repos/Gittyup/src/git/Patch.cpp:389: void git::Patch::apply(QList<QList<QByteArray> >&, int, QByteArray&) const: Assertion `start - 1 + numberLines <= image.length()' failed.
+Received signal 6 (SIGABRT)
+         stageLinesRejectsCleanFailure function time: 78ms, total time: 223ms
+
+=== Stack trace ===
+ptrace: Operation not permitted.
+
+No current process: you must name one.
+=== End of stack trace ===
+
+process_returncode=-6

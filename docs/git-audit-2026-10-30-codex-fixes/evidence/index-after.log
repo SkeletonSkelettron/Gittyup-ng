@@ -1,0 +1,20 @@
+********* Start testing of TestIndex *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260819 (Red Hat 16.2.1-2)), fedora 44
+QWARN  : TestIndex::initTestCase() This plugin does not support propagateSizeHints()
+PASS   : TestIndex::initTestCase()
+PASS   : TestIndex::stageAddition()
+PASS   : TestIndex::stageDeletion()
+PASS   : TestIndex::stageDirectory()
+QWARN  : TestIndex::discardUntracked() This plugin does not support propagateSizeHints()
+QWARN  : TestIndex::discardUntracked() This plugin does not support propagateSizeHints()
+PASS   : TestIndex::discardUntracked()
+PASS   : TestIndex::stageKeepsStagedByGit()
+QWARN  : TestIndex::stageLinesOfNewFile() This plugin does not support propagateSizeHints()
+PASS   : TestIndex::stageLinesOfNewFile()
+PASS   : TestIndex::stageLinesRejectsCleanFailure(when-loading)
+PASS   : TestIndex::stageLinesRejectsCleanFailure(after-loading)
+PASS   : TestIndex::cleanupTestCase()
+Totals: 10 passed, 0 failed, 0 skipped, 0 blacklisted, 665ms
+********* Finished testing of TestIndex *********
+
+process_returncode=0
