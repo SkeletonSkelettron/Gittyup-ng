@@ -69,6 +69,9 @@ namespace git {
 
 namespace {
 
+// See Repository::ignoresLineEndings().
+bool sIgnoreLineEndings = false;
+
 // Whether git itself opens the repository at 'path'. A repository is opened
 // again and again, by the watcher of a new tab too, and starting git took
 // seconds there while other programs started. Remember the ones it opens.
@@ -330,6 +333,12 @@ Config Repository::appConfig() const {
 
 bool Repository::forcesDiff3Conflicts() const {
   return gitConfig().value<QString>("merge.conflictStyle").isEmpty();
+}
+
+bool Repository::ignoresLineEndings() { return sIgnoreLineEndings; }
+
+void Repository::setIgnoreLineEndings(bool ignore) {
+  sIgnoreLineEndings = ignore;
 }
 
 git_oid_t Repository::oidType() const {
@@ -1213,6 +1222,8 @@ bool Repository::merge(const AnnotatedCommit &mergeHead) {
   QStringList args = {"merge", "--no-commit", "--no-ff", "-m",
                       mergeHead.mergeMessage(),
                       mergeHead.commit().id().toString()};
+  if (ignoresLineEndings())
+    args.insert(1, "-Xignore-cr-at-eol");
   if (forcesDiff3Conflicts())
     args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
 
@@ -1252,6 +1263,10 @@ Rebase Repository::rebaseOpen(const QString &overrideUser,
   if (forcesDiff3Conflicts())
     opts.checkout_options.checkout_strategy |=
         GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
+  // libgit2 can't ignore only the CR at the end of lines like git, so it
+  // ignores all whitespace there.
+  if (ignoresLineEndings())
+    opts.merge_options.file_flags |= GIT_MERGE_FILE_IGNORE_WHITESPACE_EOL;
   git_rebase_open(&rebase, d->repo, &opts);
   return Rebase(d->repo, rebase, overrideUser, overrideEmail);
 }
@@ -1275,6 +1290,9 @@ void Repository::rebase(const AnnotatedCommit &mergeHead,
   if (forcesDiff3Conflicts())
     opts.checkout_options.checkout_strategy |=
         GIT_CHECKOUT_CONFLICT_STYLE_DIFF3;
+  // See rebaseOpen().
+  if (ignoresLineEndings())
+    opts.merge_options.file_flags |= GIT_MERGE_FILE_IGNORE_WHITESPACE_EOL;
   git_rebase_init(&r, d->repo, nullptr, mergeHead, nullptr, &opts);
   auto rebase = git::Rebase(d->repo, r, overrideUser, overrideEmail);
 
@@ -1351,6 +1369,8 @@ bool Repository::cherryPick(const Commit &commit) {
   int current = state();
   QString id = commit.id().toString();
   QStringList args = {"cherry-pick", "--no-commit", id};
+  if (ignoresLineEndings())
+    args.insert(1, "-Xignore-cr-at-eol");
   if (forcesDiff3Conflicts())
     args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
 

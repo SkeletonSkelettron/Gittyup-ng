@@ -256,6 +256,8 @@ bool Commit::revert() const {
   int state = repo.state();
 
   QStringList args = {"revert", "--no-commit", id().toString()};
+  if (Repository::ignoresLineEndings())
+    args.insert(1, "-Xignore-cr-at-eol");
   if (repo.forcesDiff3Conflicts())
     args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
 

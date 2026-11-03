@@ -60,6 +60,7 @@ public:
     SshConfigFilePath,
     SshKeyFilePath,
     CommitMergeImmediately,
+    IgnoreLineEndingsInMerges,
     ShowCommitsInCompactMode,
     ShowCommitsAuthor,
     ShowCommitsDate,
