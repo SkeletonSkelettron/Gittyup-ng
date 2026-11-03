@@ -3,7 +3,6 @@
 #### Changed
 
 * Checkouts leave the submodules as they are even when submodule.recurse is set, as they did before checking out ran git
-* Merging, rebasing, cherry-picking and reverting ignore line endings, so a file whose lines one side changed from CRLF to LF or back conflicts only where its text changed, not as a whole. Ignore line endings in the Diff settings turns it off
 
 #### Fixed
 

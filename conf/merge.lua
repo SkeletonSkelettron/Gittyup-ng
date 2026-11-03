@@ -1,4 +1,3 @@
 return {
-  commit = true,
-  ignoreLineEndings = true
+  commit = true
 }

@@ -293,17 +293,6 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
   // Initialize git library.
   git::Repository::init();
 
-  // Merge files like the settings say, also after they change.
-  auto ignoreLineEndings = [] {
-    git::Repository::setIgnoreLineEndings(
-        Settings::instance()
-            ->value(Setting::Id::IgnoreLineEndingsInMerges)
-            .toBool());
-  };
-  ignoreLineEndings();
-  connect(Settings::instance(), &Settings::settingsChanged, this,
-          ignoreLineEndings);
-
   connect(this, &Application::aboutToQuit, [] {
     // Clean up git library.
     // Make sure windows are really deleted.

@@ -91,13 +91,6 @@ public:
   // sides happen to share.
   bool forcesDiff3Conflicts() const;
 
-  // Whether merges, rebases, cherry-picks and reverts treat lines that differ
-  // only in their line endings as unchanged, so that a file whose line endings
-  // changed on one side doesn't conflict as a whole. The application sets it
-  // from its settings.
-  static bool ignoresLineEndings();
-  static void setIgnoreLineEndings(bool ignore);
-
   // OID type
   git_oid_t oidType() const;
 

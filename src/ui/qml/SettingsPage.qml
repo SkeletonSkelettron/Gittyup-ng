@@ -12,7 +12,7 @@ PreferencesPage {
         { title: qsTr("General"), icon: "sliders",
           description: qsTr("Your identity, automatic actions and credentials. Repositories can override git settings.") },
         { title: qsTr("Diff"), icon: "view-double",
-          description: qsTr("How changes are compared, shown and merged.") },
+          description: qsTr("How changes are compared and shown.") },
         { title: qsTr("Tools"), icon: "wrench",
           description: qsTr("External programs that %1 starts.").arg(Qt.application.name) },
         { title: qsTr("Appearance"), icon: "palette",
@@ -280,28 +280,6 @@ PreferencesPage {
                         model: dialog.encodings
                         currentIndex: dialog.encoding()
                         onActivated: (index) => dialog.setEncoding(index)
-                    }
-                }
-            }
-
-            SettingSection {
-                title: qsTr("Merging")
-
-                SettingRow {
-                    label: qsTr("Line endings")
-                    hint: qsTr("Also when rebasing, cherry-picking and reverting")
-
-                    SettingCheck {
-                        setting: "IgnoreLineEndingsInMerges"
-                        text: qsTr("Ignore line endings")
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: qsTr("Lines that differ only in CRLF and LF are the same line, so a file whose line endings changed conflicts only where its text changed. Otherwise git compares the lines byte by byte, and such a file conflicts as a whole.")
-                        wrapMode: Text.Wrap
-                        color: Theme.textMuted
-                        font.pixelSize: 12
                     }
                 }
             }

@@ -88,9 +88,6 @@ Commit Rewrite::apply(const Commit &onto, const QList<Step> &steps,
     // Apply the changes of the commit onto the current one.
     git_index *index = nullptr;
     git_merge_options options = GIT_MERGE_OPTIONS_INIT;
-    // See Repository::rebaseOpen().
-    if (Repository::ignoresLineEndings())
-      options.file_flags |= GIT_MERGE_FILE_IGNORE_WHITESPACE_EOL;
     if (git_cherrypick_commit(&index, repo, step.commit, current, 0,
                               &options))
       return fail(lastError(), step.commit);

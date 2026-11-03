@@ -37,7 +37,6 @@ void Setting::initialize(QMap<Id, QString> &keys) {
   keys[Id::SshConfigFilePath] = "ssh/configFilePath";
   keys[Id::SshKeyFilePath] = "ssh/keyFilePath";
   keys[Id::CommitMergeImmediately] = "merge/commit";
-  keys[Id::IgnoreLineEndingsInMerges] = "merge/ignoreLineEndings";
   keys[Id::ShowCommitsInCompactMode] = "commit/compact";
   keys[Id::ShowCommitsAuthor] = "commit/author";
   keys[Id::ShowCommitsDate] = "commit/date";
