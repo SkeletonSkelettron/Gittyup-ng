@@ -8,6 +8,7 @@
 #ifndef REFDROP_H
 #define REFDROP_H
 
+#include <QHash>
 #include <QObject>
 #include <QPointF>
 #include <functional>
@@ -60,8 +61,10 @@ public:
   // Called by the target under the pointer when the reference is dropped.
   Q_INVOKABLE void drop(const QString &target, qreal x, qreal y);
 
-  // What dropping 'source' onto 'target' can do.
-  QList<Choice> choices(const QString &source, const QString &target) const;
+  // What dropping 'source' onto 'target' can do. Without 'interactive', it
+  // leaves out the interactive rebase, which walks the commits to rebase.
+  QList<Choice> choices(const QString &source, const QString &target,
+                        bool interactive = true) const;
 
 signals:
   void changed();
@@ -82,6 +85,9 @@ private:
 
   QString mTarget;
   QPointF mDropPos;
+
+  // Whether the targets entered during the drag accept the reference.
+  mutable QHash<QString, bool> mAccepts;
 };
 
 #endif

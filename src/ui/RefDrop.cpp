@@ -31,6 +31,7 @@ void RefDrop::start(const QString &name, qreal x, qreal y) {
   mSource = name;
   mLabel = ref.name();
   mTarget.clear();
+  mAccepts.clear();
   mPos = QPointF(x, y);
   emit changed();
   emit moved();
@@ -61,6 +62,7 @@ void RefDrop::finish() {
 
 void RefDrop::cancel() {
   mTarget.clear();
+  mAccepts.clear();
   if (mSource.isEmpty())
     return;
 
@@ -70,7 +72,18 @@ void RefDrop::cancel() {
 }
 
 bool RefDrop::accepts(const QString &target) const {
-  return !mSource.isEmpty() && !choices(mSource, target).isEmpty();
+  if (mSource.isEmpty())
+    return false;
+
+  // Targets are entered on the UI thread, so compute each once per drag,
+  // and without the interactive rebase: it comes only with a plain rebase.
+  auto it = mAccepts.constFind(target);
+  if (it != mAccepts.constEnd())
+    return *it;
+
+  bool accepted = !choices(mSource, target, false).isEmpty();
+  mAccepts.insert(target, accepted);
+  return accepted;
 }
 
 void RefDrop::drop(const QString &target, qreal x, qreal y) {
@@ -79,7 +92,8 @@ void RefDrop::drop(const QString &target, qreal x, qreal y) {
 }
 
 QList<RefDrop::Choice> RefDrop::choices(const QString &source,
-                                        const QString &target) const {
+                                        const QString &target,
+                                        bool interactive) const {
   QList<Choice> result;
   git::Repository repo = mView->repo();
   git::Reference src = repo.lookupRef(source);
@@ -151,7 +165,8 @@ QList<RefDrop::Choice> RefDrop::choices(const QString &source,
                          view->merge(RepoView::Rebase,
                                      view->repo().lookupRef(target));
                      }});
-      addInteractive(result, source, dst);
+      if (interactive)
+        addInteractive(result, source, dst);
     }
 
     return result;
@@ -194,7 +209,8 @@ QList<RefDrop::Choice> RefDrop::choices(const QString &source,
                        view->merge(RepoView::Rebase,
                                    view->repo().lookupRef(target));
                    }});
-    addInteractive(result, source, dst);
+    if (interactive)
+      addInteractive(result, source, dst);
   }
 
   return result;
