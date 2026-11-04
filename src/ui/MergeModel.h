@@ -173,6 +173,7 @@ private:
   };
 
   bool parse(const QString &text);
+  void splitConflicts();
   void setOutput();
   void updateRegion(int conflict);
   void writeOutput();

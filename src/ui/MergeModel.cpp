@@ -12,6 +12,7 @@
 #include "dialogs/ConfirmDialog.h"
 #include "git/Blob.h"
 #include "git/Index.h"
+#include "git/Patch.h"
 #include <QDir>
 #include <QFile>
 #include <QQuickTextDocument>
@@ -201,6 +202,8 @@ void MergeModel::load(const QString &path) {
     mNotice = tr("This file has no conflict markers.");
     mSegments.clear();
     mConflicts.clear();
+  } else {
+    splitConflicts();
   }
 
   mSides[0]->reset();
@@ -523,6 +526,88 @@ bool MergeModel::parse(const QString &text) {
 
   // An unfinished conflict isn't a conflict.
   return state == Common && !mConflicts.isEmpty();
+}
+
+// git compares line endings, so a side that only changed them conflicts at
+// each of its lines, mostly the whole file at once. Split the conflicts at the
+// lines that are the same on both sides without them, like GitKraken.
+void MergeModel::splitConflicts() {
+  auto strip = [](QString line) {
+    while (line.endsWith('\r'))
+      line.chop(1);
+    return line;
+  };
+
+  auto buffer = [&strip](const QStringList &lines) {
+    QByteArray buffer;
+    for (const QString &line : lines)
+      buffer += strip(line).toUtf8() + '\n';
+    return buffer;
+  };
+
+  QList<Segment> segments;
+  QList<Conflict> conflicts;
+  auto addCommon = [&segments, &strip](const QStringList &lines) {
+    if (lines.isEmpty())
+      return;
+
+    if (segments.isEmpty() || segments.last().conflict >= 0)
+      segments.append(Segment());
+    for (const QString &line : lines)
+      segments.last().common.append(strip(line));
+  };
+
+  auto addConflict = [&segments, &conflicts](Conflict conflict) {
+    for (int side = 0; side < 2; ++side)
+      conflict.checked[side] = QList<bool>(conflict.lines[side].size(), false);
+
+    Segment segment;
+    segment.conflict = conflicts.size();
+    conflicts.append(conflict);
+    segments.append(segment);
+  };
+
+  for (const Segment &segment : mSegments) {
+    if (segment.conflict < 0) {
+      addCommon(segment.common);
+      continue;
+    }
+
+    const Conflict &conflict = mConflicts.at(segment.conflict);
+    const QStringList &ours = conflict.lines[0];
+    const QStringList &theirs = conflict.lines[1];
+    QByteArray oursBuffer = buffer(ours);
+    QByteArray theirsBuffer = buffer(theirs);
+    git::Patch patch = git::Patch::fromBuffers(oursBuffer, theirsBuffer);
+    if (!patch.isValid() || patch.isBinary() ||
+        (patch.count() == 0 && oursBuffer != theirsBuffer)) {
+      addConflict(conflict);
+      continue;
+    }
+
+    // The lines between the hunks are on both sides. A hunk without lines of
+    // a side starts after the line before it.
+    int next = 0;
+    for (int i = 0; i < patch.count(); ++i) {
+      const git_diff_hunk *hunk = patch.header_struct(i);
+      int oursStart = hunk->old_lines ? hunk->old_start - 1 : hunk->old_start;
+      int theirsStart = hunk->new_lines ? hunk->new_start - 1 : hunk->new_start;
+      addCommon(ours.mid(next, oursStart - next));
+
+      Conflict part;
+      part.lines[0] = ours.mid(oursStart, hunk->old_lines);
+      part.lines[1] = theirs.mid(theirsStart, hunk->new_lines);
+      if (i == 0)
+        part.base = conflict.base;
+      addConflict(part);
+      next = oursStart + hunk->old_lines;
+    }
+
+    addCommon(ours.mid(next));
+  }
+
+  mSegments = segments;
+  mConflicts = conflicts;
 }
 
 void MergeModel::setOutput() {

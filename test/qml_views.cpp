@@ -102,6 +102,7 @@ private slots:
   void mergeEncoding();
   void mergeScroll();
   void mergeEmptySide();
+  void mergeLineEndings();
   void dragTab();
   void cleanupTestCase();
 
@@ -874,7 +875,7 @@ void TestQmlViews::mergeScroll() {
   write({"4:theirs 1\na\nb\nc\nd\ne\nf\ng", "20:theirs 2\na\nb"});
   QVERIFY(git({"commit", "-q", "-am", "Change theirs"}));
   QVERIFY(git({"checkout", "-q", "-"}));
-  write({"4:ours 1\na", "20:ours 2"});
+  write({"4:ours 1\nz", "20:ours 2"});
   QVERIFY(git({"commit", "-q", "-am", "Change ours"}));
   git({"merge", "other"});
 
@@ -1069,6 +1070,60 @@ void TestQmlViews::mergeEmptySide() {
   QCOMPARE(data(header, MergeSideModel::CheckStateRole).toInt(), 2);
   merge->takeAll(0);
   QCOMPARE(data(header, MergeSideModel::CheckStateRole).toInt(), 0);
+}
+
+// git compares line endings, so a side that only changed them conflicts at
+// each of its lines. The lines that are the same on both sides without them
+// aren't in the conflicts.
+void TestQmlViews::mergeLineEndings() {
+  RepoView *view = mWindow->currentView();
+  git::Repository repo = view->repo();
+
+  QFile file(repo.workdir().filePath("endings.txt"));
+  QVERIFY(file.open(QFile::WriteOnly));
+  file.write("top\n"
+             "<<<<<<< HEAD\n"
+             "same 1\r\n"
+             "ours\r\n"
+             "same 2\r\n"
+             "=======\n"
+             "same 1\n"
+             "theirs\n"
+             "same 2\n"
+             ">>>>>>> feature\n"
+             "middle\n"
+             "<<<<<<< HEAD\n"
+             "only line endings\r\n"
+             "=======\n"
+             "only line endings\n"
+             ">>>>>>> feature\n"
+             "bottom\n");
+  file.close();
+
+  MergeModel merge(view);
+  QTextDocument document;
+  merge.setTextDocument(&document);
+  merge.load("endings.txt");
+  QCOMPARE(merge.notice(), QString());
+  QCOMPARE(merge.conflictCount(), 1);
+  QCOMPARE(merge.unresolvedCount(), 1);
+  QCOMPARE(document.toPlainText(),
+           QString("top\nsame 1\nsame 2\nmiddle\nonly line endings\nbottom\n"));
+
+  // Only the lines that differ are taken.
+  merge.setConflictChecked(1, 0, true);
+  QCOMPARE(document.toPlainText(),
+           QString("top\nsame 1\ntheirs\nsame 2\nmiddle\nonly line endings\n"
+                   "bottom\n"));
+
+  // The file keeps its CRLF.
+  merge.save();
+  QVERIFY(file.open(QFile::ReadOnly));
+  QCOMPARE(file.readAll(),
+           QByteArray("top\r\nsame 1\r\ntheirs\r\nsame 2\r\nmiddle\r\n"
+                      "only line endings\r\nbottom\r\n"));
+  file.close();
+  QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
 }
 
 void TestQmlViews::dragTab() {
