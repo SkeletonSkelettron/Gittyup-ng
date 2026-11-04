@@ -212,7 +212,7 @@ Rectangle {
                                ? Text.ElideRight : Text.ElideMiddle
                         color: row.isHeader || row.kind === root.kindEmpty ? Theme.textMuted
                                : row.highlighted ? Theme.selectedText : Theme.text
-                        font.pixelSize: row.isHeader ? 11 : 13
+                        font.pixelSize: row.isHeader ? 11 : 12
                         font.italic: row.kind === root.kindEmpty
                         font.bold: row.isHeader || row.isHead
                         font.capitalization: row.isHeader ? Font.AllUppercase : Font.MixedCase

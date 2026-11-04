@@ -78,7 +78,7 @@ Controls.Menu {
                 text: entry.text
                 elide: Text.ElideRight
                 color: entry.foreground
-                font.pixelSize: 13
+                font.pixelSize: 12
             }
 
             Text {
@@ -86,7 +86,7 @@ Controls.Menu {
                 Layout.leftMargin: 14
                 text: entry.shortcut
                 color: entry.highlighted && entry.enabled ? Theme.selectedText : Theme.textMuted
-                font.pixelSize: 12
+                font.pixelSize: 11
             }
 
             Icon {

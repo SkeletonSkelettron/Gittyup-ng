@@ -21,7 +21,7 @@ Controls.TextField {
     selectionColor: Theme.accent
     selectedTextColor: Theme.accentText
     selectByMouse: true
-    font.pixelSize: 13
+    font.pixelSize: 12
 
     background: Rectangle {
         radius: 6

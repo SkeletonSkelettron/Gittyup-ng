@@ -95,7 +95,7 @@ Item {
                 width: parent.width
                 text: root.value
                 color: root.enabled ? Theme.text : Theme.textDisabled
-                font.pixelSize: 13
+                font.pixelSize: 12
                 font.bold: true
                 elide: Text.ElideMiddle
             }

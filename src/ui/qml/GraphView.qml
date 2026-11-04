@@ -751,7 +751,7 @@ Rectangle {
                             text: row.summary || ""
                             elide: Text.ElideRight
                             color: row.foreground
-                            font.pixelSize: 13
+                            font.pixelSize: 12
                         }
 
                         Icon {

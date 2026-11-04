@@ -622,7 +622,7 @@ Rectangle {
                     color: Theme.text
                     selectionColor: Theme.selected
                     selectedTextColor: Theme.selectedText
-                    font.pixelSize: 13
+                    font.pixelSize: 12
                     onTextEdited: wip.edited()
                     Keys.onReturnPressed: descriptionField.forceActiveFocus()
 
@@ -689,7 +689,7 @@ Rectangle {
                         color: Theme.text
                         selectionColor: Theme.selected
                         selectedTextColor: Theme.selectedText
-                        font.pixelSize: 12
+                        font.pixelSize: 11
                         leftPadding: 10
                         rightPadding: 10
                         topPadding: 8

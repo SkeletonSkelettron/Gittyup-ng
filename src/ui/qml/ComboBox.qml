@@ -10,7 +10,7 @@ Controls.ComboBox {
     implicitHeight: 32
     leftPadding: 10
     rightPadding: 30
-    font.pixelSize: 13
+    font.pixelSize: 12
 
     function itemData(index) {
         const items = control.model
@@ -99,7 +99,7 @@ Controls.ComboBox {
                 anchors.verticalCenter: parent.verticalCenter
                 text: delegateItem.entry ? delegateItem.entry[control.textRole || "text"] : delegateItem.modelData
                 color: delegateItem.index === control.currentIndex ? Theme.accent : Theme.text
-                font.pixelSize: 13
+                font.pixelSize: 12
                 font.weight: delegateItem.index === control.currentIndex ? Font.DemiBold : Font.Normal
             }
 
@@ -108,7 +108,7 @@ Controls.ComboBox {
                 anchors.verticalCenter: parent.verticalCenter
                 text: delegateItem.entry && delegateItem.entry.detail ? delegateItem.entry.detail : ""
                 color: Theme.textMuted
-                font.pixelSize: 12
+                font.pixelSize: 11
             }
         }
     }
