@@ -34,6 +34,7 @@
 #include <QNetworkReply>
 #include <QOperatingSystemVersion>
 #include <QPalette>
+#include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QStyle>
@@ -210,13 +211,14 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
   QApplication::setPalette(palette);
 #endif
 
-#if defined(Q_OS_WIN)
-  // Set default font style and hinting.
+  // Antialiased text whose lines snap to the pixels, like the light hinting
+  // of FreeType, on all platforms. The distance fields of Qt Quick are blurry
+  // at small sizes and the full hinting of Windows is jagged.
   QFont font = QApplication::font();
   font.setStyleStrategy(QFont::PreferDefault);
-  font.setHintingPreference(QFont::PreferDefaultHinting);
+  font.setHintingPreference(QFont::PreferVerticalHinting);
   QApplication::setFont(font);
-#endif
+  QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
 
   // Read translation settings.
   QSettings settings;
