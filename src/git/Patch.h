@@ -140,10 +140,12 @@ public:
              QByteArray &hunkData) const;
   QByteArray generateResult(QList<QList<QByteArray>> &image,
                             const FilterList &filters = FilterList()) const;
+  // The patch refers to the buffers, they have to outlive it.
   static Patch fromBuffers(const QByteArray &oldBuffer,
                            const QByteArray &newBuffer,
                            const QString &oldPath = QString(),
-                           const QString &newPath = QString());
+                           const QString &newPath = QString(),
+                           int contextLines = 0, bool ignoreWhitespace = false);
 
   static void clearConflictResolutions(const Repository &repo);
 

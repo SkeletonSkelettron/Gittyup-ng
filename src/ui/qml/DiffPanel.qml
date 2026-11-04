@@ -168,6 +168,13 @@ Rectangle {
 
                 MergeModeSwitch {}
 
+                CheckBox {
+                    visible: root.diff.canShowWholeFile
+                    text: qsTr("Whole file")
+                    checked: root.diff.wholeFile
+                    onToggled: root.diff.wholeFile = checked
+                }
+
                 PushButton {
                     visible: root.diff.editable
                     implicitHeight: 26

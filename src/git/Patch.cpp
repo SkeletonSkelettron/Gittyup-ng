@@ -453,10 +453,12 @@ void Patch::apply(QList<QList<QByteArray>> &image, int hidx, int start_line,
 
 Patch Patch::fromBuffers(const QByteArray &oldBuffer,
                          const QByteArray &newBuffer, const QString &oldPath,
-                         const QString &newPath) {
-  // FIXME: Pass context lines as a parameter?
+                         const QString &newPath, int contextLines,
+                         bool ignoreWhitespace) {
   git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
-  opts.context_lines = 0;
+  opts.context_lines = contextLines;
+  if (ignoreWhitespace)
+    opts.flags |= GIT_DIFF_IGNORE_WHITESPACE;
 
   git_patch *patch = nullptr;
   git_patch_from_buffers(&patch, oldBuffer.constData(), oldBuffer.length(),

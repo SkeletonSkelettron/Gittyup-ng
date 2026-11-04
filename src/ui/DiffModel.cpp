@@ -62,9 +62,12 @@ DiffModel::DiffModel(RepoView *view, QObject *parent)
 }
 
 void DiffModel::setDiff(const git::Diff &diff, const QString &path) {
-  // Keep the forced load of a large diff for the same file.
-  if (path != mPath)
+  // Keep the forced load of a large diff and the whole file for the same
+  // file.
+  if (path != mPath) {
     mLoadAnyway = false;
+    mWholeFile = false;
+  }
 
   mDiff = diff;
   mPath = diff.isValid() && diff.indexOf(path) >= 0 ? path : QString();
@@ -82,8 +85,9 @@ QString DiffModel::status() const {
   if (mPatch.isConflicted())
     return "!";
 
-  return QString(git::Diff::statusChar(mUntracked ? GIT_DELTA_UNTRACKED
-                                                  : mPatch.status()));
+  // The patch of the whole file has no renames.
+  return QString(git::Diff::statusChar(
+      mUntracked ? GIT_DELTA_UNTRACKED : mDiff.status(mDiff.indexOf(mPath))));
 }
 
 bool DiffModel::isEditable() const {
@@ -116,11 +120,20 @@ void DiffModel::loadAnyway() {
   load();
 }
 
+void DiffModel::setWholeFile(bool wholeFile) {
+  if (wholeFile == mWholeFile)
+    return;
+
+  mWholeFile = wholeFile;
+  load();
+}
+
 void DiffModel::load() {
   beginResetModel();
 
   mPatch = git::Patch();
   mStaged = git::Patch();
+  mOldContent.clear();
   mContent.clear();
   mHunks.clear();
   mRows.clear();
@@ -130,6 +143,7 @@ void DiffModel::load() {
   mStagingError.clear();
   clearImages();
   mCanLoadAnyway = false;
+  mCanShowWholeFile = false;
   mUntracked = false;
   mAdditions = 0;
   mDeletions = 0;
@@ -170,6 +184,14 @@ void DiffModel::load() {
         }
       }
     }
+
+    // Added, deleted and untracked files are shown in full anyway.
+    git_delta_t status = mPatch.status();
+    mCanShowWholeFile = !mUntracked && !binary && !mPatch.isLfsPointer() &&
+                        !mPatch.isConflicted() && status != GIT_DELTA_ADDED &&
+                        status != GIT_DELTA_DELETED;
+    if (mWholeFile && mCanShowWholeFile)
+      loadWholeFile();
 
     git::Patch::LineStats stats = mPatch.lineStats();
     mAdditions = stats.additions;
@@ -228,6 +250,40 @@ void DiffModel::load() {
   endResetModel();
   emit diffChanged();
   emit stageStateChanged();
+}
+
+// Show the whole file as a single hunk, the lines that didn't change are its
+// context.
+void DiffModel::loadWholeFile() {
+  // Like in the diff, the working copy is compared with the content that git
+  // adds. It has no blob unless the same content was added before.
+  git::Repository repo = mView->repo();
+  git::Blob oldBlob = mPatch.blob(git::Diff::OldFile);
+  git::Blob newBlob = mPatch.blob(git::Diff::NewFile);
+  if (oldBlob.isValid())
+    mOldContent = oldBlob.content();
+  if (newBlob.isValid()) {
+    mContent = newBlob.content();
+  } else if (!mDiff.isStatusDiff()) {
+    return;
+  } else {
+    QFile file(repo.workdir().filePath(mPath));
+    if (!file.open(QFile::ReadOnly))
+      return;
+    auto content = repo.cleanContent(mPath, file.readAll());
+    if (!content)
+      return;
+    mContent = *content;
+  }
+
+  // More context than lines. xdiff adds it to the line numbers, so it can't
+  // be the largest number.
+  int lines = qMax(mOldContent.count('\n'), mContent.count('\n')) + 1;
+  git::Patch patch = git::Patch::fromBuffers(
+      mOldContent, mContent, mPatch.name(git::Diff::OldFile), mPath, lines,
+      Settings::instance()->isWhitespaceIgnored());
+  if (patch.isValid())
+    mPatch = patch;
 }
 
 void DiffModel::loadStaged() {

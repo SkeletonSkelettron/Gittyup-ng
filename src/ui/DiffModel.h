@@ -38,6 +38,11 @@ class DiffModel : public QAbstractListModel, public FindTarget {
   Q_PROPERTY(int stageState READ stageState NOTIFY stageStateChanged)
   Q_PROPERTY(int lineNumberWidth READ lineNumberWidth NOTIFY diffChanged)
   Q_PROPERTY(int maxLineLength READ maxLineLength NOTIFY diffChanged)
+  // Whether the lines that didn't change are shown too. It's turned off for
+  // another file.
+  Q_PROPERTY(
+      bool wholeFile READ isWholeFile WRITE setWholeFile NOTIFY diffChanged)
+  Q_PROPERTY(bool canShowWholeFile READ canShowWholeFile NOTIFY diffChanged)
   // Previews of images, before and after the change, or empty.
   Q_PROPERTY(QString oldImage READ oldImage NOTIFY diffChanged)
   Q_PROPERTY(QString newImage READ newImage NOTIFY diffChanged)
@@ -85,6 +90,9 @@ public:
   int stageState() const;
   int lineNumberWidth() const { return mLineNumberWidth; }
   int maxLineLength() const { return mMaxLineLength; }
+  bool isWholeFile() const { return mWholeFile; }
+  void setWholeFile(bool wholeFile);
+  bool canShowWholeFile() const { return mCanShowWholeFile; }
 
   // The lines of the hunks, and the row of a line in the model.
   QString oldImage() const { return mOldImage; }
@@ -140,6 +148,7 @@ private:
 
   void load();
   void loadStaged();
+  void loadWholeFile();
   void updateIndex(const QStringList &paths);
   void highlight();
   void lint();
@@ -154,8 +163,9 @@ private:
   RepoView *mView;
   git::Diff mDiff;
   QString mPath;
-  // The content of an untracked file that 'mPatch' was made from. It's
-  // declared first so that it outlives the patch.
+  // The content of an untracked file or of the whole file that 'mPatch' was
+  // made from. It's declared first so that it outlives the patch.
+  QByteArray mOldContent;
   QByteArray mContent;
   git::Patch mPatch;
   git::Patch mStaged;
@@ -185,6 +195,8 @@ private:
   int mFindStart = -1;
   bool mUntracked = false;
   bool mLoadAnyway = false;
+  bool mWholeFile = false;
+  bool mCanShowWholeFile = false;
   int mAdditions = 0;
   int mDeletions = 0;
   int mLineNumberWidth = 2;
