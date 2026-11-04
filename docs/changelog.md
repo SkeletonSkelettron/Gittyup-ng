@@ -1,3 +1,11 @@
+### v0.0.9 - 2026-11-04 (DEV)
+
+#### Fixed
+
+* A branch dragged over other branches and commits stuttered, and so did the pointer
+
+----
+
 ### v0.0.8 - 2026-10-30
 
 #### Changed
@@ -8,7 +16,6 @@
 
 * Undo that failed, like while another git process locked a branch, didn't put back the staged changes, the files deleted locally and the modes and links of the files as they were
 * Staging lines of a new file whose required clean filter fails staged the unfiltered file, or broke when the filter began to fail after the file was shown. It shows the filter's error now and doesn't stage
-* A branch dragged over other branches and commits stuttered, and so did the pointer
 
 ----
 
