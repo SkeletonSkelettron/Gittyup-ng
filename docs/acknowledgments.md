@@ -453,3 +453,12 @@ Lucide is used under the terms of the ISC License:
     WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
     ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
     OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+----
+
+#### Inter
+
+Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+
+[Inter](https://rsms.me/inter/) is the font of the interface. It is used under the terms of the
+[SIL Open Font License, Version 1.1](https://openfontlicense.org).

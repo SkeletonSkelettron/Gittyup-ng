@@ -213,8 +213,15 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
 
   // Antialiased text whose lines snap to the pixels, like the light hinting
   // of FreeType, on all platforms. The distance fields of Qt Quick are blurry
-  // at small sizes and the full hinting of Windows is jagged.
+  // at small sizes and the full hinting of Windows is jagged. Inter looks the
+  // same everywhere, the system fonts draw what it has no glyphs for, like
+  // Georgian.
   QFont font = QApplication::font();
+  int inter = QFontDatabase::addApplicationFont(":/fonts/Inter-Regular.ttf");
+  QFontDatabase::addApplicationFont(":/fonts/Inter-SemiBold.ttf");
+  QStringList families = QFontDatabase::applicationFontFamilies(inter);
+  if (!families.isEmpty())
+    font.setFamily(families.first());
   font.setStyleStrategy(QFont::PreferDefault);
   font.setHintingPreference(QFont::PreferVerticalHinting);
   QApplication::setFont(font);

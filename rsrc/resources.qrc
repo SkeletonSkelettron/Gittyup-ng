@@ -25,6 +25,8 @@
         <file>fetch@2x.png</file>
         <file>file.png</file>
         <file>file@2x.png</file>
+        <file>fonts/Inter-Regular.ttf</file>
+        <file>fonts/Inter-SemiBold.ttf</file>
         <file>general.png</file>
         <file>general@2x.png</file>
         <file>github.png</file>
