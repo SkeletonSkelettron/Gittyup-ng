@@ -43,6 +43,12 @@ class DiffModel : public QAbstractListModel, public FindTarget {
   Q_PROPERTY(
       bool wholeFile READ isWholeFile WRITE setWholeFile NOTIFY diffChanged)
   Q_PROPERTY(bool canShowWholeFile READ canShowWholeFile NOTIFY diffChanged)
+  // Whether the changes of whitespace are shown, when the settings ignore
+  // them. It's turned off for another file.
+  Q_PROPERTY(bool whitespaceChanges READ showsWhitespaceChanges WRITE
+                 setWhitespaceChanges NOTIFY diffChanged)
+  Q_PROPERTY(bool canShowWhitespaceChanges READ canShowWhitespaceChanges NOTIFY
+                 diffChanged)
   // Previews of images, before and after the change, or empty.
   Q_PROPERTY(QString oldImage READ oldImage NOTIFY diffChanged)
   Q_PROPERTY(QString newImage READ newImage NOTIFY diffChanged)
@@ -93,6 +99,9 @@ public:
   bool isWholeFile() const { return mWholeFile; }
   void setWholeFile(bool wholeFile);
   bool canShowWholeFile() const { return mCanShowWholeFile; }
+  bool showsWhitespaceChanges() const { return mWhitespaceChanges; }
+  void setWhitespaceChanges(bool show);
+  bool canShowWhitespaceChanges() const { return mCanShowWhitespaceChanges; }
 
   // The lines of the hunks, and the row of a line in the model.
   QString oldImage() const { return mOldImage; }
@@ -148,7 +157,7 @@ private:
 
   void load();
   void loadStaged();
-  void loadWholeFile();
+  void loadContent();
   void updateIndex(const QStringList &paths);
   void highlight();
   void lint();
@@ -197,6 +206,8 @@ private:
   bool mLoadAnyway = false;
   bool mWholeFile = false;
   bool mCanShowWholeFile = false;
+  bool mWhitespaceChanges = false;
+  bool mCanShowWhitespaceChanges = false;
   int mAdditions = 0;
   int mDeletions = 0;
   int mLineNumberWidth = 2;

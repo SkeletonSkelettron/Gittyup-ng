@@ -16,6 +16,7 @@
 #include "conf/Settings.h"
 #include "git/Blob.h"
 #include "git/Commit.h"
+#include "git/Config.h"
 #include "git/Index.h"
 #include "git/Reference.h"
 #include "git/Repository.h"
@@ -62,11 +63,12 @@ DiffModel::DiffModel(RepoView *view, QObject *parent)
 }
 
 void DiffModel::setDiff(const git::Diff &diff, const QString &path) {
-  // Keep the forced load of a large diff and the whole file for the same
-  // file.
+  // Keep the forced load of a large diff, the whole file and the changes of
+  // whitespace for the same file.
   if (path != mPath) {
     mLoadAnyway = false;
     mWholeFile = false;
+    mWhitespaceChanges = false;
   }
 
   mDiff = diff;
@@ -128,6 +130,14 @@ void DiffModel::setWholeFile(bool wholeFile) {
   load();
 }
 
+void DiffModel::setWhitespaceChanges(bool show) {
+  if (show == mWhitespaceChanges)
+    return;
+
+  mWhitespaceChanges = show;
+  load();
+}
+
 void DiffModel::load() {
   beginResetModel();
 
@@ -144,6 +154,7 @@ void DiffModel::load() {
   clearImages();
   mCanLoadAnyway = false;
   mCanShowWholeFile = false;
+  mCanShowWhitespaceChanges = false;
   mUntracked = false;
   mAdditions = 0;
   mDeletions = 0;
@@ -190,8 +201,12 @@ void DiffModel::load() {
     mCanShowWholeFile = !mUntracked && !binary && !mPatch.isLfsPointer() &&
                         !mPatch.isConflicted() && status != GIT_DELTA_ADDED &&
                         status != GIT_DELTA_DELETED;
-    if (mWholeFile && mCanShowWholeFile)
-      loadWholeFile();
+    // The settings may hide the changes of whitespace.
+    mCanShowWhitespaceChanges =
+        mCanShowWholeFile && Settings::instance()->isWhitespaceIgnored();
+    if ((mWholeFile && mCanShowWholeFile) ||
+        (mWhitespaceChanges && mCanShowWhitespaceChanges))
+      loadContent();
 
     git::Patch::LineStats stats = mPatch.lineStats();
     mAdditions = stats.additions;
@@ -252,9 +267,10 @@ void DiffModel::load() {
   emit stageStateChanged();
 }
 
-// Show the whole file as a single hunk, the lines that didn't change are its
-// context.
-void DiffModel::loadWholeFile() {
+// Compare the content of the file again, to show the whole file as a single
+// hunk, the lines that didn't change are its context, or the changes of
+// whitespace.
+void DiffModel::loadContent() {
   // Like in the diff, the working copy is compared with the content that git
   // adds. It has no blob unless the same content was added before.
   git::Repository repo = mView->repo();
@@ -276,12 +292,16 @@ void DiffModel::loadWholeFile() {
     mContent = *content;
   }
 
-  // More context than lines. xdiff adds it to the line numbers, so it can't
-  // be the largest number.
-  int lines = qMax(mOldContent.count('\n'), mContent.count('\n')) + 1;
-  git::Patch patch = git::Patch::fromBuffers(
-      mOldContent, mContent, mPatch.name(git::Diff::OldFile), mPath, lines,
-      Settings::instance()->isWhitespaceIgnored());
+  // More context than lines for the whole file. xdiff adds it to the line
+  // numbers, so it can't be the largest number.
+  int context = repo.gitConfig().value<int>("diff.context", 3);
+  if (mWholeFile)
+    context = qMax(mOldContent.count('\n'), mContent.count('\n')) + 1;
+  bool ignoreWhitespace =
+      Settings::instance()->isWhitespaceIgnored() && !mWhitespaceChanges;
+  git::Patch patch = git::Patch::fromBuffers(mOldContent, mContent,
+                                             mPatch.name(git::Diff::OldFile),
+                                             mPath, context, ignoreWhitespace);
   if (patch.isValid())
     mPatch = patch;
 }

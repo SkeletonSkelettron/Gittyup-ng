@@ -169,6 +169,13 @@ Rectangle {
                 MergeModeSwitch {}
 
                 CheckBox {
+                    visible: root.diff.canShowWhitespaceChanges
+                    text: qsTr("Whitespace")
+                    checked: root.diff.whitespaceChanges
+                    onToggled: root.diff.whitespaceChanges = checked
+                }
+
+                CheckBox {
                     visible: root.diff.canShowWholeFile
                     text: qsTr("Whole file")
                     checked: root.diff.wholeFile
