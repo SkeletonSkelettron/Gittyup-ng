@@ -6,6 +6,7 @@ void Setting::initialize(QMap<Id, QString> &keys) {
   keys[Id::PushAfterEachCommit] = "global/autopush/enable";
   keys[Id::UpdateSubmodulesAfterPullAndClone] = "global/autoupdate/enable";
   keys[Id::PruneAfterFetch] = "global/autoprune/enable";
+  keys[Id::CommitHistoryLimit] = "global/history/limit";
   keys[Id::FontFamily] = "editor/font/family";
   keys[Id::FontSize] = "editor/font/size";
   keys[Id::UseTabsForIndent] = "editor/indent/tabs";

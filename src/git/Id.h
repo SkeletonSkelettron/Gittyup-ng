@@ -44,6 +44,7 @@ private:
   friend class Index;
   friend class RefState;
   friend class Repository;
+  friend class RevWalk;
 };
 
 uint qHash(const Id &key);

@@ -30,6 +30,7 @@ public:
     PushAfterEachCommit,
     UpdateSubmodulesAfterPullAndClone,
     PruneAfterFetch,
+    CommitHistoryLimit,
     FontFamily,
     FontSize,
     UseTabsForIndent,

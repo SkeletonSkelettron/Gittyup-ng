@@ -8,5 +8,8 @@ return {
   },
   autoupdate = {
     enable = false
+  },
+  history = {
+    limit = 1000
   }
 }

@@ -14,6 +14,8 @@
 #include "git2/pathspec.h"
 #include "git2/revwalk.h"
 #include <QRegularExpression>
+#include <QSet>
+#include <queue>
 
 namespace git {
 
@@ -40,12 +42,58 @@ bool RevWalk::hide(const Reference &ref) {
 }
 
 bool RevWalk::push(const Commit &commit) {
-  return !git_revwalk_push(d.data(), commit);
+  if (git_revwalk_push(d.data(), commit))
+    return false;
+
+  mTips.append(commit.id());
+  return true;
 }
 
 bool RevWalk::push(const Reference &ref) {
   Commit commit = ref.target();
   return commit.isValid() ? push(commit) : false;
+}
+
+void RevWalk::limit(int count) {
+  if (!isValid() || count <= 0)
+    return;
+
+  // Take the newest commit and queue its parents, until there are enough.
+  auto older = [](const Commit &lhs, const Commit &rhs) {
+    return git_commit_time(lhs) < git_commit_time(rhs);
+  };
+  std::priority_queue<Commit, std::vector<Commit>, decltype(older)> queue(
+      older);
+
+  QSet<Id> seen;
+  git_repository *repo = git_revwalk_repository(d.data());
+  auto enqueue = [&](const Id &id) {
+    if (seen.contains(id))
+      return;
+
+    seen.insert(id);
+    git_commit *commit = nullptr;
+    if (!git_commit_lookup(&commit, repo, id))
+      queue.push(Commit(commit));
+  };
+
+  for (const Id &id : mTips)
+    enqueue(id);
+
+  for (int i = 0; i < count && !queue.empty(); ++i) {
+    Commit commit = queue.top();
+    queue.pop();
+
+    unsigned parents = git_commit_parentcount(commit);
+    if (mFirstParent)
+      parents = qMin(parents, 1u);
+    for (unsigned j = 0; j < parents; ++j)
+      enqueue(git_commit_parent_id(commit, j));
+  }
+
+  // Hide what is left, the walk stops there.
+  for (; !queue.empty(); queue.pop())
+    hide(queue.top());
 }
 
 Commit RevWalk::next(const QString &path) const {

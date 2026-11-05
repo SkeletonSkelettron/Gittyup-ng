@@ -224,11 +224,13 @@ RevWalk Commit::walker(int sort, bool firstCommitOnly) const {
     return RevWalk();
 
   RevWalk walker(revwalk);
-  if (git_revwalk_push(revwalk, git_object_id(d.data())))
+  if (!walker.push(*this))
     return RevWalk();
 
   if (firstCommitOnly && git_revwalk_simplify_first_parent(revwalk))
     return RevWalk();
+
+  walker.mFirstParent = firstCommitOnly;
 
   git_revwalk_sorting(revwalk, sort);
 

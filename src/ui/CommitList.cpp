@@ -175,6 +175,15 @@ public:
                             !mRows.first().commit.isValid());
     });
 
+    // Load the commits again when their number changes.
+    connect(Settings::instance(), &Settings::settingsChanged, this, [this] {
+      int limit = historyLimit();
+      if (limit != mLimit) {
+        mLimit = limit;
+        resetWalker();
+      }
+    });
+
     resetSettings();
   }
 
@@ -383,9 +392,14 @@ public:
     mSortDate = config.value<bool>(ConfigKeys::kSortKey, true);
     mShowCleanStatus = config.value<bool>(ConfigKeys::kStatusKey, true);
     mGraphVisible = config.value<bool>(ConfigKeys::kGraphKey, true);
+    mLimit = historyLimit();
 
     if (walk)
       resetWalker();
+  }
+
+  static int historyLimit() {
+    return Settings::instance()->value(Setting::Id::CommitHistoryLimit).toInt();
   }
 
   bool canFetchMore(const QModelIndex &parent) const {
@@ -592,6 +606,7 @@ private:
     QStringList solo;
     QStringList hidden;
     bool showCleanStatus;
+    int limit;
     git::Repository repo;
     git::Diff statusDiff;
     bool statusCheckFinished;
@@ -900,6 +915,10 @@ private:
       }
     }
 
+    // The history of a path is searched to the end.
+    if (ctx.pathspec.isEmpty())
+      result.walker.limit(ctx.limit);
+
     if (result.walker.isValid()) {
       // Soloed branches show all their parents.
       FetchResult fetched = fetchRows(
@@ -929,6 +948,7 @@ private:
                      mSolo,
                      mHidden,
                      mShowCleanStatus,
+                     mLimit,
                      mRepo,
                      status(),
                      mStatus.isFinished(),
@@ -981,6 +1001,7 @@ private:
   bool mSortDate = true;
   bool mShowCleanStatus = true;
   bool mGraphVisible = true;
+  int mLimit = 0;
 };
 
 /*!

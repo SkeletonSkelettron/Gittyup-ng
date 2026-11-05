@@ -154,6 +154,24 @@ PreferencesPage {
             }
 
             SettingSection {
+                title: qsTr("History")
+
+                SettingRow {
+                    label: qsTr("Commits")
+                    hint: qsTr("How many of the newest commits are loaded, 0 loads all of them")
+
+                    SpinBox {
+                        from: 0
+                        to: 10000000
+                        stepSize: 500
+                        value: dialog.settingInt("CommitHistoryLimit")
+                        textFromValue: (value, locale) => value === 0 ? qsTr("All") : Number(value).toLocaleString(locale, "f", 0)
+                        onValueModified: dialog.setSetting("CommitHistoryLimit", value)
+                    }
+                }
+            }
+
+            SettingSection {
                 title: qsTr("Language")
 
                 SettingRow {
