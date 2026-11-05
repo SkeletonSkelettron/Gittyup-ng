@@ -1,0 +1,1819 @@
+diff --git a/docs/acknowledgments.md b/docs/acknowledgments.md
+index 7e18acf0..2b552d28 100644
+--- a/docs/acknowledgments.md
++++ b/docs/acknowledgments.md
+@@ -453,3 +453,12 @@ Lucide is used under the terms of the ISC License:
+     WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+     ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+     OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++
++----
++
++#### Inter
++
++Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
++
++[Inter](https://rsms.me/inter/) is the font of the interface. It is used under the terms of the
++[SIL Open Font License, Version 1.1](https://openfontlicense.org).
+diff --git a/docs/changelog.md b/docs/changelog.md
+index e7781d49..87f64293 100644
+--- a/docs/changelog.md
++++ b/docs/changelog.md
+@@ -8,6 +8,7 @@
+ 
+ * Undo that failed, like while another git process locked a branch, didn't put back the staged changes, the files deleted locally and the modes and links of the files as they were
+ * Staging lines of a new file whose required clean filter fails staged the unfiltered file, or broke when the filter began to fail after the file was shown. It shows the filter's error now and doesn't stage
++* A branch dragged over other branches and commits stuttered, and so did the pointer
+ 
+ ----
+ 
+diff --git a/io.github.SkeletonSkelettron.GittyupNg.yml b/io.github.SkeletonSkelettron.GittyupNg.yml
+index 64fbbd1f..e503474e 100644
+--- a/io.github.SkeletonSkelettron.GittyupNg.yml
++++ b/io.github.SkeletonSkelettron.GittyupNg.yml
+@@ -1,6 +1,6 @@
+ app-id: io.github.SkeletonSkelettron.GittyupNg
+ runtime: org.kde.Platform
+-runtime-version: 6.9
++runtime-version: '6.10'
+ sdk: org.kde.Sdk
+ command: gittyup-ng
+ desktop-file-name-suffix: "" # used to create development version
+diff --git a/rsrc/fonts/Inter-LICENSE.txt b/rsrc/fonts/Inter-LICENSE.txt
+new file mode 100644
+index 00000000..9b2ca37b
+--- /dev/null
++++ b/rsrc/fonts/Inter-LICENSE.txt
+@@ -0,0 +1,92 @@
++Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
++
++This Font Software is licensed under the SIL Open Font License, Version 1.1.
++This license is copied below, and is also available with a FAQ at:
++http://scripts.sil.org/OFL
++
++-----------------------------------------------------------
++SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
++-----------------------------------------------------------
++
++PREAMBLE
++The goals of the Open Font License (OFL) are to stimulate worldwide
++development of collaborative font projects, to support the font creation
++efforts of academic and linguistic communities, and to provide a free and
++open framework in which fonts may be shared and improved in partnership
++with others.
++
++The OFL allows the licensed fonts to be used, studied, modified and
++redistributed freely as long as they are not sold by themselves. The
++fonts, including any derivative works, can be bundled, embedded,
++redistributed and/or sold with any software provided that any reserved
++names are not used by derivative works. The fonts and derivatives,
++however, cannot be released under any other type of license. The
++requirement for fonts to remain under this license does not apply
++to any document created using the fonts or their derivatives.
++
++DEFINITIONS
++"Font Software" refers to the set of files released by the Copyright
++Holder(s) under this license and clearly marked as such. This may
++include source files, build scripts and documentation.
++
++"Reserved Font Name" refers to any names specified as such after the
++copyright statement(s).
++
++"Original Version" refers to the collection of Font Software components as
++distributed by the Copyright Holder(s).
++
++"Modified Version" refers to any derivative made by adding to, deleting,
++or substituting -- in part or in whole -- any of the components of the
++Original Version, by changing formats or by porting the Font Software to a
++new environment.
++
++"Author" refers to any designer, engineer, programmer, technical
++writer or other person who contributed to the Font Software.
++
++PERMISSION AND CONDITIONS
++Permission is hereby granted, free of charge, to any person obtaining
++a copy of the Font Software, to use, study, copy, merge, embed, modify,
++redistribute, and sell modified and unmodified copies of the Font
++Software, subject to the following conditions:
++
++1) Neither the Font Software nor any of its individual components,
++in Original or Modified Versions, may be sold by itself.
++
++2) Original or Modified Versions of the Font Software may be bundled,
++redistributed and/or sold with any software, provided that each copy
++contains the above copyright notice and this license. These can be
++included either as stand-alone text files, human-readable headers or
++in the appropriate machine-readable metadata fields within text or
++binary files as long as those fields can be easily viewed by the user.
++
++3) No Modified Version of the Font Software may use the Reserved Font
++Name(s) unless explicit written permission is granted by the corresponding
++Copyright Holder. This restriction only applies to the primary font name as
++presented to the users.
++
++4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
++Software shall not be used to promote, endorse or advertise any
++Modified Version, except to acknowledge the contribution(s) of the
++Copyright Holder(s) and the Author(s) or with their explicit written
++permission.
++
++5) The Font Software, modified or unmodified, in part or in whole,
++must be distributed entirely under this license, and must not be
++distributed under any other license. The requirement for fonts to
++remain under this license does not apply to any document created
++using the Font Software.
++
++TERMINATION
++This license becomes null and void if any of the above conditions are
++not met.
++
++DISCLAIMER
++THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
++MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
++OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
++COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
++INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
++DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
++OTHER DEALINGS IN THE FONT SOFTWARE.
+diff --git a/rsrc/fonts/Inter-Regular.ttf b/rsrc/fonts/Inter-Regular.ttf
+new file mode 100644
+index 00000000..b7aaca8d
+Binary files /dev/null and b/rsrc/fonts/Inter-Regular.ttf differ
+diff --git a/rsrc/fonts/Inter-SemiBold.ttf b/rsrc/fonts/Inter-SemiBold.ttf
+new file mode 100644
+index 00000000..47f8ab1d
+Binary files /dev/null and b/rsrc/fonts/Inter-SemiBold.ttf differ
+diff --git a/rsrc/resources.qrc b/rsrc/resources.qrc
+index 26a0809b..27dbc410 100755
+--- a/rsrc/resources.qrc
++++ b/rsrc/resources.qrc
+@@ -25,6 +25,8 @@
+         <file>fetch@2x.png</file>
+         <file>file.png</file>
+         <file>file@2x.png</file>
++        <file>fonts/Inter-Regular.ttf</file>
++        <file>fonts/Inter-SemiBold.ttf</file>
+         <file>general.png</file>
+         <file>general@2x.png</file>
+         <file>github.png</file>
+diff --git a/src/app/Application.cpp b/src/app/Application.cpp
+index c0620407..82030727 100644
+--- a/src/app/Application.cpp
++++ b/src/app/Application.cpp
+@@ -34,6 +34,7 @@
+ #include <QNetworkReply>
+ #include <QOperatingSystemVersion>
+ #include <QPalette>
++#include <QQuickWindow>
+ #include <QSettings>
+ #include <QStandardPaths>
+ #include <QStyle>
+@@ -52,54 +53,10 @@ bool Application::mIsInTest = false;
+ #include <unistd.h>
+ 
+ #elif defined(Q_OS_WIN)
++#include "CrashHandler.h"
+ #include <windows.h>
+-#include <dbghelp.h>
+-#include <strsafe.h>
+ #include <QWindow>
+ #include <io.h>
+-
+-static LPTOP_LEVEL_EXCEPTION_FILTER defaultFilter = nullptr;
+-
+-static LONG WINAPI exceptionFilter(PEXCEPTION_POINTERS info) {
+-  // Protect against reentering.
+-  static bool entered = false;
+-  if (entered)
+-    ExitProcess(1);
+-  entered = true;
+-
+-  // Write dump file.
+-  SYSTEMTIME localTime;
+-  GetLocalTime(&localTime);
+-
+-  wchar_t temp[MAX_PATH];
+-  GetTempPath(MAX_PATH, temp);
+-
+-  wchar_t dir[MAX_PATH];
+-  const wchar_t *gittyup_name = L"%s" GITTYUP_NAME;
+-  StringCchPrintf(dir, MAX_PATH, gittyup_name, temp);
+-  CreateDirectory(dir, NULL);
+-
+-  wchar_t fileName[MAX_PATH];
+-  const wchar_t *s = L"%s\\%s-%s-%04d%02d%02d-%02d%02d%02d-%ld-%ld.dmp";
+-  StringCchPrintf(fileName, MAX_PATH, s, dir, GITTYUP_NAME, GITTYUP_VERSION,
+-                  localTime.wYear, localTime.wMonth, localTime.wDay,
+-                  localTime.wHour, localTime.wMinute, localTime.wSecond,
+-                  GetCurrentProcessId(), GetCurrentThreadId());
+-
+-  HANDLE dumpFile =
+-      CreateFile(fileName, GENERIC_READ | GENERIC_WRITE,
+-                 FILE_SHARE_WRITE | FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
+-
+-  MINIDUMP_EXCEPTION_INFORMATION expParam;
+-  expParam.ThreadId = GetCurrentThreadId();
+-  expParam.ExceptionPointers = info;
+-  expParam.ClientPointers = TRUE;
+-
+-  MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), dumpFile,
+-                    MiniDumpWithDataSegs, &expParam, NULL, NULL);
+-
+-  return defaultFilter ? defaultFilter(info) : EXCEPTION_CONTINUE_SEARCH;
+-}
+ #endif
+ 
+ namespace {
+@@ -254,13 +211,21 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
+   QApplication::setPalette(palette);
+ #endif
+ 
+-#if defined(Q_OS_WIN)
+-  // Set default font style and hinting.
++  // Antialiased text whose lines snap to the pixels, like the light hinting
++  // of FreeType, on all platforms. The distance fields of Qt Quick are blurry
++  // at small sizes and the full hinting of Windows is jagged. Inter looks the
++  // same everywhere, the system fonts draw what it has no glyphs for, like
++  // Georgian.
+   QFont font = QApplication::font();
++  int inter = QFontDatabase::addApplicationFont(":/fonts/Inter-Regular.ttf");
++  QFontDatabase::addApplicationFont(":/fonts/Inter-SemiBold.ttf");
++  QStringList families = QFontDatabase::applicationFontFamilies(inter);
++  if (!families.isEmpty())
++    font.setFamily(families.first());
+   font.setStyleStrategy(QFont::PreferDefault);
+-  font.setHintingPreference(QFont::PreferDefaultHinting);
++  font.setHintingPreference(QFont::PreferVerticalHinting);
+   QApplication::setFont(font);
+-#endif
++  QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
+ 
+   // Read translation settings.
+   QSettings settings;
+@@ -320,7 +285,7 @@ Application::Application(int &argc, char **argv, bool haltOnParseError)
+ 
+ #elif defined(Q_OS_WIN)
+   // FIXME: Install in main before anything else?
+-  defaultFilter = SetUnhandledExceptionFilter(&exceptionFilter);
++  CrashHandler::install(isInTest());
+ 
+ #elif defined(Q_OS_LINUX)
+   QIcon icon;
+diff --git a/src/app/CMakeLists.txt b/src/app/CMakeLists.txt
+index a108bf27..0d433217 100755
+--- a/src/app/CMakeLists.txt
++++ b/src/app/CMakeLists.txt
+@@ -127,6 +127,7 @@ set_target_properties(
+              RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+ 
+ if(WIN32)
++  target_sources(app PRIVATE CrashHandler.cpp)
+   target_link_libraries(app dbghelp)
+ elseif(APPLE)
+   set_target_properties(
+diff --git a/src/app/CrashHandler.cpp b/src/app/CrashHandler.cpp
+new file mode 100644
+index 00000000..3ee78f14
+--- /dev/null
++++ b/src/app/CrashHandler.cpp
+@@ -0,0 +1,506 @@
++//
++//          Copyright (c) 2026, Gittyup contributors
++//
++// This software is licensed under the MIT License. The LICENSE.md file
++// describes the conditions under which this software may be distributed.
++//
++
++#include "CrashHandler.h"
++#include <QCoreApplication>
++#include <QString>
++#include <atomic>
++#include <csignal>
++#include <cstdint>
++#include <cstdlib>
++#include <cstring>
++#include <cwchar>
++#include <exception>
++#include <typeinfo>
++
++#include <windows.h>
++#include <dbghelp.h>
++#include <strsafe.h>
++
++#ifdef __GNUC__
++#include <cxxabi.h>
++#endif
++
++namespace {
++
++// The C++ runtimes call std::terminate() for their exceptions.
++const DWORD kGccException = 0x20474343;
++const DWORD kMsvcException = 0xE06D7363;
++
++// The exception codes in the dumps of crashes that raise no exception.
++const DWORD kFatalAppExit = 0x40000015;
++const DWORD kInvalidParameter = 0xC0000417;
++
++const wchar_t *const kName = L"" GITTYUP_NAME;
++const wchar_t *const kPrefix = L"" GITTYUP_NAME L"-" GITTYUP_VERSION;
++
++const int kMaxFrames = 64;
++
++// What happened, written down by another thread: the crashed one may have no
++// stack left, and a dump shows the stack of a thread right from another one.
++struct Crash {
++  DWORD thread = 0;
++  // Described from the exception when it's empty.
++  char reason[4096] = {};
++  EXCEPTION_POINTERS *exception = nullptr;
++  // The exception of crashes that raise none.
++  EXCEPTION_RECORD record = {};
++  EXCEPTION_POINTERS pointers = {};
++  // The registers that the stack is walked from.
++  CONTEXT context = {};
++  ULONG_PTR stackLow = 0;
++  ULONG_PTR stackHigh = 0;
++  HANDLE written = nullptr;
++};
++
++Crash sCrash;
++
++// Prepared at startup. Nothing is allocated for them in a crash.
++wchar_t sDir[MAX_PATH];
++wchar_t sMessage[512];
++bool sQuiet = false;
++
++LPTOP_LEVEL_EXCEPTION_FILTER sDefaultFilter = nullptr;
++QtMessageHandler sDefaultHandler = nullptr;
++std::terminate_handler sDefaultTerminate = nullptr;
++
++// The thread that reports the first crash.
++std::atomic<DWORD> sCrashed{0};
++
++// Whether this thread reports a crash. Another thread that crashes meanwhile
++// waits for the process to end, and a crash of this thread while or after it
++// reports isn't reported again.
++bool begin() {
++  DWORD self = GetCurrentThreadId();
++  DWORD none = 0;
++  if (sCrashed.compare_exchange_strong(none, self))
++    return true;
++
++  if (none != self)
++    Sleep(INFINITE);
++  return false;
++}
++
++// The address that the module was linked at, from its file. The loader
++// writes where it loaded the module into the header in memory.
++DWORD64 linkedBase(const wchar_t *path) {
++  DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
++  HANDLE file = CreateFileW(path, GENERIC_READ, share, nullptr, OPEN_EXISTING,
++                            FILE_ATTRIBUTE_NORMAL, nullptr);
++  if (file == INVALID_HANDLE_VALUE)
++    return 0;
++
++  BYTE header[4096];
++  DWORD read = 0;
++  BOOL ok = ReadFile(file, header, sizeof(header), &read, nullptr);
++  CloseHandle(file);
++  if (!ok || read < sizeof(IMAGE_DOS_HEADER))
++    return 0;
++
++  auto dos = reinterpret_cast<const IMAGE_DOS_HEADER *>(header);
++  if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew < 0 ||
++      static_cast<DWORD>(dos->e_lfanew) + sizeof(IMAGE_NT_HEADERS64) > read)
++    return 0;
++
++  auto nt =
++      reinterpret_cast<const IMAGE_NT_HEADERS64 *>(header + dos->e_lfanew);
++  if (nt->Signature != IMAGE_NT_SIGNATURE)
++    return 0;
++
++  switch (nt->OptionalHeader.Magic) {
++    case IMAGE_NT_OPTIONAL_HDR64_MAGIC:
++      return nt->OptionalHeader.ImageBase;
++    case IMAGE_NT_OPTIONAL_HDR32_MAGIC:
++      return reinterpret_cast<const IMAGE_NT_HEADERS32 *>(nt)
++          ->OptionalHeader.ImageBase;
++    default:
++      return 0;
++  }
++}
++
++// The module of the address and the offset into it. In parentheses is the
++// address in the module as it was linked, which addr2line looks up.
++void describe(DWORD64 address, char *text, size_t size) {
++  HMODULE module = nullptr;
++  DWORD flags = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
++                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
++  LPCWSTR pointer = reinterpret_cast<LPCWSTR>(static_cast<ULONG_PTR>(address));
++  if (!GetModuleHandleExW(flags, pointer, &module)) {
++    StringCchPrintfA(text, size, "0x%llx", address);
++    return;
++  }
++
++  wchar_t path[MAX_PATH] = {};
++  GetModuleFileNameW(module, path, MAX_PATH);
++  const wchar_t *name = wcsrchr(path, L'\\');
++  char utf8[MAX_PATH * 3] = {};
++  WideCharToMultiByte(CP_UTF8, 0, name ? name + 1 : path, -1, utf8,
++                      static_cast<int>(sizeof(utf8)), nullptr, nullptr);
++
++  // Frames are mostly in the module of the frame before.
++  static HMODULE lastModule = nullptr;
++  static DWORD64 lastBase = 0;
++  if (module != lastModule) {
++    lastModule = module;
++    lastBase = linkedBase(path);
++  }
++
++  DWORD64 offset = address - reinterpret_cast<ULONG_PTR>(module);
++  if (lastBase) {
++    StringCchPrintfA(text, size, "%s+0x%llx (0x%llx)", utf8, offset,
++                     lastBase + offset);
++  } else {
++    StringCchPrintfA(text, size, "%s+0x%llx", utf8, offset);
++  }
++}
++
++const char *exceptionName(DWORD code) {
++  switch (code) {
++    case EXCEPTION_ACCESS_VIOLATION:
++      return "access violation";
++    case EXCEPTION_STACK_OVERFLOW:
++      return "stack overflow";
++    case EXCEPTION_ILLEGAL_INSTRUCTION:
++      return "illegal instruction";
++    case EXCEPTION_PRIV_INSTRUCTION:
++      return "privileged instruction";
++    case EXCEPTION_IN_PAGE_ERROR:
++      return "page error";
++    case EXCEPTION_INT_DIVIDE_BY_ZERO:
++      return "integer division by zero";
++    case EXCEPTION_BREAKPOINT:
++      return "breakpoint";
++    case 0xC0000374:
++      return "heap corruption";
++    case 0xC0000409:
++      return "stack buffer overrun";
++    case kGccException:
++    case kMsvcException:
++      return "C++ exception";
++    default:
++      return "exception";
++  }
++}
++
++void describeException(const EXCEPTION_RECORD *record, char *text,
++                       size_t size) {
++  char where[MAX_PATH * 3 + 64];
++  describe(reinterpret_cast<ULONG_PTR>(record->ExceptionAddress), where,
++           sizeof(where));
++
++  DWORD code = record->ExceptionCode;
++  const char *name = exceptionName(code);
++  if (code == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2) {
++    ULONG_PTR kind = record->ExceptionInformation[0];
++    const char *access = (kind == 0)   ? "reading"
++                         : (kind == 8) ? "executing"
++                                       : "writing";
++    DWORD64 address = record->ExceptionInformation[1];
++    StringCchPrintfA(text, size, "Exception 0x%08lx, %s %s 0x%llx, at %s.",
++                     code, name, access, address, where);
++    return;
++  }
++
++  StringCchPrintfA(text, size, "Exception 0x%08lx, %s, at %s.", code, name,
++                   where);
++}
++
++// The return addresses on the stack of the crashed thread. Its stack may be
++// broken: the walk stops where it leaves the stack or doesn't go up.
++int walk(DWORD64 *frames) {
++  int count = 0;
++#if defined(_M_X64) || defined(__x86_64__)
++  CONTEXT context = sCrash.context;
++  while (count < kMaxFrames && context.Rip) {
++    frames[count++] = context.Rip;
++    DWORD64 top = context.Rsp;
++    if (top < sCrash.stackLow || top + sizeof(DWORD64) > sCrash.stackHigh)
++      break;
++
++    DWORD64 base = 0;
++    PRUNTIME_FUNCTION function =
++        RtlLookupFunctionEntry(context.Rip, &base, nullptr);
++    if (function) {
++      PVOID data = nullptr;
++      DWORD64 frame = 0;
++      RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, context.Rip, function, &context,
++                       &data, &frame, nullptr);
++    } else {
++      // Leaf functions keep nothing on the stack but the return address.
++      context.Rip = *reinterpret_cast<const DWORD64 *>(top);
++      context.Rsp = top + sizeof(DWORD64);
++    }
++
++    if (context.Rsp <= top)
++      break;
++  }
++#else
++  Q_UNUSED(frames);
++#endif
++  return count;
++}
++
++void write(HANDLE file, const char *text) {
++  DWORD written = 0;
++  WriteFile(file, text, static_cast<DWORD>(strlen(text)), &written, nullptr);
++}
++
++// Writes the report and the dump of the crash, then tells where they are.
++DWORD WINAPI writeReport(void *) {
++  SYSTEMTIME time;
++  GetLocalTime(&time);
++  CreateDirectoryW(sDir, nullptr);
++
++  wchar_t path[MAX_PATH];
++  StringCchPrintfW(path, MAX_PATH,
++                   L"%ls\\%ls-%04u%02u%02u-%02u%02u%02u-%lu-%lu", sDir, kPrefix,
++                   time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute,
++                   time.wSecond, GetCurrentProcessId(), sCrash.thread);
++
++  wchar_t reportPath[MAX_PATH];
++  wchar_t dumpPath[MAX_PATH];
++  StringCchPrintfW(reportPath, MAX_PATH, L"%ls.txt", path);
++  StringCchPrintfW(dumpPath, MAX_PATH, L"%ls.dmp", path);
++
++  if (!sCrash.reason[0])
++    describeException(sCrash.exception->ExceptionRecord, sCrash.reason,
++                      sizeof(sCrash.reason));
++
++  // What happened goes first. The dump and the stack may fail.
++  HANDLE report =
++      CreateFileW(reportPath, GENERIC_WRITE, FILE_SHARE_READ, nullptr,
++                  CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
++  char text[1024];
++  StringCchPrintfA(text, sizeof(text),
++                   "%s crashed on %04u-%02u-%02u at %02u:%02u:%02u.\r\n\r\n",
++                   GITTYUP_NAME " " GITTYUP_VERSION BUILD_DESCRIPTION,
++                   time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute,
++                   time.wSecond);
++  write(report, text);
++  write(report, sCrash.reason);
++  write(report, "\r\n\r\n");
++
++  HANDLE dump = CreateFileW(dumpPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
++                            FILE_ATTRIBUTE_NORMAL, nullptr);
++  MINIDUMP_EXCEPTION_INFORMATION exception = {sCrash.thread, sCrash.exception,
++                                              FALSE};
++  bool dumped = false;
++  if (dump != INVALID_HANDLE_VALUE) {
++    dumped =
++        MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), dump,
++                          MiniDumpWithDataSegs, &exception, nullptr, nullptr);
++    CloseHandle(dump);
++  }
++
++  DWORD64 frames[kMaxFrames];
++  int count = walk(frames);
++  StringCchPrintfA(text, sizeof(text), "Stack of thread %lu:\r\n",
++                   sCrash.thread);
++  write(report, text);
++  for (int i = 0; i < count; ++i) {
++    char frame[MAX_PATH * 3 + 64];
++    describe(frames[i], frame, sizeof(frame));
++    StringCchPrintfA(text, sizeof(text), "#%-3d%s\r\n", i, frame);
++    write(report, text);
++  }
++
++  write(report, "\r\naddr2line -f -C -e <module> <address in parentheses> "
++                "shows the function and the line.\r\n");
++  write(report, dumped ? "The dump of the process is next to this report.\r\n"
++                       : "The dump of the process couldn't be written.\r\n");
++  if (report != INVALID_HANDLE_VALUE)
++    CloseHandle(report);
++
++  SetEvent(sCrash.written);
++
++  if (!sQuiet) {
++    static wchar_t reason[sizeof(sCrash.reason)];
++    MultiByteToWideChar(CP_UTF8, 0, sCrash.reason, -1, reason,
++                        static_cast<int>(sizeof(sCrash.reason)));
++
++    static wchar_t message[sizeof(sCrash.reason) + 1024];
++    StringCchPrintfW(message, sizeof(message) / sizeof(message[0]),
++                     L"%ls\n%ls\n\n%ls", sMessage, reportPath, reason);
++    MessageBoxW(nullptr, message, kName,
++                MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
++  }
++
++  return 0;
++}
++
++// Writes the crash down on another thread and waits for it.
++void report() {
++  sCrash.thread = GetCurrentThreadId();
++  auto tib = reinterpret_cast<const NT_TIB *>(NtCurrentTeb());
++  sCrash.stackLow = reinterpret_cast<ULONG_PTR>(tib->StackLimit);
++  sCrash.stackHigh = reinterpret_cast<ULONG_PTR>(tib->StackBase);
++  sCrash.written = CreateEventW(nullptr, TRUE, FALSE, nullptr);
++
++  HANDLE thread = CreateThread(nullptr, 0, &writeReport, nullptr, 0, nullptr);
++  if (!thread) {
++    writeReport(nullptr);
++    return;
++  }
++
++  // Writing may wait for a lock that the crashed thread holds. Wait for the
++  // message to be closed only when it's written.
++  if (WaitForSingleObject(sCrash.written, 60 * 1000) == WAIT_OBJECT_0)
++    WaitForSingleObject(thread, INFINITE);
++  CloseHandle(thread);
++}
++
++// Reports a crash that raised no exception, from where it's called.
++void reportHere(DWORD code) {
++  RtlCaptureContext(&sCrash.context);
++  sCrash.record.ExceptionCode = code;
++  sCrash.record.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
++#if defined(_M_X64) || defined(__x86_64__)
++  sCrash.record.ExceptionAddress =
++      reinterpret_cast<PVOID>(static_cast<ULONG_PTR>(sCrash.context.Rip));
++#endif
++  sCrash.pointers.ExceptionRecord = &sCrash.record;
++  sCrash.pointers.ContextRecord = &sCrash.context;
++  sCrash.exception = &sCrash.pointers;
++  report();
++}
++
++LONG WINAPI onException(EXCEPTION_POINTERS *info) {
++  // The C++ runtime calls std::terminate() for its exceptions, which reports
++  // them with their message.
++  DWORD code = info->ExceptionRecord->ExceptionCode;
++  bool cpp = (code == kGccException || code == kMsvcException);
++  if ((!cpp || !sDefaultFilter) && begin()) {
++    sCrash.exception = info;
++    sCrash.context = *info->ContextRecord;
++    report();
++  }
++
++  return sDefaultFilter ? sDefaultFilter(info) : EXCEPTION_CONTINUE_SEARCH;
++}
++
++void onMessage(QtMsgType type, const QMessageLogContext &context,
++               const QString &message) {
++  if (type == QtFatalMsg && begin()) {
++    QByteArray text = message.toUtf8();
++    StringCchPrintfA(sCrash.reason, sizeof(sCrash.reason), "Fatal error: %s",
++                     text.constData());
++    if (context.file) {
++      char where[1024];
++      StringCchPrintfA(where, sizeof(where), "\r\n(%s:%d, %s)", context.file,
++                       context.line, context.function ? context.function : "");
++      StringCchCatA(sCrash.reason, sizeof(sCrash.reason), where);
++    }
++
++    reportHere(kFatalAppExit);
++    if (sDefaultHandler)
++      sDefaultHandler(type, context, message);
++
++    // Qt ends the process with a fail-fast exception, which Windows shows in
++    // a dialog of its own that waits to be closed.
++    TerminateProcess(GetCurrentProcess(), kFatalAppExit);
++  }
++
++  if (sDefaultHandler)
++    sDefaultHandler(type, context, message);
++}
++
++[[noreturn]] void onTerminate() {
++  if (begin()) {
++    StringCchCopyA(sCrash.reason, sizeof(sCrash.reason),
++                   "std::terminate() was called.");
++    if (std::exception_ptr exception = std::current_exception()) {
++      const char *type = "of an unknown type";
++#ifdef __GNUC__
++      char *name = nullptr;
++      if (std::type_info *info = abi::__cxa_current_exception_type()) {
++        int status = 0;
++        name = abi::__cxa_demangle(info->name(), nullptr, nullptr, &status);
++        type = name ? name : info->name();
++      }
++#endif
++
++      try {
++        std::rethrow_exception(exception);
++      } catch (const std::exception &e) {
++#ifndef __GNUC__
++        type = typeid(e).name();
++#endif
++        StringCchPrintfA(sCrash.reason, sizeof(sCrash.reason),
++                         "Uncaught C++ exception %s: %s", type, e.what());
++      } catch (...) {
++        StringCchPrintfA(sCrash.reason, sizeof(sCrash.reason),
++                         "Uncaught C++ exception %s.", type);
++      }
++
++#ifdef __GNUC__
++      free(name);
++#endif
++    }
++
++    reportHere(kFatalAppExit);
++  }
++
++  if (sDefaultTerminate)
++    sDefaultTerminate();
++  std::abort();
++}
++
++void onAbort(int) {
++  if (begin()) {
++    StringCchCopyA(sCrash.reason, sizeof(sCrash.reason), "abort() was called.");
++    reportHere(kFatalAppExit);
++  }
++}
++
++// The C runtime ends the process after an invalid parameter. Only its debug
++// version says where.
++void onInvalidParameter(const wchar_t *expression, const wchar_t *function,
++                        const wchar_t *file, unsigned int line, uintptr_t) {
++  if (begin()) {
++    StringCchCopyA(sCrash.reason, sizeof(sCrash.reason),
++                   "A function of the C runtime was called with an invalid "
++                   "parameter.");
++    if (function) {
++      char where[2048];
++      StringCchPrintfA(where, sizeof(where), "\r\n%ls: %ls (%ls:%u)", function,
++                       expression ? expression : L"", file ? file : L"", line);
++      StringCchCatA(sCrash.reason, sizeof(sCrash.reason), where);
++    }
++
++    reportHere(kInvalidParameter);
++  }
++
++  TerminateProcess(GetCurrentProcess(), kInvalidParameter);
++}
++
++} // namespace
++
++void CrashHandler::install(bool quiet) {
++  static bool installed = false;
++  if (installed)
++    return;
++  installed = true;
++
++  sQuiet = quiet;
++  GetTempPathW(MAX_PATH, sDir);
++  StringCchCatW(sDir, MAX_PATH, kName);
++
++  QString message = QCoreApplication::translate(
++      "CrashHandler", "%1 closed unexpectedly. What happened was saved to:");
++  message = message.arg(GITTYUP_NAME).left(511);
++  sMessage[message.toWCharArray(sMessage)] = L'\0';
++
++  // The main thread keeps this much of its stack to report its overflow.
++  ULONG guarantee = 64 * 1024;
++  SetThreadStackGuarantee(&guarantee);
++
++  sDefaultFilter = SetUnhandledExceptionFilter(&onException);
++  sDefaultHandler = qInstallMessageHandler(&onMessage);
++  sDefaultTerminate = std::set_terminate(&onTerminate);
++  signal(SIGABRT, &onAbort);
++  _set_invalid_parameter_handler(&onInvalidParameter);
++}
+diff --git a/src/app/CrashHandler.h b/src/app/CrashHandler.h
+new file mode 100644
+index 00000000..c0d3eed4
+--- /dev/null
++++ b/src/app/CrashHandler.h
+@@ -0,0 +1,22 @@
++//
++//          Copyright (c) 2026, Gittyup contributors
++//
++// This software is licensed under the MIT License. The LICENSE.md file
++// describes the conditions under which this software may be distributed.
++//
++
++#ifndef CRASHHANDLER_H
++#define CRASHHANDLER_H
++
++// Leaves a minidump and a report of what happened when the application
++// crashes on Windows: exceptions like access violations and stack overflows,
++// fatal Qt messages, uncaught C++ exceptions, abort() and invalid parameters
++// of the C runtime. They are written to the folder of the application in the
++// temporary folder, and a message tells where, unless 'quiet'.
++namespace CrashHandler {
++
++void install(bool quiet);
++
++} // namespace CrashHandler
++
++#endif
+diff --git a/src/git/Patch.cpp b/src/git/Patch.cpp
+index d87afeef..a7ca889a 100644
+--- a/src/git/Patch.cpp
++++ b/src/git/Patch.cpp
+@@ -453,10 +453,12 @@ void Patch::apply(QList<QList<QByteArray>> &image, int hidx, int start_line,
+ 
+ Patch Patch::fromBuffers(const QByteArray &oldBuffer,
+                          const QByteArray &newBuffer, const QString &oldPath,
+-                         const QString &newPath) {
+-  // FIXME: Pass context lines as a parameter?
++                         const QString &newPath, int contextLines,
++                         bool ignoreWhitespace) {
+   git_diff_options opts = GIT_DIFF_OPTIONS_INIT;
+-  opts.context_lines = 0;
++  opts.context_lines = contextLines;
++  if (ignoreWhitespace)
++    opts.flags |= GIT_DIFF_IGNORE_WHITESPACE;
+ 
+   git_patch *patch = nullptr;
+   git_patch_from_buffers(&patch, oldBuffer.constData(), oldBuffer.length(),
+diff --git a/src/git/Patch.h b/src/git/Patch.h
+index d0224815..8e0142a1 100644
+--- a/src/git/Patch.h
++++ b/src/git/Patch.h
+@@ -140,10 +140,12 @@ public:
+              QByteArray &hunkData) const;
+   QByteArray generateResult(QList<QList<QByteArray>> &image,
+                             const FilterList &filters = FilterList()) const;
++  // The patch refers to the buffers, they have to outlive it.
+   static Patch fromBuffers(const QByteArray &oldBuffer,
+                            const QByteArray &newBuffer,
+                            const QString &oldPath = QString(),
+-                           const QString &newPath = QString());
++                           const QString &newPath = QString(),
++                           int contextLines = 0, bool ignoreWhitespace = false);
+ 
+   static void clearConflictResolutions(const Repository &repo);
+ 
+diff --git a/src/ui/CommitList.cpp b/src/ui/CommitList.cpp
+index 56d6ff4d..e3eea18e 100644
+--- a/src/ui/CommitList.cpp
++++ b/src/ui/CommitList.cpp
+@@ -149,6 +149,14 @@ public:
+ 
+     // Connect watcher to signal when the status diff finishes.
+     connect(&mStatus, &QFutureWatcher<git::Diff>::finished, [this] {
++      // A newer status waited for this one, which is out of date.
++      if (mStatusPending) {
++        mStatusPending = false;
++        mStatusCallbacks.setCanceled(false);
++        startStatus();
++        return;
++      }
++
+       mTimer.stop();
+       dispatchResetWalker(true);
+     });
+@@ -199,8 +207,13 @@ public:
+     // The status sees the workdir as it is from now on.
+     emit statusStarted();
+ 
+-    // Cancel existing status diff.
+-    cancelStatus();
++    // Stop a running status and start again when it ends. git status can't
++    // be stopped, and waiting for it froze the window.
++    if (mStatus.isRunning()) {
++      mStatusCallbacks.setCanceled(true);
++      mStatusPending = true;
++      return;
++    }
+ 
+     // Reload the index before starting the status thread. Allowing
+     // it to reload on the thread frequently corrupts the index.
+@@ -232,6 +245,7 @@ public:
+   }
+ 
+   void cancelStatus() {
++    mStatusPending = false;
+     if (!mStatus.isRunning())
+       return;
+ 
+@@ -941,6 +955,8 @@ private:
+ 
+   // The number of statuses that were started.
+   int mStatusCount = 0;
++  // A status starts when the running one ends.
++  bool mStatusPending = false;
+ 
+   DiffCallbacks mStatusCallbacks;
+   QFutureWatcher<git::Diff> mStatus;
+diff --git a/src/ui/DiffModel.cpp b/src/ui/DiffModel.cpp
+index 2d6f4261..7ea6e90f 100644
+--- a/src/ui/DiffModel.cpp
++++ b/src/ui/DiffModel.cpp
+@@ -62,9 +62,12 @@ DiffModel::DiffModel(RepoView *view, QObject *parent)
+ }
+ 
+ void DiffModel::setDiff(const git::Diff &diff, const QString &path) {
+-  // Keep the forced load of a large diff for the same file.
+-  if (path != mPath)
++  // Keep the forced load of a large diff and the whole file for the same
++  // file.
++  if (path != mPath) {
+     mLoadAnyway = false;
++    mWholeFile = false;
++  }
+ 
+   mDiff = diff;
+   mPath = diff.isValid() && diff.indexOf(path) >= 0 ? path : QString();
+@@ -82,8 +85,9 @@ QString DiffModel::status() const {
+   if (mPatch.isConflicted())
+     return "!";
+ 
+-  return QString(git::Diff::statusChar(mUntracked ? GIT_DELTA_UNTRACKED
+-                                                  : mPatch.status()));
++  // The patch of the whole file has no renames.
++  return QString(git::Diff::statusChar(
++      mUntracked ? GIT_DELTA_UNTRACKED : mDiff.status(mDiff.indexOf(mPath))));
+ }
+ 
+ bool DiffModel::isEditable() const {
+@@ -116,11 +120,20 @@ void DiffModel::loadAnyway() {
+   load();
+ }
+ 
++void DiffModel::setWholeFile(bool wholeFile) {
++  if (wholeFile == mWholeFile)
++    return;
++
++  mWholeFile = wholeFile;
++  load();
++}
++
+ void DiffModel::load() {
+   beginResetModel();
+ 
+   mPatch = git::Patch();
+   mStaged = git::Patch();
++  mOldContent.clear();
+   mContent.clear();
+   mHunks.clear();
+   mRows.clear();
+@@ -130,6 +143,7 @@ void DiffModel::load() {
+   mStagingError.clear();
+   clearImages();
+   mCanLoadAnyway = false;
++  mCanShowWholeFile = false;
+   mUntracked = false;
+   mAdditions = 0;
+   mDeletions = 0;
+@@ -171,6 +185,14 @@ void DiffModel::load() {
+       }
+     }
+ 
++    // Added, deleted and untracked files are shown in full anyway.
++    git_delta_t status = mPatch.status();
++    mCanShowWholeFile = !mUntracked && !binary && !mPatch.isLfsPointer() &&
++                        !mPatch.isConflicted() && status != GIT_DELTA_ADDED &&
++                        status != GIT_DELTA_DELETED;
++    if (mWholeFile && mCanShowWholeFile)
++      loadWholeFile();
++
+     git::Patch::LineStats stats = mPatch.lineStats();
+     mAdditions = stats.additions;
+     mDeletions = stats.deletions;
+@@ -230,6 +252,40 @@ void DiffModel::load() {
+   emit stageStateChanged();
+ }
+ 
++// Show the whole file as a single hunk, the lines that didn't change are its
++// context.
++void DiffModel::loadWholeFile() {
++  // Like in the diff, the working copy is compared with the content that git
++  // adds. It has no blob unless the same content was added before.
++  git::Repository repo = mView->repo();
++  git::Blob oldBlob = mPatch.blob(git::Diff::OldFile);
++  git::Blob newBlob = mPatch.blob(git::Diff::NewFile);
++  if (oldBlob.isValid())
++    mOldContent = oldBlob.content();
++  if (newBlob.isValid()) {
++    mContent = newBlob.content();
++  } else if (!mDiff.isStatusDiff()) {
++    return;
++  } else {
++    QFile file(repo.workdir().filePath(mPath));
++    if (!file.open(QFile::ReadOnly))
++      return;
++    auto content = repo.cleanContent(mPath, file.readAll());
++    if (!content)
++      return;
++    mContent = *content;
++  }
++
++  // More context than lines. xdiff adds it to the line numbers, so it can't
++  // be the largest number.
++  int lines = qMax(mOldContent.count('\n'), mContent.count('\n')) + 1;
++  git::Patch patch = git::Patch::fromBuffers(
++      mOldContent, mContent, mPatch.name(git::Diff::OldFile), mPath, lines,
++      Settings::instance()->isWhitespaceIgnored());
++  if (patch.isValid())
++    mPatch = patch;
++}
++
+ void DiffModel::loadStaged() {
+   mStaged = git::Patch();
+   if (!mDiff.isStatusDiff())
+diff --git a/src/ui/DiffModel.h b/src/ui/DiffModel.h
+index a5d39611..da4122f2 100644
+--- a/src/ui/DiffModel.h
++++ b/src/ui/DiffModel.h
+@@ -38,6 +38,11 @@ class DiffModel : public QAbstractListModel, public FindTarget {
+   Q_PROPERTY(int stageState READ stageState NOTIFY stageStateChanged)
+   Q_PROPERTY(int lineNumberWidth READ lineNumberWidth NOTIFY diffChanged)
+   Q_PROPERTY(int maxLineLength READ maxLineLength NOTIFY diffChanged)
++  // Whether the lines that didn't change are shown too. It's turned off for
++  // another file.
++  Q_PROPERTY(
++      bool wholeFile READ isWholeFile WRITE setWholeFile NOTIFY diffChanged)
++  Q_PROPERTY(bool canShowWholeFile READ canShowWholeFile NOTIFY diffChanged)
+   // Previews of images, before and after the change, or empty.
+   Q_PROPERTY(QString oldImage READ oldImage NOTIFY diffChanged)
+   Q_PROPERTY(QString newImage READ newImage NOTIFY diffChanged)
+@@ -85,6 +90,9 @@ public:
+   int stageState() const;
+   int lineNumberWidth() const { return mLineNumberWidth; }
+   int maxLineLength() const { return mMaxLineLength; }
++  bool isWholeFile() const { return mWholeFile; }
++  void setWholeFile(bool wholeFile);
++  bool canShowWholeFile() const { return mCanShowWholeFile; }
+ 
+   // The lines of the hunks, and the row of a line in the model.
+   QString oldImage() const { return mOldImage; }
+@@ -140,6 +148,7 @@ private:
+ 
+   void load();
+   void loadStaged();
++  void loadWholeFile();
+   void updateIndex(const QStringList &paths);
+   void highlight();
+   void lint();
+@@ -154,8 +163,9 @@ private:
+   RepoView *mView;
+   git::Diff mDiff;
+   QString mPath;
+-  // The content of an untracked file that 'mPatch' was made from. It's
+-  // declared first so that it outlives the patch.
++  // The content of an untracked file or of the whole file that 'mPatch' was
++  // made from. It's declared first so that it outlives the patch.
++  QByteArray mOldContent;
+   QByteArray mContent;
+   git::Patch mPatch;
+   git::Patch mStaged;
+@@ -185,6 +195,8 @@ private:
+   int mFindStart = -1;
+   bool mUntracked = false;
+   bool mLoadAnyway = false;
++  bool mWholeFile = false;
++  bool mCanShowWholeFile = false;
+   int mAdditions = 0;
+   int mDeletions = 0;
+   int mLineNumberWidth = 2;
+diff --git a/src/ui/MergeModel.cpp b/src/ui/MergeModel.cpp
+index 1f46561f..b2742ab1 100644
+--- a/src/ui/MergeModel.cpp
++++ b/src/ui/MergeModel.cpp
+@@ -12,6 +12,7 @@
+ #include "dialogs/ConfirmDialog.h"
+ #include "git/Blob.h"
+ #include "git/Index.h"
++#include "git/Patch.h"
+ #include <QDir>
+ #include <QFile>
+ #include <QQuickTextDocument>
+@@ -201,6 +202,8 @@ void MergeModel::load(const QString &path) {
+     mNotice = tr("This file has no conflict markers.");
+     mSegments.clear();
+     mConflicts.clear();
++  } else {
++    splitConflicts();
+   }
+ 
+   mSides[0]->reset();
+@@ -525,6 +528,88 @@ bool MergeModel::parse(const QString &text) {
+   return state == Common && !mConflicts.isEmpty();
+ }
+ 
++// git compares line endings, so a side that only changed them conflicts at
++// each of its lines, mostly the whole file at once. Split the conflicts at the
++// lines that are the same on both sides without them, like GitKraken.
++void MergeModel::splitConflicts() {
++  auto strip = [](QString line) {
++    while (line.endsWith('\r'))
++      line.chop(1);
++    return line;
++  };
++
++  auto buffer = [&strip](const QStringList &lines) {
++    QByteArray buffer;
++    for (const QString &line : lines)
++      buffer += strip(line).toUtf8() + '\n';
++    return buffer;
++  };
++
++  QList<Segment> segments;
++  QList<Conflict> conflicts;
++  auto addCommon = [&segments, &strip](const QStringList &lines) {
++    if (lines.isEmpty())
++      return;
++
++    if (segments.isEmpty() || segments.last().conflict >= 0)
++      segments.append(Segment());
++    for (const QString &line : lines)
++      segments.last().common.append(strip(line));
++  };
++
++  auto addConflict = [&segments, &conflicts](Conflict conflict) {
++    for (int side = 0; side < 2; ++side)
++      conflict.checked[side] = QList<bool>(conflict.lines[side].size(), false);
++
++    Segment segment;
++    segment.conflict = conflicts.size();
++    conflicts.append(conflict);
++    segments.append(segment);
++  };
++
++  for (const Segment &segment : mSegments) {
++    if (segment.conflict < 0) {
++      addCommon(segment.common);
++      continue;
++    }
++
++    const Conflict &conflict = mConflicts.at(segment.conflict);
++    const QStringList &ours = conflict.lines[0];
++    const QStringList &theirs = conflict.lines[1];
++    QByteArray oursBuffer = buffer(ours);
++    QByteArray theirsBuffer = buffer(theirs);
++    git::Patch patch = git::Patch::fromBuffers(oursBuffer, theirsBuffer);
++    if (!patch.isValid() || patch.isBinary() ||
++        (patch.count() == 0 && oursBuffer != theirsBuffer)) {
++      addConflict(conflict);
++      continue;
++    }
++
++    // The lines between the hunks are on both sides. A hunk without lines of
++    // a side starts after the line before it.
++    int next = 0;
++    for (int i = 0; i < patch.count(); ++i) {
++      const git_diff_hunk *hunk = patch.header_struct(i);
++      int oursStart = hunk->old_lines ? hunk->old_start - 1 : hunk->old_start;
++      int theirsStart = hunk->new_lines ? hunk->new_start - 1 : hunk->new_start;
++      addCommon(ours.mid(next, oursStart - next));
++
++      Conflict part;
++      part.lines[0] = ours.mid(oursStart, hunk->old_lines);
++      part.lines[1] = theirs.mid(theirsStart, hunk->new_lines);
++      if (i == 0)
++        part.base = conflict.base;
++      addConflict(part);
++      next = oursStart + hunk->old_lines;
++    }
++
++    addCommon(ours.mid(next));
++  }
++
++  mSegments = segments;
++  mConflicts = conflicts;
++}
++
+ void MergeModel::setOutput() {
+   if (!mDocument)
+     return;
+diff --git a/src/ui/MergeModel.h b/src/ui/MergeModel.h
+index 3455b20e..d6421ae0 100644
+--- a/src/ui/MergeModel.h
++++ b/src/ui/MergeModel.h
+@@ -173,6 +173,7 @@ private:
+   };
+ 
+   bool parse(const QString &text);
++  void splitConflicts();
+   void setOutput();
+   void updateRegion(int conflict);
+   void writeOutput();
+diff --git a/src/ui/RefDrop.cpp b/src/ui/RefDrop.cpp
+index 15119724..e8b1a1b8 100644
+--- a/src/ui/RefDrop.cpp
++++ b/src/ui/RefDrop.cpp
+@@ -31,6 +31,7 @@ void RefDrop::start(const QString &name, qreal x, qreal y) {
+   mSource = name;
+   mLabel = ref.name();
+   mTarget.clear();
++  mAccepts.clear();
+   mPos = QPointF(x, y);
+   emit changed();
+   emit moved();
+@@ -61,6 +62,7 @@ void RefDrop::finish() {
+ 
+ void RefDrop::cancel() {
+   mTarget.clear();
++  mAccepts.clear();
+   if (mSource.isEmpty())
+     return;
+ 
+@@ -70,7 +72,18 @@ void RefDrop::cancel() {
+ }
+ 
+ bool RefDrop::accepts(const QString &target) const {
+-  return !mSource.isEmpty() && !choices(mSource, target).isEmpty();
++  if (mSource.isEmpty())
++    return false;
++
++  // Targets are entered on the UI thread, so compute each once per drag,
++  // and without the interactive rebase: it comes only with a plain rebase.
++  auto it = mAccepts.constFind(target);
++  if (it != mAccepts.constEnd())
++    return *it;
++
++  bool accepted = !choices(mSource, target, false).isEmpty();
++  mAccepts.insert(target, accepted);
++  return accepted;
+ }
+ 
+ void RefDrop::drop(const QString &target, qreal x, qreal y) {
+@@ -79,7 +92,8 @@ void RefDrop::drop(const QString &target, qreal x, qreal y) {
+ }
+ 
+ QList<RefDrop::Choice> RefDrop::choices(const QString &source,
+-                                        const QString &target) const {
++                                        const QString &target,
++                                        bool interactive) const {
+   QList<Choice> result;
+   git::Repository repo = mView->repo();
+   git::Reference src = repo.lookupRef(source);
+@@ -151,7 +165,8 @@ QList<RefDrop::Choice> RefDrop::choices(const QString &source,
+                          view->merge(RepoView::Rebase,
+                                      view->repo().lookupRef(target));
+                      }});
+-      addInteractive(result, source, dst);
++      if (interactive)
++        addInteractive(result, source, dst);
+     }
+ 
+     return result;
+@@ -194,7 +209,8 @@ QList<RefDrop::Choice> RefDrop::choices(const QString &source,
+                        view->merge(RepoView::Rebase,
+                                    view->repo().lookupRef(target));
+                    }});
+-    addInteractive(result, source, dst);
++    if (interactive)
++      addInteractive(result, source, dst);
+   }
+ 
+   return result;
+diff --git a/src/ui/RefDrop.h b/src/ui/RefDrop.h
+index 9f01b59e..8e667480 100644
+--- a/src/ui/RefDrop.h
++++ b/src/ui/RefDrop.h
+@@ -8,6 +8,7 @@
+ #ifndef REFDROP_H
+ #define REFDROP_H
+ 
++#include <QHash>
+ #include <QObject>
+ #include <QPointF>
+ #include <functional>
+@@ -60,8 +61,10 @@ public:
+   // Called by the target under the pointer when the reference is dropped.
+   Q_INVOKABLE void drop(const QString &target, qreal x, qreal y);
+ 
+-  // What dropping 'source' onto 'target' can do.
+-  QList<Choice> choices(const QString &source, const QString &target) const;
++  // What dropping 'source' onto 'target' can do. Without 'interactive', it
++  // leaves out the interactive rebase, which walks the commits to rebase.
++  QList<Choice> choices(const QString &source, const QString &target,
++                        bool interactive = true) const;
+ 
+ signals:
+   void changed();
+@@ -82,6 +85,9 @@ private:
+ 
+   QString mTarget;
+   QPointF mDropPos;
++
++  // Whether the targets entered during the drag accept the reference.
++  mutable QHash<QString, bool> mAccepts;
+ };
+ 
+ #endif
+diff --git a/src/ui/RepoView.cpp b/src/ui/RepoView.cpp
+index 30f7b487..d6e4ebc6 100644
+--- a/src/ui/RepoView.cpp
++++ b/src/ui/RepoView.cpp
+@@ -568,6 +568,14 @@ bool RepoView::runBusy(const std::function<void()> &work) {
+ 
+   mBusy = false;
+   emit busyChanged();
++
++  // Index what the operation changed after the caller is done, which may
++  // start another one.
++  if (mIndexPending) {
++    mIndexPending = false;
++    QTimer::singleShot(0, this, &RepoView::startIndexing);
++  }
++
+   return true;
+ }
+ 
+@@ -1007,6 +1015,13 @@ void RepoView::startIndexing() {
+   if (!mRepo.appConfig().value<bool>("index.enable", true))
+     return;
+ 
++  // Starting a process took seconds while git wrote thousands of files, and
++  // the spinner of the operation stopped. Start after it, see runBusy().
++  if (mBusy) {
++    mIndexPending = true;
++    return;
++  }
++
+   if (mIndexer.state() != QProcess::NotRunning) {
+     mRestartIndexer = true;
+     return;
+diff --git a/src/ui/RepoView.h b/src/ui/RepoView.h
+index 9cb2e3f7..29b9ac9b 100644
+--- a/src/ui/RepoView.h
++++ b/src/ui/RepoView.h
+@@ -479,6 +479,7 @@ private:
+   Index *mIndex;
+   QProcess mIndexer;
+   bool mRestartIndexer = false;
++  bool mIndexPending = false;
+ 
+   History *mHistory;
+   UndoHistory *mUndo = nullptr;
+diff --git a/src/ui/qml/ComboBox.qml b/src/ui/qml/ComboBox.qml
+index 15bacd1a..a363c2b1 100644
+--- a/src/ui/qml/ComboBox.qml
++++ b/src/ui/qml/ComboBox.qml
+@@ -10,7 +10,7 @@ Controls.ComboBox {
+     implicitHeight: 32
+     leftPadding: 10
+     rightPadding: 30
+-    font.pixelSize: 13
++    font.pixelSize: 12
+ 
+     function itemData(index) {
+         const items = control.model
+@@ -99,7 +99,7 @@ Controls.ComboBox {
+                 anchors.verticalCenter: parent.verticalCenter
+                 text: delegateItem.entry ? delegateItem.entry[control.textRole || "text"] : delegateItem.modelData
+                 color: delegateItem.index === control.currentIndex ? Theme.accent : Theme.text
+-                font.pixelSize: 13
++                font.pixelSize: 12
+                 font.weight: delegateItem.index === control.currentIndex ? Font.DemiBold : Font.Normal
+             }
+ 
+@@ -108,7 +108,7 @@ Controls.ComboBox {
+                 anchors.verticalCenter: parent.verticalCenter
+                 text: delegateItem.entry && delegateItem.entry.detail ? delegateItem.entry.detail : ""
+                 color: Theme.textMuted
+-                font.pixelSize: 12
++                font.pixelSize: 11
+             }
+         }
+     }
+diff --git a/src/ui/qml/ContextMenu.qml b/src/ui/qml/ContextMenu.qml
+index 6578cdb3..8e477a58 100644
+--- a/src/ui/qml/ContextMenu.qml
++++ b/src/ui/qml/ContextMenu.qml
+@@ -78,7 +78,7 @@ Controls.Menu {
+                 text: entry.text
+                 elide: Text.ElideRight
+                 color: entry.foreground
+-                font.pixelSize: 13
++                font.pixelSize: 12
+             }
+ 
+             Text {
+@@ -86,7 +86,7 @@ Controls.Menu {
+                 Layout.leftMargin: 14
+                 text: entry.shortcut
+                 color: entry.highlighted && entry.enabled ? Theme.selectedText : Theme.textMuted
+-                font.pixelSize: 12
++                font.pixelSize: 11
+             }
+ 
+             Icon {
+@@ -127,13 +127,16 @@ Controls.Menu {
+         Separator {}
+     }
+ 
++    // The entries and submenus are children of the menu. Without a parent
++    // they belong to JavaScript, and a garbage collection while the menu is
++    // open deletes them: the menu shrinks to its last entry.
+     Component.onCompleted: {
+         for (const item of root.items) {
+             if (item.separator) {
+-                root.addItem(separatorComponent.createObject(null))
++                root.addItem(separatorComponent.createObject(root.contentItem))
+             } else if (item.submenu) {
+                 const component = Qt.createComponent("ContextMenu.qml")
+-                const menu = component.createObject(null, {
++                const menu = component.createObject(root, {
+                     title: item.text,
+                     items: item.submenu,
+                     submenu: true
+@@ -141,7 +144,7 @@ Controls.Menu {
+                 menu.activated.connect(root.activated)
+                 root.addMenu(menu)
+             } else {
+-                const entry = entryComponent.createObject(null, {
++                const entry = entryComponent.createObject(root.contentItem, {
+                     text: item.text,
+                     shortcut: item.shortcut,
+                     enabled: item.enabled,
+diff --git a/src/ui/qml/DetailsPanel.qml b/src/ui/qml/DetailsPanel.qml
+index 68933cdf..2c212e7b 100644
+--- a/src/ui/qml/DetailsPanel.qml
++++ b/src/ui/qml/DetailsPanel.qml
+@@ -622,7 +622,7 @@ Rectangle {
+                     color: Theme.text
+                     selectionColor: Theme.selected
+                     selectedTextColor: Theme.selectedText
+-                    font.pixelSize: 13
++                    font.pixelSize: 12
+                     onTextEdited: wip.edited()
+                     Keys.onReturnPressed: descriptionField.forceActiveFocus()
+ 
+@@ -689,7 +689,7 @@ Rectangle {
+                         color: Theme.text
+                         selectionColor: Theme.selected
+                         selectedTextColor: Theme.selectedText
+-                        font.pixelSize: 12
++                        font.pixelSize: 11
+                         leftPadding: 10
+                         rightPadding: 10
+                         topPadding: 8
+diff --git a/src/ui/qml/DiffPanel.qml b/src/ui/qml/DiffPanel.qml
+index 013d36a0..c1d4afc3 100644
+--- a/src/ui/qml/DiffPanel.qml
++++ b/src/ui/qml/DiffPanel.qml
+@@ -168,6 +168,13 @@ Rectangle {
+ 
+                 MergeModeSwitch {}
+ 
++                CheckBox {
++                    visible: root.diff.canShowWholeFile
++                    text: qsTr("Whole file")
++                    checked: root.diff.wholeFile
++                    onToggled: root.diff.wholeFile = checked
++                }
++
+                 PushButton {
+                     visible: root.diff.editable
+                     implicitHeight: 26
+diff --git a/src/ui/qml/GraphView.qml b/src/ui/qml/GraphView.qml
+index a814682e..1c7c7ff9 100644
+--- a/src/ui/qml/GraphView.qml
++++ b/src/ui/qml/GraphView.qml
+@@ -751,7 +751,7 @@ Rectangle {
+                             text: row.summary || ""
+                             elide: Text.ElideRight
+                             color: row.foreground
+-                            font.pixelSize: 13
++                            font.pixelSize: 12
+                         }
+ 
+                         Icon {
+diff --git a/src/ui/qml/HeadChip.qml b/src/ui/qml/HeadChip.qml
+index 6ba423e7..633fc254 100644
+--- a/src/ui/qml/HeadChip.qml
++++ b/src/ui/qml/HeadChip.qml
+@@ -95,7 +95,7 @@ Item {
+                 width: parent.width
+                 text: root.value
+                 color: root.enabled ? Theme.text : Theme.textDisabled
+-                font.pixelSize: 13
++                font.pixelSize: 12
+                 font.bold: true
+                 elide: Text.ElideMiddle
+             }
+diff --git a/src/ui/qml/RefsPanel.qml b/src/ui/qml/RefsPanel.qml
+index a9a27bba..fbf4c3be 100644
+--- a/src/ui/qml/RefsPanel.qml
++++ b/src/ui/qml/RefsPanel.qml
+@@ -212,7 +212,7 @@ Rectangle {
+                                ? Text.ElideRight : Text.ElideMiddle
+                         color: row.isHeader || row.kind === root.kindEmpty ? Theme.textMuted
+                                : row.highlighted ? Theme.selectedText : Theme.text
+-                        font.pixelSize: row.isHeader ? 11 : 13
++                        font.pixelSize: row.isHeader ? 11 : 12
+                         font.italic: row.kind === root.kindEmpty
+                         font.bold: row.isHeader || row.isHead
+                         font.capitalization: row.isHeader ? Font.AllUppercase : Font.MixedCase
+diff --git a/src/ui/qml/TextField.qml b/src/ui/qml/TextField.qml
+index c3e1be9e..afdf84da 100644
+--- a/src/ui/qml/TextField.qml
++++ b/src/ui/qml/TextField.qml
+@@ -21,7 +21,7 @@ Controls.TextField {
+     selectionColor: Theme.accent
+     selectedTextColor: Theme.accentText
+     selectByMouse: true
+-    font.pixelSize: 13
++    font.pixelSize: 12
+ 
+     background: Rectangle {
+         radius: 6
+diff --git a/test/DiffView.cpp b/test/DiffView.cpp
+index a608d011..59066fe0 100644
+--- a/test/DiffView.cpp
++++ b/test/DiffView.cpp
+@@ -4,6 +4,11 @@
+ #include "ui/DiffModel.h"
+ #include "ui/MainWindow.h"
+ #include "ui/RepoView.h"
++#include "git/Commit.h"
++#include "git/Index.h"
++#include "git/Patch.h"
++#include "git/Reference.h"
++#include "git/Tree.h"
+ 
+ using namespace Test;
+ using namespace QTest;
+@@ -52,6 +57,8 @@ class TestDiffView : public QObject {
+ private slots:
+   void loadsAllHunks_data();
+   void loadsAllHunks();
++  void wholeFile_data();
++  void wholeFile();
+ };
+ 
+ void TestDiffView::loadsAllHunks_data() {
+@@ -120,6 +127,114 @@ void TestDiffView::loadsAllHunks() {
+   QVERIFY(details->file().isEmpty());
+ }
+ 
++void TestDiffView::wholeFile_data() {
++  QTest::addColumn<bool>("committed");
++
++  QTest::newRow("working tree") << false;
++  QTest::newRow("commit") << true;
++}
++
++// The whole file is a single hunk with the lines that didn't change, until
++// another file is shown. Its lines are staged like those of the diff.
++void TestDiffView::wholeFile() {
++  QFETCH(bool, committed);
++
++  auto text = [](const QMap<int, QString> &changes) {
++    QString text;
++    for (int i = 1; i <= 30; ++i)
++      text += changes.value(i, QString("line %1").arg(i)) + "\n";
++    return text;
++  };
++
++  ScratchRepository repo;
++  QDir workdir = repo->workdir();
++  QVERIFY(writeFiles(workdir, {{"file.txt", text({})}, {"other.txt", "a\n"}}));
++  repo->index().setStaged({"file.txt", "other.txt"}, true);
++  QVERIFY(repo->commit("initial"));
++
++  QMap<int, QString> changes = {{5, "changed 5"}, {25, "changed 25"}};
++  QVERIFY(writeFiles(workdir, {{"file.txt", text(changes)},
++                               {"other.txt", "b\n"},
++                               {"new.txt", "new\n"}}));
++  if (committed) {
++    repo->index().setStaged({"file.txt", "other.txt", "new.txt"}, true);
++    QVERIFY(repo->commit("change"));
++  }
++
++  MainWindow window(repo);
++  window.show();
++  QVERIFY(qWaitForWindowExposed(&window));
++
++  RepoView *repoView = window.currentView();
++  if (committed)
++    repoView->selectFirstCommit();
++
++  auto details = repoView->findChild<DetailView *>();
++  QVERIFY(details);
++
++  QAbstractItemModel *files =
++      committed ? details->files() : details->unstagedFiles();
++  QTRY_COMPARE_WITH_TIMEOUT(files->property("fileCount").toInt(), 3, 10000);
++
++  auto diff = qobject_cast<DiffModel *>(details->diffModel());
++  QVERIFY(diff);
++
++  // Added and untracked files are shown in full anyway.
++  details->selectPath("new.txt");
++  QCOMPARE(diff->path(), QString("new.txt"));
++  QVERIFY(!diff->canShowWholeFile());
++
++  details->selectPath("file.txt");
++  QVERIFY(diff->canShowWholeFile());
++  QVERIFY(!diff->isWholeFile());
++  QCOMPARE(diff->hunkCount(), 2);
++
++  diff->setWholeFile(true);
++  QVERIFY(diff->isWholeFile());
++  QCOMPARE(diff->hunkCount(), 1);
++  QCOMPARE(diff->status(), QString("M"));
++  QCOMPARE(diff->additions(), 2);
++  QCOMPARE(diff->deletions(), 2);
++  // The header, 28 lines that didn't change and the two changed lines.
++  QCOMPARE(diff->rowCount(), 1 + 28 + 2 * 2);
++  QList<DiffLines::Line> lines = diff->lines(0);
++  QCOMPARE(lines.first().content, QByteArray("line 1\n"));
++  QCOMPARE(lines.last().content, QByteArray("line 30\n"));
++
++  if (!committed) {
++    // Stage only the change of line 5.
++    int row = -1;
++    for (int i = 0; i < lines.size() && row < 0; ++i) {
++      if (lines.at(i).content == "changed 5\n")
++        row = diff->row(0, i);
++    }
++    QVERIFY(row > 0);
++    diff->setLinesStaged(row - 1, row, true);
++
++    git::Commit head = repo->head().target();
++    auto staged = [&repo, &head] {
++      git::Diff staged = repo->diffTreeToIndex(head.tree());
++      int index = staged.indexOf("file.txt");
++      return index < 0 ? git::Patch() : staged.patch(index);
++    };
++    QTRY_VERIFY(staged().isValid());
++    git::Patch patch = staged();
++    QCOMPARE(patch.lineStats().additions, 1);
++    QCOMPARE(patch.lineStats().deletions, 1);
++    QCOMPARE(patch.count(), 1);
++    QCOMPARE(repo->index().isStaged("file.txt"), git::Index::PartiallyStaged);
++  }
++
++  // The lines that didn't change are gone for another file.
++  details->selectPath("other.txt");
++  QVERIFY(!diff->isWholeFile());
++  details->selectPath("file.txt");
++  QVERIFY(!diff->isWholeFile());
++  QCOMPARE(diff->hunkCount(), 2);
++
++  details->closeFile();
++}
++
+ TEST_MAIN(TestDiffView)
+ 
+ #include "DiffView.moc"
+diff --git a/test/qml_views.cpp b/test/qml_views.cpp
+index b6ebdb70..6192c5bb 100644
+--- a/test/qml_views.cpp
++++ b/test/qml_views.cpp
+@@ -56,6 +56,7 @@
+ #include <QTimer>
+ #include <QFile>
+ #include <QProcess>
++#include <QQmlEngine>
+ #include <QQuickItem>
+ #include <QQuickWidget>
+ #include <QStyleHints>
+@@ -92,6 +93,7 @@ private slots:
+   void search();
+   void menu();
+   void submenu();
++  void menuGarbage();
+   void solo();
+   void hide();
+   void palette();
+@@ -100,6 +102,7 @@ private slots:
+   void mergeEncoding();
+   void mergeScroll();
+   void mergeEmptySide();
++  void mergeLineEndings();
+   void dragTab();
+   void cleanupTestCase();
+ 
+@@ -418,6 +421,59 @@ void TestQmlViews::submenu() {
+   QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
+ }
+ 
++// The entries of an open menu stay when JavaScript collects its garbage.
++// They were left to it, and the menu shrank to its last entry.
++void TestQmlViews::menuGarbage() {
++  QMenu menu;
++  menu.addAction("First");
++  menu.addSeparator();
++  menu.addAction("Second");
++  QMenu *more = menu.addMenu("More");
++  more->addAction("Third");
++  menu.addAction("Last");
++
++  QQuickWidget *view = mWindow->quickView();
++  QPoint pos = view->mapToGlobal(QPoint(300, 300));
++
++  // The entries of the open menus, with the size of submenus in brackets.
++  auto entries = [view] {
++    QStringList entries;
++    QList<QQuickItem *> items = {view->quickWindow()->contentItem()};
++    while (!items.isEmpty()) {
++      QQuickItem *item = items.takeFirst();
++      if (item->inherits("QQuickMenuSeparator")) {
++        entries.append("-");
++      } else if (item->inherits("QQuickMenuItem")) {
++        QString text = item->property("text").toString();
++        if (QObject *submenu = item->property("subMenu").value<QObject *>())
++          text += QString("[%1]").arg(submenu->property("count").toInt());
++        entries.append(text);
++      }
++      items.append(item->childItems());
++    }
++
++    entries.sort();
++    return entries;
++  };
++
++  QStringList before;
++  QStringList after;
++  QTimer::singleShot(200, [&] {
++    before = entries();
++    view->engine()->collectGarbage();
++    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
++    after = entries();
++    keyClick(view, Qt::Key_Escape);
++  });
++
++  QmlSupport::execMenu(&menu, pos);
++
++  QStringList expected = {"-", "First", "Last", "More[1]", "Second"};
++  QCOMPARE(before, expected);
++  QCOMPARE(after, expected);
++  QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
++}
++
+ void TestQmlViews::solo() {
+   RepoView *view = mWindow->currentView();
+   git::Repository repo = view->repo();
+@@ -819,7 +875,7 @@ void TestQmlViews::mergeScroll() {
+   write({"4:theirs 1\na\nb\nc\nd\ne\nf\ng", "20:theirs 2\na\nb"});
+   QVERIFY(git({"commit", "-q", "-am", "Change theirs"}));
+   QVERIFY(git({"checkout", "-q", "-"}));
+-  write({"4:ours 1\na", "20:ours 2"});
++  write({"4:ours 1\nz", "20:ours 2"});
+   QVERIFY(git({"commit", "-q", "-am", "Change ours"}));
+   git({"merge", "other"});
+ 
+@@ -1016,6 +1072,60 @@ void TestQmlViews::mergeEmptySide() {
+   QCOMPARE(data(header, MergeSideModel::CheckStateRole).toInt(), 0);
+ }
+ 
++// git compares line endings, so a side that only changed them conflicts at
++// each of its lines. The lines that are the same on both sides without them
++// aren't in the conflicts.
++void TestQmlViews::mergeLineEndings() {
++  RepoView *view = mWindow->currentView();
++  git::Repository repo = view->repo();
++
++  QFile file(repo.workdir().filePath("endings.txt"));
++  QVERIFY(file.open(QFile::WriteOnly));
++  file.write("top\n"
++             "<<<<<<< HEAD\n"
++             "same 1\r\n"
++             "ours\r\n"
++             "same 2\r\n"
++             "=======\n"
++             "same 1\n"
++             "theirs\n"
++             "same 2\n"
++             ">>>>>>> feature\n"
++             "middle\n"
++             "<<<<<<< HEAD\n"
++             "only line endings\r\n"
++             "=======\n"
++             "only line endings\n"
++             ">>>>>>> feature\n"
++             "bottom\n");
++  file.close();
++
++  MergeModel merge(view);
++  QTextDocument document;
++  merge.setTextDocument(&document);
++  merge.load("endings.txt");
++  QCOMPARE(merge.notice(), QString());
++  QCOMPARE(merge.conflictCount(), 1);
++  QCOMPARE(merge.unresolvedCount(), 1);
++  QCOMPARE(document.toPlainText(),
++           QString("top\nsame 1\nsame 2\nmiddle\nonly line endings\nbottom\n"));
++
++  // Only the lines that differ are taken.
++  merge.setConflictChecked(1, 0, true);
++  QCOMPARE(document.toPlainText(),
++           QString("top\nsame 1\ntheirs\nsame 2\nmiddle\nonly line endings\n"
++                   "bottom\n"));
++
++  // The file keeps its CRLF.
++  merge.save();
++  QVERIFY(file.open(QFile::ReadOnly));
++  QCOMPARE(file.readAll(),
++           QByteArray("top\r\nsame 1\r\ntheirs\r\nsame 2\r\nmiddle\r\n"
++                      "only line endings\r\nbottom\r\n"));
++  file.close();
++  QVERIFY2(sMessages.isEmpty(), qPrintable(sMessages.join('\n')));
++}
++
+ void TestQmlViews::dragTab() {
+   // A second tab.
+   ScratchRepository other;

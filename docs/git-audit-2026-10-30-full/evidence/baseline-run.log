@@ -1,0 +1,101 @@
+--- checkout_edges ---
+scenario=0 native_result=-13 native_content=<absent>
+scenario=0 project_result=0 project_content=<absent>
+scenario=0 cached_content=new
+scenario=1 native_result=-13 native_content=precious staged
+scenario=1 project_result=0 project_content=precious staged
+scenario=1 cached_content=precious staged
+scenario=2 native_result=-13 native_content=precious staged
+scenario=2 project_result=0 project_content=precious staged
+scenario=2 cached_content=precious staged
+
+process_returncode=0
+
+--- index_worktree ---
+modify/delete state=3 Conflicted=3 hasConflicts=1 conflict.isValid=1
+before stage f: g
+after stage f: f
+g
+safe path checkout result=0 contents=precious untracked
+libgit2 safe path checkout result=-13 contents=precious untracked
+
+process_returncode=0
+
+--- merge_rebase ---
+REVERT result=1 state=2 REVERT_HEAD=1 staged=a
+REBASE state=0 committer=Override User <override@example.test> expected=Override User <override@example.test>
+NESTED_MERGE first=1 second=0 committed=0 files=a,main second_parent=<not committed> expected_one=aab0c17 wrong_two=b804009
+CHERRY_PICK_STAGED success=0 committed=0 files=a unrelated_cached_after=unrelated
+CHERRY_PICK_CANCEL success=0 aborted=0 unrelated_file_exists=1 cached_after=unrelated
+
+process_returncode=0
+
+--- optional_filter ---
+OPTIONAL_FILTER load=0 loaded=1; expected unchanged input on smudge exit 1
+OPTIONAL_FILTER apply=0 content=original
+
+
+process_returncode=0
+
+--- refs_edges ---
+upstream-before: upstream=upstream undo=Create Branch unrelated
+upstream-after-unrelated-undo: undo=1 unrelated-exists=0 upstream=upstream
+ordinary-checkout-occupied: worktree-add=0 git-switch=128 primary-head=master linked-head=upstream
+linked-after-primary-commit: status=
+
+process_returncode=0
+
+--- refs_remotes ---
+upstream snapshots equal=0 changed refs=0
+push-to-backup result=0 source=master backup-trunk=0 backup-source=1
+set-upstream=local-upstream canUndo=0
+before fetch undo=Update master
+after fetch undo=Update master
+fetch=0 fetched-tag-before-undo=1 undo=1 fetched-tag-after-undo=1 actual-tags=tag-fetched-after-action
+
+linked-worktree git-branch-force-exit=128 setTarget-success=0 linked-file-exists=0 linked-status=
+nested-rename=1 undo=1 old-name-exists=1 renamed-exists=0
+
+process_returncode=0
+
+--- rename_source ---
+scenario=0 initial_status=R  old.txt -> new.txt
+scenario=0 native_result=-13 native_old=<absent>
+scenario=0 project_result=0 project_old=<absent>
+scenario=0 new_content=precious renamed
+scenario=0 final_status=R  old.txt -> new.txt
+scenario=0 cached_old=scenario=1 initial_status=R  old.txt -> new.txt
+scenario=1 native_result=-13 native_old=<absent>
+scenario=1 project_result=0 project_old=<absent>
+scenario=1 new_content=precious renamed
+scenario=1 final_status=R  old.txt -> new.txt
+scenario=1 cached_old=
+process_returncode=0
+
+--- submodule_staging ---
+guard_without_ignore=1
+guard_with_ignore=1 staged_before=sm
+pick=0 abort=0 staged_after=sm status_after=M  sm
+
+process_returncode=0
+
+--- undo_worktree ---
+checkout-before: head=topic file=A status= undo=Checkout topic
+checkout-undo-occupied: worktree-add=0 undo=0 head=topic file=A index=A status=
+
+process_returncode=0
+
+--- upstream_only ---
+upstream-before=upstream-one
+upstream-after-change=upstream-two snapshots-equal=0 changed-refs=0 canUndo=0
+upstream-undo=0 resulting-upstream=upstream-two expected-if-supported=upstream-one
+
+process_returncode=0
+
+--- undo_worktree_detached ---
+checkout-before: head=HEAD detached at 3f495c9 file=A status= undo=Checkout 3f495c9
+checkout-undo-occupied: worktree-add=0 undo=0 head=HEAD detached at 3f495c9 file=A index=A status=
+
+process_returncode=0
+
+Saved probe binaries and logs: /tmp/gittyup-audit-probes-lz2fom02

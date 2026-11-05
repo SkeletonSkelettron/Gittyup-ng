@@ -1,0 +1,7 @@
+REVERT result=1 state=2 REVERT_HEAD=1 staged=a
+REBASE state=0 committer=Configured User <configured@example.test> expected=Override User <override@example.test>
+NESTED_MERGE first=1 second=1 committed=1 files=a,main,one second_parent=1a3fb93 expected_one=23b5540 wrong_two=1a3fb93
+CHERRY_PICK_STAGED success=1 committed=1 files=a,picked,unrelated unrelated_cached_after=
+CHERRY_PICK_CANCEL success=1 aborted=1 unrelated_file_exists=0 cached_after=
+
+process_returncode=0

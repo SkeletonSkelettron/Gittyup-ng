@@ -1,0 +1,107 @@
+# The new regression tests on the sources of 73fdd1d6
+--- Submodule
+PASS   : TestSubmodule::initTestCase()
+PASS   : TestSubmodule::updateSubmoduleClone()
+PASS   : TestSubmodule::noUpdateSubmoduleClone()
+PASS   : TestSubmodule::discardFile()
+FAIL!  : TestSubmodule::deinitializeKeepsHistory() Compared values are not the same
+   Actual   (exitCode): 128
+   Expected (0)       : 0
+   Loc: [/home/misha/repos/Gittyup/test/Submodule.cpp(285)]
+FAIL!  : TestSubmodule::deinitializeOnlyItself() Compared values are not the same
+   Actual   (runGit(parent, {"config", "--get", "submodule.axb.url"})): ""
+   Expected (origin)                                                  : "/tmp/Gittyup-ng-TESjKJ/source"
+   Loc: [/home/misha/repos/Gittyup/test/Submodule.cpp(305)]
+PASS   : TestSubmodule::cleanupTestCase()
+Totals: 5 passed, 2 failed, 0 skipped, 0 blacklisted, 2880ms
+--- amend
+PASS   : TestAmend::initTestCase()
+PASS   : TestAmend::testAmend()
+PASS   : TestAmend::testAmendAddFile()
+PASS   : TestAmend::testAmendDialog()
+PASS   : TestAmend::testAmendDialog2()
+PASS   : TestAmend::testAmendDialogNewLineInMessage()
+FAIL!  : TestAmend::testAmendStale() Compared values are not the same
+   Actual   : repo->head().target().id()
+   Expected : second.id()
+   Loc: [/home/misha/repos/Gittyup/test/amend.cpp(323)]
+PASS   : TestAmend::cleanupTestCase()
+Totals: 7 passed, 1 failed, 0 skipped, 0 blacklisted, 463ms
+--- signing
+PASS   : TestSigning::initTestCase()
+PASS   : TestSigning::unsigned_()
+PASS   : TestSigning::commit()
+PASS   : TestSigning::amend()
+PASS   : TestSigning::rewrite()
+PASS   : TestSigning::missingKey()
+PASS   : TestSigning::gpg()
+PASS   : TestSigning::rebase()
+FAIL!  : TestSigning::concurrentUpdate() '!commit.isValid()' returned FALSE. ()
+   Loc: [/home/misha/repos/Gittyup/test/signing.cpp(234)]
+PASS   : TestSigning::cleanupTestCase()
+Totals: 9 passed, 1 failed, 0 skipped, 0 blacklisted, 173ms
+--- undo
+PASS   : TestUndo::initTestCase()
+PASS   : TestUndo::commit()
+PASS   : TestUndo::branches()
+PASS   : TestUndo::checkout()
+PASS   : TestUndo::reset()
+PASS   : TestUndo::localChanges()
+PASS   : TestUndo::laterTags()
+PASS   : TestUndo::laterUpstreams()
+PASS   : TestUndo::nestedRename()
+PASS   : TestUndo::otherWorktree()
+FAIL!  : TestUndo::lockedHead() Compared values are not the same
+   Actual   (read("a.txt"))      : ""
+   Expected (QByteArray("one\n")): "one\n"
+   Loc: [/home/misha/repos/Gittyup/test/undo.cpp(390)]
+FAIL!  : TestUndo::firstCommit() 'history->undo()' returned FALSE. ()
+   Loc: [/home/misha/repos/Gittyup/test/undo.cpp(416)]
+PASS   : TestUndo::cleanupTestCase()
+Totals: 11 passed, 2 failed, 0 skipped, 0 blacklisted, 784ms
+--- transfer
+PASS   : TestTransfer::initTestCase()
+FAIL!  : TestTransfer::pushStaleTracking() '!contains(entry, "Everything up-to-date.")' returned FALSE. ()
+   Loc: [/home/misha/repos/Gittyup/test/transfer.cpp(112)]
+FAIL!  : TestTransfer::pushRejected() '!git::Branch(repo->head()).upstream().isValid()' returned FALSE. ()
+   Loc: [/home/misha/repos/Gittyup/test/transfer.cpp(153)]
+FAIL!  : TestTransfer::fetchCanceled() 'timer.elapsed() < 3000' returned FALSE. (5048)
+   Loc: [/home/misha/repos/Gittyup/test/transfer.cpp(199)]
+PASS   : TestTransfer::cleanupTestCase()
+Totals: 2 passed, 3 failed, 0 skipped, 0 blacklisted, 5711ms
+--- index
+PASS   : TestIndex::initTestCase()
+PASS   : TestIndex::stageAddition()
+PASS   : TestIndex::stageDeletion()
+PASS   : TestIndex::stageDirectory()
+PASS   : TestIndex::discardUntracked()
+PASS   : TestIndex::stageKeepsStagedByGit()
+FAIL!  : TestIndex::stageLinesOfNewFile() Compared values are not the same
+   Actual   (git({"show", ":file.txt"})): "first\r\n"
+   Expected (QByteArray("first\n"))     : "first\n"
+   Loc: [/home/misha/repos/Gittyup/test/index.cpp(281)]
+PASS   : TestIndex::cleanupTestCase()
+Totals: 7 passed, 1 failed, 0 skipped, 0 blacklisted, 16502ms
+--- interactive_rebase
+PASS   : TestInteractiveRebase::initTestCase()
+PASS   : TestInteractiveRebase::rewordAndDrop()
+PASS   : TestInteractiveRebase::squash()
+PASS   : TestInteractiveRebase::reorder()
+PASS   : TestInteractiveRebase::conflict()
+PASS   : TestInteractiveRebase::otherBranch()
+FAIL!  : TestInteractiveRebase::rewordEmpty() Compared values are not the same
+   Actual   (reworded.summary())       : "Add x.txt"
+   Expected (QString("Renamed marker")): "Renamed marker"
+   Loc: [/home/misha/repos/Gittyup/test/interactive_rebase.cpp(193)]
+PASS   : TestInteractiveRebase::cleanupTestCase()
+Totals: 7 passed, 1 failed, 0 skipped, 0 blacklisted, 413ms
+--- Filter
+PASS   : TestFilter::initTestCase()
+PASS   : TestFilter::rejectsShellInjectionInFilename()
+PASS   : TestFilter::failingFilters()
+FAIL!  : TestFilter::repositoryOverride() Compared values are not the same
+   Actual   (result)               : "global\n"
+   Expected (QByteArray("local\n")): "local\n"
+   Loc: [/home/misha/repos/Gittyup/test/Filter.cpp(199)]
+PASS   : TestFilter::cleanupTestCase()
+Totals: 4 passed, 1 failed, 0 skipped, 0 blacklisted, 16ms

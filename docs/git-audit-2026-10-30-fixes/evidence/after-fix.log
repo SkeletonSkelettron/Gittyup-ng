@@ -1,0 +1,81 @@
+# The new regression tests on the fixed sources
+--- Submodule
+PASS   : TestSubmodule::initTestCase()
+PASS   : TestSubmodule::updateSubmoduleClone()
+PASS   : TestSubmodule::noUpdateSubmoduleClone()
+PASS   : TestSubmodule::discardFile()
+PASS   : TestSubmodule::deinitializeKeepsHistory()
+PASS   : TestSubmodule::deinitializeOnlyItself()
+PASS   : TestSubmodule::cleanupTestCase()
+Totals: 7 passed, 0 failed, 0 skipped, 0 blacklisted, 3239ms
+--- amend
+PASS   : TestAmend::initTestCase()
+PASS   : TestAmend::testAmend()
+PASS   : TestAmend::testAmendAddFile()
+PASS   : TestAmend::testAmendDialog()
+PASS   : TestAmend::testAmendDialog2()
+PASS   : TestAmend::testAmendDialogNewLineInMessage()
+PASS   : TestAmend::testAmendStale()
+PASS   : TestAmend::cleanupTestCase()
+Totals: 8 passed, 0 failed, 0 skipped, 0 blacklisted, 466ms
+--- signing
+PASS   : TestSigning::initTestCase()
+PASS   : TestSigning::unsigned_()
+PASS   : TestSigning::commit()
+PASS   : TestSigning::amend()
+PASS   : TestSigning::rewrite()
+PASS   : TestSigning::missingKey()
+PASS   : TestSigning::gpg()
+PASS   : TestSigning::rebase()
+PASS   : TestSigning::concurrentUpdate()
+PASS   : TestSigning::cleanupTestCase()
+Totals: 10 passed, 0 failed, 0 skipped, 0 blacklisted, 94ms
+--- undo
+PASS   : TestUndo::initTestCase()
+PASS   : TestUndo::commit()
+PASS   : TestUndo::branches()
+PASS   : TestUndo::checkout()
+PASS   : TestUndo::reset()
+PASS   : TestUndo::localChanges()
+PASS   : TestUndo::laterTags()
+PASS   : TestUndo::laterUpstreams()
+PASS   : TestUndo::nestedRename()
+PASS   : TestUndo::otherWorktree()
+PASS   : TestUndo::lockedHead()
+PASS   : TestUndo::firstCommit()
+PASS   : TestUndo::cleanupTestCase()
+Totals: 13 passed, 0 failed, 0 skipped, 0 blacklisted, 863ms
+--- transfer
+PASS   : TestTransfer::initTestCase()
+PASS   : TestTransfer::pushStaleTracking()
+PASS   : TestTransfer::pushRejected()
+PASS   : TestTransfer::fetchCanceled()
+PASS   : TestTransfer::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 834ms
+--- index
+PASS   : TestIndex::initTestCase()
+PASS   : TestIndex::stageAddition()
+PASS   : TestIndex::stageDeletion()
+PASS   : TestIndex::stageDirectory()
+PASS   : TestIndex::discardUntracked()
+PASS   : TestIndex::stageKeepsStagedByGit()
+PASS   : TestIndex::stageLinesOfNewFile()
+PASS   : TestIndex::cleanupTestCase()
+Totals: 8 passed, 0 failed, 0 skipped, 0 blacklisted, 477ms
+--- interactive_rebase
+PASS   : TestInteractiveRebase::initTestCase()
+PASS   : TestInteractiveRebase::rewordAndDrop()
+PASS   : TestInteractiveRebase::squash()
+PASS   : TestInteractiveRebase::reorder()
+PASS   : TestInteractiveRebase::conflict()
+PASS   : TestInteractiveRebase::otherBranch()
+PASS   : TestInteractiveRebase::rewordEmpty()
+PASS   : TestInteractiveRebase::cleanupTestCase()
+Totals: 8 passed, 0 failed, 0 skipped, 0 blacklisted, 339ms
+--- Filter
+PASS   : TestFilter::initTestCase()
+PASS   : TestFilter::rejectsShellInjectionInFilename()
+PASS   : TestFilter::failingFilters()
+PASS   : TestFilter::repositoryOverride()
+PASS   : TestFilter::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 31ms

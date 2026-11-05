@@ -1,0 +1,12 @@
+scenario=0 initial_status=R  old.txt -> new.txt
+scenario=0 native_result=-13 native_old=<absent>
+scenario=0 project_result=0 project_old=<absent>
+scenario=0 new_content=precious renamed
+scenario=0 final_status=R  old.txt -> new.txt
+scenario=0 cached_old=scenario=1 initial_status=R  old.txt -> new.txt
+scenario=1 native_result=-13 native_old=<absent>
+scenario=1 project_result=0 project_old=<absent>
+scenario=1 new_content=precious renamed
+scenario=1 final_status=R  old.txt -> new.txt
+scenario=1 cached_old=
+process_returncode=0

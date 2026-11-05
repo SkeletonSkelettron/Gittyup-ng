@@ -1,0 +1,40 @@
+--- submodule_deinit ---
+scenario=0 clean=1 embedded_before=1 local_commit_on_origin=0
+native_deinit_exit=0 archived_commit=1 child_git_exists=0
+scenario=1 clean=1 embedded_before=1 local_commit_on_origin=0
+project_deinit child_git_exists=0 archived_git_exists=0 parent_has_local_commit=0 parent_clean=1
+
+process_returncode=0
+
+--- submodule_regex ---
+before first_initialized=1 second_initialized=1
+after first_url_exit=1 second_url_exit=1 second_worktree_exists=1
+
+process_returncode=0
+
+--- partial_stage_crlf ---
+hunks=1 rows=3 line0_hex=66697273740d0a
+partial_staged_hex=66697273740d0a
+normal_staged_hex=66697273740a7365636f6e640a
+
+process_returncode=0
+
+--- commit_edges ---
+STALE_AMEND native=-1 project=1 old=4038c98 newer=f290727 head=96910bb head_parent_count=0 newer_in_history=0
+EMPTY_REWORD valid=1 result_is_base=1 result_message=a error=
+EMPTY_REWORD_NATIVE count=1 message=renamed marker
+SIGNING_CONCURRENT valid=1 signature=SSH verified=1 head_is_signed=1 concurrent_in_history=0 signed_parent_is_base=1
+SIGNING_CONCURRENT_NATIVE exit=128 head_is_concurrent=1 error=fatal: cannot lock ref 'HEAD': is at e0f43f3b0fca517ea6b756e479113ebf622fc882 but expected 4038c98775f023d14c786e33c8c74169ebfc7fc2
+
+process_returncode=0
+
+--- ref_remote_failures ---
+FIRST_COMMIT_UNDO offered=1 undo=0 unborn=0 cached=
+HEAD_LOCK_UNDO before=A before_status= undo=0 head=topic file=B index=B status=M  file.txt
+STALE_PUSH remote_branch_exists=0 logged_up_to_date=1 tracking_exists=1
+REJECTED_PUSH remote_unchanged=1 upstream_set=1 logged_rejection=1
+CANCELED_FETCH cancel_wait_ms=2001 tracking_updated=1 logged_canceled=1
+
+process_returncode=0
+
+Saved probe binaries and logs: /tmp/gittyup-audit-probes-fm2mreuq

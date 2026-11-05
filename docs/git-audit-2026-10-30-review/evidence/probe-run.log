@@ -1,0 +1,73 @@
+--- index_worktree ---
+modify/delete state=3 Conflicted=3 hasConflicts=1 conflict.isValid=1
+before stage f: g
+after stage f: f
+g
+safe path checkout result=0 contents=precious untracked
+libgit2 safe path checkout result=-13 contents=precious untracked
+
+process_returncode=0
+
+--- merge_rebase ---
+REVERT result=1 state=2 REVERT_HEAD=1 staged=a
+REBASE state=0 committer=Override User <override@example.test> expected=Override User <override@example.test>
+NESTED_MERGE first=1 second=0 committed=0 files=a,main second_parent=<not committed> expected_one=a09d80f wrong_two=cccc459
+CHERRY_PICK_STAGED success=0 committed=0 files=a unrelated_cached_after=unrelated
+CHERRY_PICK_CANCEL success=0 aborted=0 unrelated_file_exists=1 cached_after=unrelated
+
+process_returncode=0
+
+--- refs_remotes ---
+upstream snapshots equal=0 changed refs=0
+push-to-backup result=0 source=master backup-trunk=0 backup-source=1
+set-upstream=local-upstream canUndo=0
+before fetch undo=Update master
+after fetch undo=Update master
+fetch=0 fetched-tag-before-undo=1 undo=1 fetched-tag-after-undo=1 actual-tags=tag-fetched-after-action
+
+linked-worktree git-branch-force-exit=128 setTarget-success=0 linked-file-exists=0 linked-status=
+nested-rename=1 undo=1 old-name-exists=1 renamed-exists=0
+
+process_returncode=0
+
+--- optional_filter ---
+OPTIONAL_FILTER load=0 loaded=1; expected unchanged input on smudge exit 1
+OPTIONAL_FILTER apply=0 content=original
+
+
+process_returncode=0
+
+--- checkout_edges ---
+scenario=0 native_result=-13 native_content=<absent>
+scenario=0 project_result=1 project_content=old
+scenario=0 cached_content=new
+scenario=1 native_result=-13 native_content=precious staged
+scenario=1 project_result=1 project_content=old
+scenario=1 cached_content=precious staged
+scenario=2 native_result=-13 native_content=precious staged
+scenario=2 project_result=1 project_content=old
+scenario=2 cached_content=old
+
+process_returncode=0
+
+--- submodule_staging ---
+guard_without_ignore=1
+guard_with_ignore=0 staged_before=sm
+pick=1 abort=1 staged_after= status_after=M sm
+
+process_returncode=0
+
+--- undo_worktree ---
+checkout-before: head=topic file=A status= undo=Checkout topic
+checkout-undo-occupied: worktree-add=0 undo=0 head=topic file=B index=B status=M  file.txt
+
+
+process_returncode=0
+
+--- undo_worktree_detached ---
+checkout-before: head=HEAD detached at a4ee14e file=A status= undo=Checkout a4ee14e
+checkout-undo-occupied: worktree-add=0 undo=1 head=master file=B index=B status=
+
+process_returncode=0
+
+Saved probe binaries and logs: /tmp/gittyup-audit-probes-mqnlfu14

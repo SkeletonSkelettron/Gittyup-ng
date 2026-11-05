@@ -1,0 +1,7 @@
+STALE_AMEND native=-1 project=1 old=4038c98 newer=f290727 head=96910bb head_parent_count=0 newer_in_history=0
+EMPTY_REWORD valid=1 result_is_base=1 result_message=a error=
+EMPTY_REWORD_NATIVE count=1 message=renamed marker
+SIGNING_CONCURRENT valid=1 signature=SSH verified=1 head_is_signed=1 concurrent_in_history=0 signed_parent_is_base=1
+SIGNING_CONCURRENT_NATIVE exit=128 head_is_concurrent=1 error=fatal: cannot lock ref 'HEAD': is at e0f43f3b0fca517ea6b756e479113ebf622fc882 but expected 4038c98775f023d14c786e33c8c74169ebfc7fc2
+
+process_returncode=0

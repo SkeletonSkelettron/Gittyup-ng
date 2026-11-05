@@ -1,0 +1,5 @@
+guard_without_ignore=1
+guard_with_ignore=0 staged_before=sm
+pick=1 abort=1 staged_after= status_after=M sm
+
+process_returncode=0

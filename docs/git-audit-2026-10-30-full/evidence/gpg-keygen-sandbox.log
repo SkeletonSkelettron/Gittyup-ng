@@ -1,0 +1,8 @@
+gpg: keybox '/tmp/gittyup-full-gpg-f5g5yepf/pubring.kbx' created
+gpg: error running '/usr/bin/gpg-agent': exit status 2
+gpg: failed to start gpg-agent '/usr/bin/gpg-agent': General error
+gpg: can't connect to the gpg-agent: General error
+gpg: agent_genkey failed: No agent running
+gpg: key generation failed: No agent running
+
+exit_code=2

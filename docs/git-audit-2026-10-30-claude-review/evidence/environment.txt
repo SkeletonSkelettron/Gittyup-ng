@@ -1,0 +1,24 @@
+$ git --version
+git version 2.56.0
+
+$ cmake --version
+cmake version 4.3.0
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+
+$ uname -sr
+Linux 7.2.13-200.fc44.x86_64
+
+$ git status --short
+?? docs/git-audit-2026-10-29/
+?? docs/git-audit-2026-10-30-claude-review/
+?? docs/git-audit-2026-10-30-fixes/
+?? docs/git-audit-2026-10-30-four-issues/
+?? docs/git-audit-2026-10-30-full/
+?? docs/git-audit-2026-10-30-recheck/
+?? docs/git-audit-2026-10-30-review/
+
+ CMakeLists.txt    |  2 +-
+ docs/changelog.md | 35 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 36 insertions(+), 1 deletion(-)
+

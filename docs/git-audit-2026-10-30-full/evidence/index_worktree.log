@@ -1,0 +1,8 @@
+modify/delete state=3 Conflicted=3 hasConflicts=1 conflict.isValid=1
+before stage f: g
+after stage f: f
+g
+safe path checkout result=0 contents=precious untracked
+libgit2 safe path checkout result=-13 contents=precious untracked
+
+process_returncode=0

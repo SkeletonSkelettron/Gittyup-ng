@@ -1,0 +1,6 @@
+scenario=0 clean=1 embedded_before=1 local_commit_on_origin=0
+native_deinit_exit=0 archived_commit=1 child_git_exists=0
+scenario=1 clean=1 embedded_before=1 local_commit_on_origin=0
+project_deinit child_git_exists=0 archived_git_exists=0 parent_has_local_commit=0 parent_clean=1
+
+process_returncode=0

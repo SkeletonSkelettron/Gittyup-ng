@@ -1,0 +1,9 @@
+Git: git version 2.56.0
+Qt: 6.11.2
+CMake: cmake version 4.3.0
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+Build: existing Linux/Ninja Debug
+check_build: success, ninja: no work to do
+GITTYUP_CI_TESTS: OFF
+Tracked working tree: clean at start

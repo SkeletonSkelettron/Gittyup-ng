@@ -1,0 +1,4 @@
+OPTIONAL_FILTER load=0 loaded=1; expected unchanged input on smudge exit 1
+optional_filter: /home/misha/repos/Gittyup/src/git/Filter.cpp:83: int git::{anonymous}::stream_close(git_writestream*): Assertion `false' failed.
+
+process_returncode=-6

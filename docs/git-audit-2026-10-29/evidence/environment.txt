@@ -1,0 +1,9 @@
+Audit date: 2026-10-29 (Asia/Tbilisi)
+Build: existing Linux/Ninja Debug build
+check_build: successful, ninja: no work to do.
+source_commit: 54f2028125bdae69d463427660af43acdbe4028d
+git: git version 2.56.0
+cmake: cmake version 4.3.0
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+Qt6Core: 6.11.2

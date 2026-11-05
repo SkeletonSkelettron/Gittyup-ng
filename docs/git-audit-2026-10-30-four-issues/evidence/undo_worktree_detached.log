@@ -1,0 +1,4 @@
+checkout-before: head=HEAD detached at b0b6cb6 file=A status= undo=Checkout b0b6cb6
+checkout-undo-occupied: worktree-add=0 undo=0 head=HEAD detached at b0b6cb6 file=A index=A status=
+
+process_returncode=0

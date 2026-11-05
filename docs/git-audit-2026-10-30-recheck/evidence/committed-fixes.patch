@@ -1,0 +1,1018 @@
+diff --git a/src/git/Commit.cpp b/src/git/Commit.cpp
+index 8137a186..5b912a14 100644
+--- a/src/git/Commit.cpp
++++ b/src/git/Commit.cpp
+@@ -259,6 +259,13 @@ bool Commit::revert() const {
+   if (repo.forcesDiff3Conflicts())
+     args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
+ 
++  // Like cherry-pick, see Repository::cherryPick().
++  QString staged = repo.stagedChangesError();
++  if (!staged.isEmpty()) {
++    emit repo.notifier()->gitCommandFailed(tr("revert commit"), staged);
++    return false;
++  }
++
+   git::Cli cli(repo.workdir().path());
+   RunResult result = cli.run(args);
+ 
+diff --git a/src/git/Index.cpp b/src/git/Index.cpp
+index 7978f062..3ddf970a 100644
+--- a/src/git/Index.cpp
++++ b/src/git/Index.cpp
+@@ -163,6 +163,10 @@ Index::StagedState Index::isStaged(const QString &path) const {
+   if (it != d->stagedCache.end())
+     return it.value();
+ 
++  // Handle conflicts, also of files that are only on one side.
++  if (conflict(path).isValid())
++    return d->stagedCache.insert(path, Conflicted).value();
++
+   Repository repo(git_index_owner(d->index));
+   Submodule sm = repo.lookupSubmodule(path);
+ 
+@@ -200,9 +204,6 @@ Index::StagedState Index::isStaged(const QString &path) const {
+   if (head == index && headMode == indexMode)
+     return d->stagedCache.insert(path, Unstaged).value();
+ 
+-  if (conflict(path).isValid())
+-    return d->stagedCache.insert(path, Conflicted).value();
+-
+   return d->stagedCache.insert(path, PartiallyStaged).value();
+ }
+ 
+@@ -282,7 +283,8 @@ void Index::setStaged(const QStringList &files, bool staged, bool yieldFocus) {
+   }
+ 
+   if (!changedFiles.isEmpty()) {
+-    git_index_write(d->index);
++    // git stages into the index file. Writing the index in memory over it
++    // first would drop what other git processes staged since it was read.
+     pathList += subPathList;
+     if (!pathList.isEmpty()) {
+       QByteArray input;
+diff --git a/src/git/Index.h b/src/git/Index.h
+index aec895db..49d2cdc8 100644
+--- a/src/git/Index.h
++++ b/src/git/Index.h
+@@ -38,8 +38,10 @@ public:
+     Id ours;
+     Id theirs;
+ 
++    // A side that deleted the file, or the base of a file that both sides
++    // added, is missing.
+     bool isValid() const {
+-      return !ancestor.isNull() && !ours.isNull() && !theirs.isNull();
++      return !ancestor.isNull() || !ours.isNull() || !theirs.isNull();
+     }
+   };
+ 
+diff --git a/src/git/RefState.cpp b/src/git/RefState.cpp
+index 69f6329f..9cf891bb 100644
+--- a/src/git/RefState.cpp
++++ b/src/git/RefState.cpp
+@@ -150,8 +150,41 @@ bool RefState::operator==(const RefState &rhs) const {
+          mUpstreams == rhs.mUpstreams;
+ }
+ 
++bool RefState::canRestore(const Repository &repo, const RefState &current,
++                          const QStringList &names, QString *error) const {
++  // HEAD can't point to a branch that another worktree checked out, and that
++  // branch can't move: its index and its files would stay behind.
++  QStringList branches;
++  if (names.contains("HEAD") && !mHead.isEmpty() && mHead != current.mHead)
++    branches.append(mHead);
++
++  for (const QString &name : names) {
++    auto it = mRefs.constFind(name);
++    auto old = current.mRefs.constFind(name);
++    if (isBranch(name) && it != mRefs.cend() && old != current.mRefs.cend() &&
++        it.value() != old.value())
++      branches.append(name);
++  }
++
++  for (const QString &name : branches) {
++    Reference ref = repo.lookupRef(name);
++    if (ref.isValid() && ref.isCheckedOutElsewhere()) {
++      if (error)
++        *error =
++            tr("'%1' is checked out in another worktree.").arg(shortName(name));
++      return false;
++    }
++  }
++
++  return true;
++}
++
+ bool RefState::restore(const Repository &repo, const RefState &current,
+-                       const QString &message, QString *error) const {
++                       const QStringList &names, const QString &message,
++                       QString *error) const {
++  if (!canRestore(repo, current, names, error))
++    return false;
++
+   git_repository *raw = repo;
+   RepositoryNotifier *notifier = repo.notifier();
+   QByteArray log = message.toUtf8();
+@@ -162,19 +195,32 @@ bool RefState::restore(const Repository &repo, const RefState &current,
+     return false;
+   };
+ 
+-  // Create and move references first so that HEAD can point to them.
+-  for (auto it = mRefs.cbegin(); it != mRefs.cend(); ++it) {
+-    const QString &name = it.key();
++  QStringList created;
++  QStringList moved;
++  QStringList removed;
++  for (const QString &name : names) {
++    auto it = mRefs.constFind(name);
+     auto old = current.mRefs.constFind(name);
+-    bool exists = (old != current.mRefs.cend());
+-    if (exists && old.value() == it.value())
+-      continue;
++    bool has = (it != mRefs.cend());
++    bool had = (old != current.mRefs.cend());
++    if (has && !had) {
++      created.append(name);
++    } else if (has && old.value() != it.value()) {
++      moved.append(name);
++    } else if (had && !has) {
++      removed.append(name);
++    }
++  }
+ 
++  // Create and move references first so that HEAD can point to them.
++  for (const QString &name : created + moved) {
++    bool exists = current.mRefs.contains(name);
+     if (!exists)
+       emit notifier->referenceAboutToBeAdded(shortName(name));
+ 
+     git_reference *ref = nullptr;
+-    if (git_reference_create(&ref, raw, name.toUtf8(), it.value(), 1, log)) {
++    if (git_reference_create(&ref, raw, name.toUtf8(), mRefs.value(name), 1,
++                             log)) {
+       return fail(tr("Unable to restore '%1' - %2")
+                       .arg(shortName(name), lastError()));
+     }
+@@ -190,7 +236,8 @@ bool RefState::restore(const Repository &repo, const RefState &current,
+   }
+ 
+   // Point HEAD to its branch or commit.
+-  if (mHead != current.mHead || mHeadId != current.mHeadId) {
++  if (names.contains("HEAD") &&
++      (mHead != current.mHead || mHeadId != current.mHeadId)) {
+     int result = 0;
+     if (!mHead.isEmpty()) {
+       if (mHead != current.mHead)
+@@ -204,11 +251,7 @@ bool RefState::restore(const Repository &repo, const RefState &current,
+   }
+ 
+   // Remove the references that didn't exist.
+-  for (auto it = current.mRefs.cbegin(); it != current.mRefs.cend(); ++it) {
+-    const QString &name = it.key();
+-    if (mRefs.contains(name))
+-      continue;
+-
++  for (const QString &name : removed) {
+     Reference ref = repo.lookupRef(name);
+     if (!ref.isValid())
+       continue;
+diff --git a/src/git/RefState.h b/src/git/RefState.h
+index cab63e0d..d6a29ff2 100644
+--- a/src/git/RefState.h
++++ b/src/git/RefState.h
+@@ -19,8 +19,9 @@ namespace git {
+ class Repository;
+ 
+ // The HEAD, local branches and tags of a repository at one time, and the
+-// upstreams of its branches. Actions are undone by restoring the state from
+-// before them, and redone by restoring the state after them.
++// upstreams of its branches. Actions are undone by restoring the references
++// that they changed to the state from before them, and redone by restoring
++// them to the state after them.
+ class RefState {
+   Q_DECLARE_TR_FUNCTIONS(RefState)
+ 
+@@ -58,11 +59,20 @@ public:
+   bool operator==(const RefState &rhs) const;
+   bool operator!=(const RefState &rhs) const { return !(*this == rhs); }
+ 
+-  // Change the references of 'repo' from 'current' to this state. The index
+-  // and the working directory don't change. The reflogs get 'message'.
+-  // Returns false and sets 'error' when something couldn't be changed.
++  // Whether restore() can change the references 'names' of 'repo' from
++  // 'current' to this state. It can't point HEAD to a branch that another
++  // worktree checked out, nor move that branch. Sets 'error' when it can't.
++  bool canRestore(const Repository &repo, const RefState &current,
++                  const QStringList &names, QString *error = nullptr) const;
++
++  // Change the references 'names' of 'repo', like those of changes(), from
++  // 'current' to this state. Other references may have changed since, and
++  // stay. The index and the working directory don't change. The reflogs get
++  // 'message'. Returns false and sets 'error' when something couldn't be
++  // changed.
+   bool restore(const Repository &repo, const RefState &current,
+-               const QString &message, QString *error = nullptr) const;
++               const QStringList &names, const QString &message,
++               QString *error = nullptr) const;
+ 
+   static bool isBranch(const QString &name);
+   static bool isTag(const QString &name);
+diff --git a/src/git/Reference.cpp b/src/git/Reference.cpp
+index 270d592e..009bfdde 100644
+--- a/src/git/Reference.cpp
++++ b/src/git/Reference.cpp
+@@ -54,6 +54,11 @@ bool Reference::isHead() const {
+ 
+ bool Reference::isStash() const { return (qualifiedName() == "refs/stash"); }
+ 
++bool Reference::isCheckedOutElsewhere() const {
++  // libgit2 counts the HEAD of this worktree too.
++  return isLocalBranch() && !isHead() && git_branch_is_checked_out(d.data());
++}
++
+ QString Reference::name(bool decorateDetachedHead) const {
+   if (isBranch()) {
+     const char *name = nullptr;
+@@ -113,6 +118,15 @@ Reference Reference::setTarget(const Commit &commit, const QString &msg) const {
+     Repository::setError(GIT_ERROR_REFERENCE, tr("invalid commit"));
+     return Reference();
+   }
++
++  // update-ref would move it under the index and the files of the other
++  // worktree, which git branch refuses.
++  if (isCheckedOutElsewhere()) {
++    Repository::setError(GIT_ERROR_REFERENCE,
++                         tr("The branch is checked out in another worktree."));
++    return Reference();
++  }
++
+   if (!msg.isEmpty()) {
+     args.append("-m");
+     args.append(msg);
+diff --git a/src/git/Reference.h b/src/git/Reference.h
+index a2d2a2b4..1be2baf8 100644
+--- a/src/git/Reference.h
++++ b/src/git/Reference.h
+@@ -43,6 +43,10 @@ public:
+   bool isHead() const;
+   bool isStash() const;
+ 
++  // Whether the HEAD of another worktree of the repository points to this
++  // local branch.
++  bool isCheckedOutElsewhere() const;
++
+   QString name(bool decorateDetachedHead = true) const;
+   QString qualifiedName() const;
+ 
+diff --git a/src/git/Repository.cpp b/src/git/Repository.cpp
+index d2760c1a..8fa926d0 100644
+--- a/src/git/Repository.cpp
++++ b/src/git/Repository.cpp
+@@ -57,6 +57,7 @@
+ #include <QSet>
+ #include <QStandardPaths>
+ #include <QVector>
++#include <algorithm>
+ 
+ #ifdef Q_OS_UNIX
+ #include <pwd.h>
+@@ -1165,8 +1166,10 @@ bool Repository::merge(const AnnotatedCommit &mergeHead) {
+   RunResult result = Cli(workdir().path()).run(args);
+ 
+   // git exits with 1 for conflicts, which are resolved later like with
+-  // libgit2. It only fails without MERGE_HEAD, before anything changed.
+-  bool merged = (state() == GIT_REPOSITORY_STATE_MERGE);
++  // libgit2. It fails before anything changed otherwise, without MERGE_HEAD
++  // or with the one of a merge that isn't concluded yet.
++  bool merged = (result.exitCode == 0 || result.exitCode == 1) &&
++                state() == GIT_REPOSITORY_STATE_MERGE;
+   if (!merged) {
+     QByteArray message =
+         result.errors.isEmpty() ? result.output : result.errors;
+@@ -1294,6 +1297,14 @@ bool Repository::cherryPick(const Commit &commit) {
+   if (forcesDiff3Conflicts())
+     args = QStringList{"-c", "merge.conflictStyle=diff3"} + args;
+ 
++  // git picks onto the index with --no-commit. libgit2 and git without it
++  // refuse staged changes.
++  QString staged = stagedChangesError();
++  if (!staged.isEmpty()) {
++    git_error_set_str(GIT_ERROR_CHERRYPICK, staged.toUtf8());
++    return false;
++  }
++
+   Cli cli(workdir().path());
+   RunResult result = cli.run(args);
+ 
+@@ -1317,6 +1328,19 @@ bool Repository::cherryPick(const Commit &commit) {
+   return true;
+ }
+ 
++QString Repository::stagedChangesError() const {
++  // Also submodules, which the configuration may leave out of diffs.
++  QStringList args = {"diff", "--cached", "--quiet",
++                      "--ignore-submodules=none"};
++  RunResult result = Cli(workdir().path()).run(args);
++  if (result.exitCode == 0)
++    return QString();
++
++  return (result.exitCode == 1)
++             ? tr("You have staged changes. Commit or stash them first.")
++             : commandError(result.errors);
++}
++
+ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
+                           const QStringList &paths, int strategy) {
+   // git read-tree checks out a whole tree like git_checkout_tree: it updates
+@@ -1411,21 +1435,43 @@ bool Repository::checkout(const Commit &commit, CheckoutCallbacks *callbacks,
+ 
+   Cli cli(workdir().path());
+ 
+-  // git restore overwrites local changes, libgit2 refuses unless forced.
++  // git restore overwrites changes, also staged ones, and untracked files,
++  // which libgit2 refuses unless forced. git also deletes a file in the way
++  // of a directory, and a directory in the way of a file.
+   if (!force) {
+-    RunResult result = cli.run({"diff", "--name-only", "-z"});
+-    if (result.exitCode != 0) {
+-      setError(GIT_ERROR_CHECKOUT, commandError(result.errors));
++    QStringList files;
++    QMap<QString, Index::StagedState> states;
++    if (!workdirChanges(workdir().path(), true, files, states)) {
++      setError(GIT_ERROR_CHECKOUT,
++               tr("Unable to read the status of the files"));
+       return false;
+     }
+ 
+-    QSet<QString> changed;
+-    for (const QByteArray &path : result.output.split('\0'))
+-      changed.insert(QString::fromUtf8(path));
++    // The files that differ from HEAD. git status tells the staged state of
++    // those that differ only in the index.
++    QSet<QString> changed(files.cbegin(), files.cend());
++    for (auto it = states.cbegin(); it != states.cend(); ++it)
++      changed.insert(it.key());
++
++    auto overwrites = [&changed](const QString &path) {
++      if (changed.contains(path))
++        return true;
++
++      for (qsizetype i = path.indexOf('/'); i > 0;
++           i = path.indexOf('/', i + 1)) {
++        if (changed.contains(path.left(i)))
++          return true;
++      }
++
++      QString dir = path + '/';
++      return std::any_of(
++          changed.cbegin(), changed.cend(),
++          [&dir](const QString &file) { return file.startsWith(dir); });
++    };
+ 
+     bool conflicts = false;
+     for (const QString &path : paths) {
+-      if (changed.contains(path)) {
++      if (overwrites(path)) {
+         conflicts = true;
+         if (callbacks)
+           callbacks->notify('!', path);
+diff --git a/src/git/Repository.h b/src/git/Repository.h
+index 8877690c..0a92605d 100644
+--- a/src/git/Repository.h
++++ b/src/git/Repository.h
+@@ -227,6 +227,10 @@ public:
+   // cherry-pick
+   bool cherryPick(const Commit &commit);
+ 
++  // The error for staged changes, which cherry-pick and revert would mix with
++  // the changes of the commit and lose when aborted, or an empty string.
++  QString stagedChangesError() const;
++
+   // checkout
+   bool checkout(const Commit &commit, CheckoutCallbacks *callbacks = nullptr,
+                 const QStringList &paths = QStringList(),
+diff --git a/src/ui/RepoView.cpp b/src/ui/RepoView.cpp
+index 6a368319..f8cd27d4 100644
+--- a/src/ui/RepoView.cpp
++++ b/src/ui/RepoView.cpp
+@@ -1429,6 +1429,15 @@ void RepoView::merge(MergeFlags flags, const git::Reference &ref,
+     return;
+   }
+ 
++  // git refuses to merge again before the merge is concluded, and a
++  // fast-forward would move HEAD under it.
++  if (mRepo.state() != GIT_REPOSITORY_STATE_NONE) {
++    entry->addEntry(LogEntry::Error,
++                    tr("Finish or abort the current merge, rebase, "
++                       "cherry-pick or revert first."));
++    return;
++  }
++
+   // Validate inputs.
+   if (!upstream.isValid()) {
+     entry->addEntry(
+@@ -2205,8 +2214,19 @@ void RepoView::checkout(const git::Commit &commit, const QStringList &paths) {
+ 
+   CheckoutCallbacks callbacks(entry, GIT_CHECKOUT_NOTIFY_ALL);
+   int strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_DONT_UPDATE_INDEX;
+-  if (!runBusy([&] { mRepo.checkout(commit, &callbacks, paths, strategy); }))
++  bool checkedOut = false;
++  if (!runBusy([&] {
++        checkedOut = mRepo.checkout(commit, &callbacks, paths, strategy);
++      }))
++    return;
++
++  // List the files with local changes that would be overwritten.
++  if (!checkedOut) {
++    LogEntry *err = error(entry, tr("checkout"));
++    for (const QString &path : callbacks.conflicts())
++      err->addEntry(LogEntry::File, path)->setStatus('!');
+     return;
++  }
+ 
+   mRefs->select(mRepo.head());
+ }
+diff --git a/src/ui/UndoHistory.cpp b/src/ui/UndoHistory.cpp
+index 1f758d2c..99fd67c6 100644
+--- a/src/ui/UndoHistory.cpp
++++ b/src/ui/UndoHistory.cpp
+@@ -192,10 +192,17 @@ bool UndoHistory::apply(const Action &action, bool undo) {
+     return fail(tr("Finish or abort the current merge, rebase, cherry-pick "
+                    "or revert first."));
+ 
++  // Only the references of the action change back, not tags fetched since.
+   git::RefState current(repo);
+-  if (!current.matches(from, action.before.changes(action.after)))
++  QStringList names = action.before.changes(action.after);
++  if (!current.matches(from, names))
+     return fail(tr("The branches have changed since."));
+ 
++  // Check what can't be restored before the working directory changes.
++  QString error;
++  if (!to.canRestore(repo, current, names, &error))
++    return fail(error);
++
+   // Move the working directory to the commit of HEAD.
+   git::Commit commit;
+   if (from.headId() != to.headId() && to.headId().isValid()) {
+@@ -223,8 +230,7 @@ bool UndoHistory::apply(const Action &action, bool undo) {
+   }
+ 
+   QString message = QString("%1: %2").arg(title.toLower(), action.text);
+-  QString error;
+-  if (!to.restore(repo, current, message, &error))
++  if (!to.restore(repo, current, names, message, &error))
+     return fail(error);
+ 
+   if (action.mode == Mixed && commit.isValid() &&
+diff --git a/test/fileContextMenu.cpp b/test/fileContextMenu.cpp
+index 52c4d98a..4f9537c8 100644
+--- a/test/fileContextMenu.cpp
++++ b/test/fileContextMenu.cpp
+@@ -7,6 +7,8 @@
+ #include "git/Reference.h"
+ 
+ #include "dialogs/ConfirmDialog.h"
++#include "log/LogEntry.h"
++#include <QProcess>
+ #include <QPushButton>
+ 
+ #define INIT_REPO(repoPath)                                                    \
+@@ -44,6 +46,7 @@ private slots:
+   void testIgnoreFileUntracked();
+   void testIgnoreFolder();
+   void testRemoveUntrackedFolder();
++  void testCheckoutKeepsLocalFiles();
+ };
+ 
+ using namespace git;
+@@ -607,5 +610,86 @@ void TestFileContextMenu::testRemoveUntrackedFolder() {
+   }
+ }
+ 
++// Checking out files of a commit keeps untracked files and changes, staged
++// ones too, also of files in the way of their directories and of directories
++// in the way of them, like libgit2 did. The view reports them.
++void TestFileContextMenu::testCheckoutKeepsLocalFiles() {
++  Test::ScratchRepository repo;
++  QDir dir = repo->workdir();
++  auto runGit = [&dir](const QStringList &args) {
++    QProcess process;
++    process.setWorkingDirectory(dir.path());
++    process.start("git", args);
++    process.waitForFinished();
++    return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
++  };
++  auto write = [&dir](const QString &name, const QByteArray &content) {
++    dir.mkpath(QFileInfo(name).path());
++    QFile file(dir.filePath(name));
++    return file.open(QFile::WriteOnly) && file.write(content) >= 0;
++  };
++  auto read = [&dir](const QString &name) {
++    QFile file(dir.filePath(name));
++    return file.open(QFile::ReadOnly) ? file.readAll() : QByteArray();
++  };
++
++  // The second commit deletes or changes the files of the first.
++  QStringList changed = {"changed.txt", "kept/file.txt", "staged.txt"};
++  for (const QString &name :
++       changed + QStringList{"deleted.txt", "dir/file.txt", "e"})
++    QVERIFY(write(name, "old\n"));
++  runGit({"add", "."});
++  runGit({"commit", "-q", "-m", "first"});
++  git::Commit first = repo->head().target();
++
++  runGit({"rm", "-q", "-r", "deleted.txt", "dir", "e"});
++  for (const QString &name : changed + QStringList{"e/x"})
++    QVERIFY(write(name, "new\n"));
++  runGit({"add", "."});
++  runGit({"commit", "-q", "-m", "second"});
++
++  QVERIFY(write("deleted.txt", "untracked\n"));
++  QVERIFY(write("dir", "untracked\n"));
++  QVERIFY(write("e/x", "changed\n"));
++  QVERIFY(QDir(dir.filePath("kept")).removeRecursively());
++  QVERIFY(write("staged.txt", "staged\n"));
++  runGit({"add", "staged.txt"});
++
++  int strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_DONT_UPDATE_INDEX;
++  for (const QString &path :
++       {"deleted.txt", "dir/file.txt", "e", "kept", "staged.txt"})
++    QVERIFY(!repo->checkout(first, nullptr, {path}, strategy));
++  QVERIFY(!repo->checkout(first, nullptr, {"staged.txt"}, GIT_CHECKOUT_SAFE));
++  QCOMPARE(read("deleted.txt"), QByteArray("untracked\n"));
++  QCOMPARE(read("dir"), QByteArray("untracked\n"));
++  QCOMPARE(read("e/x"), QByteArray("changed\n"));
++  QVERIFY(!dir.exists("kept"));
++  QCOMPARE(read("staged.txt"), QByteArray("staged\n"));
++  QCOMPARE(runGit({"show", ":staged.txt"}), QString("staged"));
++
++  MainWindow window(repo);
++  window.show();
++  QVERIFY(QTest::qWaitForWindowExposed(&window));
++  RepoView *view = window.currentView();
++  view->checkout(first, QStringList{"deleted.txt"});
++  QCOMPARE(read("deleted.txt"), QByteArray("untracked\n"));
++
++  QStringList reported;
++  for (LogEntry *entry : view->findChildren<LogEntry *>()) {
++    if (entry->kind() != LogEntry::Error)
++      continue;
++
++    for (LogEntry *file : entry->entries())
++      reported.append(file->text());
++  }
++  QCOMPARE(reported, QStringList({"deleted.txt"}));
++
++  // Files without local changes are checked out, the index stays.
++  QVERIFY(repo->checkout(first, nullptr, {"changed.txt"}, strategy));
++  QCOMPARE(read("changed.txt"), QByteArray("old\n"));
++  QCOMPARE(runGit({"status", "--porcelain", "--", "changed.txt"}),
++           QString("M changed.txt"));
++}
++
+ TEST_MAIN(TestFileContextMenu)
+ #include "fileContextMenu.moc"
+diff --git a/test/index.cpp b/test/index.cpp
+index 4f8508fa..990226e4 100644
+--- a/test/index.cpp
++++ b/test/index.cpp
+@@ -16,6 +16,7 @@
+ #include "ui/RepoView.h"
+ #include "conf/Settings.h"
+ #include <QFile>
++#include <QProcess>
+ #include <QTextStream>
+ 
+ using namespace Test;
+@@ -44,6 +45,7 @@ private slots:
+   void stageDeletion();
+   void stageDirectory();
+   void discardUntracked();
++  void stageKeepsStagedByGit();
+   void cleanupTestCase();
+ 
+ private:
+@@ -209,6 +211,36 @@ void TestIndex::discardUntracked() {
+   QVERIFY(!dir.exists("untracked2"));
+ }
+ 
++// Staging keeps what git staged since the index was read.
++void TestIndex::stageKeepsStagedByGit() {
++  QDir dir = mRepo->workdir();
++  for (const QString &name : {"mine", "theirs"}) {
++    QFile file(dir.filePath(name));
++    QVERIFY(file.open(QFile::WriteOnly));
++    QTextStream(&file) << "This is a test." << Qt::endl;
++  }
++
++  RepoView *view = mWindow->currentView();
++  refresh(view);
++
++  QProcess git;
++  git.setWorkingDirectory(dir.path());
++  git.start("git", {"add", "theirs"});
++  QVERIFY(git.waitForFinished());
++  QCOMPARE(git.exitCode(), 0);
++
++  git::Index index = mRepo->index();
++  index.setStaged({"mine"}, true);
++
++  git.start("git", {"diff", "--cached", "--name-only"});
++  QVERIFY(git.waitForFinished());
++  QStringList staged =
++      QString::fromUtf8(git.readAllStandardOutput()).split('\n');
++  QVERIFY(staged.contains("mine"));
++  QVERIFY(staged.contains("theirs"));
++  QCOMPARE(index.isStaged("theirs"), git::Index::Staged);
++}
++
+ void TestIndex::cleanupTestCase() { mWindow->close(); }
+ 
+ TEST_MAIN(TestIndex)
+diff --git a/test/merge.cpp b/test/merge.cpp
+index 7e63b48e..b90258d8 100644
+--- a/test/merge.cpp
++++ b/test/merge.cpp
+@@ -14,6 +14,7 @@
+ #include "ui/DiffModel.h"
+ #include "ui/RepoView.h"
+ #include "git/Patch.h"
++#include "git2/repository.h"
+ #include <QFile>
+ 
+ using namespace Test;
+@@ -29,6 +30,7 @@ private slots:
+   void thirdCommit();
+   void mergeConflict();
+   void resolve();
++  void mergeDuringMerge();
+   void cleanupTestCase();
+ 
+ private:
+@@ -193,6 +195,45 @@ void TestMerge::resolve() {
+   QVERIFY(!wdiff.isConflicted());
+ }
+ 
++// Another merge or a fast-forward before the merge is concluded fails, like
++// git refuses to merge, instead of committing the first merge with the other
++// branch as parent.
++void TestMerge::mergeDuringMerge() {
++  RepoView *view = mWindow->currentView();
++  git::Commit base = mRepo->head().target();
++  for (const QString &name : {"one", "two"}) {
++    view->checkout(mRepo->createBranch(name, base));
++    QFile file(mRepo->workdir().filePath(name));
++    QVERIFY(file.open(QFile::WriteOnly));
++    file.write(name.toUtf8() + '\n');
++    file.close();
++    mRepo->index().setStaged({name}, true);
++    QVERIFY(mRepo->commit(QString("Add %1").arg(name)));
++  }
++
++  view->checkout(mRepo->lookupRef(QString("refs/heads/%1").arg(mMainBranch)));
++  git::Id head = mRepo->head().target().id();
++
++  RepoView::MergeFlags flags = RepoView::Merge;
++  view->merge(flags | RepoView::NoFastForward | RepoView::NoCommit,
++              mRepo->lookupRef("refs/heads/one"));
++  QCOMPARE(mRepo->state(), int(GIT_REPOSITORY_STATE_MERGE));
++  QVERIFY(QFile::exists(mRepo->workdir().filePath("one")));
++
++  // two is a fast-forward of HEAD.
++  git::Reference two = mRepo->lookupRef("refs/heads/two");
++  view->merge(flags, two);
++  view->merge(flags | RepoView::NoFastForward, two);
++  QVERIFY(!mRepo->merge(two.annotatedCommit()));
++  QCOMPARE(mRepo->state(), int(GIT_REPOSITORY_STATE_MERGE));
++  QCOMPARE(mRepo->head().target().id(), head);
++  QVERIFY(!QFile::exists(mRepo->workdir().filePath("two")));
++
++  view->mergeAbort();
++  QCOMPARE(mRepo->state(), int(GIT_REPOSITORY_STATE_NONE));
++  QVERIFY(!QFile::exists(mRepo->workdir().filePath("one")));
++}
++
+ void TestMerge::cleanupTestCase() {
+   qWait(closeDelay);
+   mWindow->close();
+diff --git a/test/revert.cpp b/test/revert.cpp
+index 6eabf2d2..7356b9b2 100644
+--- a/test/revert.cpp
++++ b/test/revert.cpp
+@@ -22,8 +22,9 @@
+ using namespace Test;
+ using namespace QTest;
+ 
+-// Reverts commits that conflict and that can't be reverted. Reverting without
+-// a conflict is in CommitAuthorCommitter.
++// Reverts commits that conflict and that can't be reverted, and refuses
++// staged changes like cherry-picking. Reverting without a conflict is in
++// CommitAuthorCommitter.
+ class TestRevert : public QObject {
+   Q_OBJECT
+ 
+@@ -32,6 +33,8 @@ private slots:
+   void conflictIsLeft();
+   void mergeCommitFails();
+   void viewShowsConflict();
++  void stagedChangesAreKept();
++  void stagedSubmoduleIsKept();
+   void cleanupTestCase();
+ 
+ private:
+@@ -116,6 +119,66 @@ void TestRevert::viewShowsConflict() {
+   mRepo->index().read();
+ }
+ 
++// Reverting and cherry-picking apply the commit to the index. Staged changes
++// would be committed with it, and lost when it's aborted: both refuse them.
++void TestRevert::stagedChangesAreKept() {
++  git({"checkout", "-q", "-b", "side"});
++  commit("picked.txt", "picked\n");
++  git::Commit picked = mRepo->head().target();
++  git({"checkout", "-q", "-"});
++  commit("reverted.txt", "reverted\n");
++  git::Commit reverted = mRepo->head().target();
++
++  QFile file(mRepo->workdir().filePath("staged.txt"));
++  QVERIFY(file.open(QFile::WriteOnly));
++  file.write("staged\n");
++  file.close();
++  git({"add", "staged.txt"});
++  mRepo->index().read();
++
++  RepoView *view = mWindow->currentView();
++  view->revert(reverted);
++  view->cherryPick(picked);
++
++  QCOMPARE(mRepo->state(), int(GIT_REPOSITORY_STATE_NONE));
++  QCOMPARE(mRepo->head().target().id(), reverted.id());
++  QVERIFY(QFile::exists(mRepo->workdir().filePath("reverted.txt")));
++  QVERIFY(!QFile::exists(mRepo->workdir().filePath("picked.txt")));
++  QCOMPARE(git({"diff", "--cached", "--name-only"}), QString("staged.txt"));
++
++  QStringList texts = errors(logRoot());
++  QVERIFY(texts.contains("Unable to revert commit"));
++  QCOMPARE(texts.filter("You have staged changes").size(), 1);
++}
++
++// A staged submodule counts too, also when the configuration leaves
++// submodules out of diffs.
++void TestRevert::stagedSubmoduleIsKept() {
++  // Only the submodule is staged.
++  git({"reset", "-q"});
++  QStringList sub = {
++      "-c", "user.name=Test", "-c", "user.email=test@example.com", "-C", "sm"};
++  git({"init", "-q", "sm"});
++  QFile file(mRepo->workdir().filePath("sm/a.txt"));
++  QVERIFY(file.open(QFile::WriteOnly));
++  file.write("one\n");
++  file.close();
++  git(sub + QStringList{"add", "a.txt"});
++  git(sub + QStringList{"commit", "-qm", "One"});
++  git({"add", "sm"});
++  git({"commit", "-qm", "Add sm"});
++  git(sub + QStringList{"commit", "-q", "--allow-empty", "-m", "Two"});
++  git({"add", "sm"});
++  git({"config", "diff.ignoreSubmodules", "all"});
++  mRepo->index().read();
++
++  QVERIFY(!mRepo->stagedChangesError().isEmpty());
++  QVERIFY(!mRepo->cherryPick(mRepo->lookupBranch("side").target()));
++  QCOMPARE(git({"diff", "--cached", "--name-only", "--ignore-submodules=none"}),
++           QString("sm"));
++  git({"config", "--unset", "diff.ignoreSubmodules"});
++}
++
+ void TestRevert::cleanupTestCase() {
+   delete mWindow;
+   mWindow = nullptr;
+diff --git a/test/take_side.cpp b/test/take_side.cpp
+index a02566d5..e508b14d 100644
+--- a/test/take_side.cpp
++++ b/test/take_side.cpp
+@@ -65,6 +65,15 @@ void makeConflicts(const QString &dir) {
+   runGit(dir, {"merge", "-q", "other"});
+ }
+ 
++// Whether the menu has the action.
++bool hasAction(QMenu &menu, const QString &text) {
++  for (QAction *action : menu.actions()) {
++    if (action->text() == text)
++      return true;
++  }
++  return false;
++}
++
+ // The visible confirmation dialog of the view.
+ ConfirmDialog *confirmDialog(QWidget *parent) {
+   for (ConfirmDialog *dialog : parent->findChildren<ConfirmDialog *>()) {
+@@ -83,6 +92,7 @@ private slots:
+   void theirs();
+   void ours();
+   void menu();
++  void conflictKinds();
+ };
+ 
+ // Their version of a conflict, and their deletion.
+@@ -96,6 +106,7 @@ void TestTakeSide::theirs() {
+   git::Index index = repo->index();
+   index.read();
+   QCOMPARE(index.isStaged("f.txt"), git::Index::Conflicted);
++  QCOMPARE(index.isStaged("g.txt"), git::Index::Conflicted);
+   QVERIFY(index.takeSide({"f.txt", "g.txt"}, git::Index::Theirs));
+ 
+   QCOMPARE(content(dir + "/f.txt"), QString("a\ntheirs\n"));
+@@ -150,6 +161,11 @@ void TestTakeSide::menu() {
+   QVERIFY(!action(plain, "Take Ours"));
+   QVERIFY(!action(plain, "Take Theirs"));
+ 
++  // Also for a file that they deleted.
++  FileContextMenu deleted(view, {"g.txt"}, git::Index());
++  QVERIFY(hasAction(deleted, "Take Ours"));
++  QVERIFY(hasAction(deleted, "Take Theirs"));
++
+   // The lists of the details give no index.
+   FileContextMenu menu(view, {"f.txt"}, git::Index());
+   QVERIFY(action(menu, "Take Ours"));
+@@ -165,6 +181,54 @@ void TestTakeSide::menu() {
+   QCOMPARE(runGit(dir, {"ls-files", "-u", "--", "f.txt"}), QString());
+ }
+ 
++// A file that we deleted and they changed, and one that both sides added,
++// conflict too, though a side or the base is missing.
++void TestTakeSide::conflictKinds() {
++  ScratchRepository repo;
++  QString dir = repo->workdir().path();
++  write(dir + "/deleted.txt", "base\n");
++  runGit(dir, {"add", "."});
++  runGit(dir, {"commit", "-q", "-m", "base"});
++
++  runGit(dir, {"checkout", "-q", "-b", "other"});
++  write(dir + "/deleted.txt", "theirs\n");
++  write(dir + "/added.txt", "theirs\n");
++  runGit(dir, {"add", "."});
++  runGit(dir, {"commit", "-q", "-m", "other"});
++
++  runGit(dir, {"checkout", "-q", "-"});
++  runGit(dir, {"rm", "-q", "deleted.txt"});
++  write(dir + "/added.txt", "ours\n");
++  runGit(dir, {"add", "."});
++  runGit(dir, {"commit", "-q", "-m", "ours"});
++
++  runGit(dir, {"merge", "-q", "other"});
++  QCOMPARE(runGit(dir, {"status", "--porcelain"}),
++           QString("AA added.txt\nDU deleted.txt"));
++
++  MainWindow window(repo);
++  window.show();
++  QVERIFY(qWaitForWindowExposed(&window));
++  RepoView *view = window.currentView();
++  refresh(view);
++
++  git::Index index = repo->index();
++  for (const QString &file : {"added.txt", "deleted.txt"}) {
++    QCOMPARE(index.isStaged(file), git::Index::Conflicted);
++    FileContextMenu menu(view, {file}, git::Index());
++    QVERIFY(hasAction(menu, "Take Ours"));
++    QVERIFY(hasAction(menu, "Take Theirs"));
++  }
++
++  // Our side deleted it.
++  QVERIFY(index.takeSide({"deleted.txt"}, git::Index::Ours));
++  QVERIFY(!QFile::exists(dir + "/deleted.txt"));
++  QVERIFY(index.takeSide({"added.txt"}, git::Index::Theirs));
++  QCOMPARE(content(dir + "/added.txt"), QString("theirs\n"));
++  QCOMPARE(runGit(dir, {"ls-files", "-u"}), QString());
++  QCOMPARE(runGit(dir, {"status", "--porcelain"}), QString("M  added.txt"));
++}
++
+ TEST_MAIN(TestTakeSide)
+ 
+ #include "take_side.moc"
+diff --git a/test/undo.cpp b/test/undo.cpp
+index 2cc72229..7aefc274 100644
+--- a/test/undo.cpp
++++ b/test/undo.cpp
+@@ -10,12 +10,14 @@
+ #include "git/Commit.h"
+ #include "git/Config.h"
+ #include "git/Index.h"
++#include "git/TagRef.h"
+ #include "git/Tree.h"
+ #include "ui/DetailView.h"
+ #include "ui/MainWindow.h"
+ #include "ui/RepoView.h"
+ #include "ui/UndoHistory.h"
+ #include <QFile>
++#include <QProcess>
+ 
+ using namespace Test;
+ using namespace QTest;
+@@ -31,9 +33,12 @@ private slots:
+   void checkout();
+   void reset();
+   void localChanges();
++  void laterTags();
++  void otherWorktree();
+   void cleanupTestCase();
+ 
+ private:
++  QString git(const QStringList &args, const QString &dir = QString());
+   void write(const QString &name, const QByteArray &content);
+   QByteArray read(const QString &name);
+   git::Id head();
+@@ -209,11 +214,91 @@ void TestUndo::localChanges() {
+   QVERIFY(!mHistory->canRedo());
+ }
+ 
++// Undoing and redoing an action keeps the tags that came after it, like the
++// ones of a fetch, which aren't actions.
++void TestUndo::laterTags() {
++  mView->createBranch("tagged", mRepo->lookupCommit(mFirst));
++  mHistory->check();
++  QCOMPARE(mHistory->undoText(), QString("Create Branch tagged"));
++
++  git({"tag", "fetched", mFirst.toString()});
++  mHistory->check();
++  QCOMPARE(mHistory->undoText(), QString("Create Branch tagged"));
++
++  QVERIFY(mHistory->undo());
++  QVERIFY(!mRepo->lookupBranch("tagged").isValid());
++  QVERIFY(mRepo->lookupTag("fetched").isValid());
++  QVERIFY(mHistory->redo());
++  QVERIFY(mRepo->lookupBranch("tagged").isValid());
++  QVERIFY(mRepo->lookupTag("fetched").isValid());
++}
++
++// A branch that another worktree checked out doesn't move, and HEAD doesn't
++// point to it again, which would leave the index and the files of that
++// worktree behind. Nothing changes then.
++void TestUndo::otherWorktree() {
++  git::Commit first = mRepo->lookupCommit(mFirst);
++  git::Commit second = mRepo->lookupBranch("ahead").target();
++  QVERIFY(second.isValid() && second.id() != mFirst);
++
++  mView->createBranch("linked", first);
++  mHistory->check();
++  QVERIFY(mRepo->lookupBranch("linked").setTarget(second, "test").isValid());
++  mHistory->check();
++  QCOMPARE(mHistory->undoText(), QString("Update linked"));
++
++  QTemporaryDir dir;
++  QString path = dir.filePath("linked");
++  git({"worktree", "add", "-q", path, "linked"});
++  QVERIFY(QFile::exists(path + "/a.txt"));
++
++  QVERIFY(!mRepo->lookupBranch("linked").setTarget(first, "test").isValid());
++  QVERIFY(!mHistory->undo());
++  QCOMPARE(mRepo->lookupBranch("linked").target().id(), second.id());
++  QCOMPARE(git({"status", "--porcelain"}, path), QString());
++
++  git({"worktree", "remove", "--force", path});
++  QVERIFY(mHistory->undo());
++  QCOMPARE(mRepo->lookupBranch("linked").target().id(), mFirst);
++
++  // Undo checkouts of another commit, from the branch and from a detached
++  // HEAD, while another worktree checked the branch out.
++  QVERIFY(mHistory->redo());
++  mView->checkout(mRepo->lookupBranch("linked"));
++  mHistory->check();
++  git({"worktree", "add", "-q", path, mMain});
++  QVERIFY(!mHistory->undo());
++  QCOMPARE(mRepo->head().name(), QString("linked"));
++  QCOMPARE(git({"status", "--porcelain"}), QString());
++  git({"worktree", "remove", "--force", path});
++  QVERIFY(mHistory->undo());
++  QCOMPARE(mRepo->head().name(), mMain);
++
++  mView->checkout(second, git::Reference(), true);
++  mHistory->check();
++  git({"worktree", "add", "-q", path, mMain});
++  QVERIFY(!mHistory->undo());
++  QVERIFY(mRepo->head().isDetachedHead());
++  QCOMPARE(git({"status", "--porcelain"}), QString());
++  git({"worktree", "remove", "--force", path});
++  QVERIFY(mHistory->undo());
++  QCOMPARE(mRepo->head().name(), mMain);
++}
++
+ void TestUndo::cleanupTestCase() {
+   delete mWindow;
+   mWindow = nullptr;
+ }
+ 
++// Run git in the repository, or in 'dir', for what Gittyup doesn't do itself.
++QString TestUndo::git(const QStringList &args, const QString &dir) {
++  QProcess process;
++  process.setWorkingDirectory(dir.isEmpty() ? mRepo->workdir().path() : dir);
++  process.start("git", args);
++  process.waitForFinished();
++  return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
++}
++
+ void TestUndo::write(const QString &name, const QByteArray &content) {
+   QFile file(mRepo->workdir().filePath(name));
+   QVERIFY(file.open(QFile::WriteOnly | QFile::Truncate));

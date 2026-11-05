@@ -1,0 +1,6 @@
+STALE_DISCARD whole=0 external_preserved=1 selected_reverted=1 other_change_preserved=1
+STALE_DISCARD whole=1 external_preserved=0 selected_reverted=1 other_change_preserved=1
+MODE_ONLY whole=1 allowed=1 rows=0 notice=No changes to show
+SYMLINK before_hex=612e747874622e747874 whole_hex=612e7478744242420a4343430a whole=1 allowed=1
+
+EXIT 0

@@ -1,0 +1,6 @@
+BURST requests=21 refresh_ms=8 active_300ms_ticks=31 status_count=1 latest=final.txt scans=2
+BOUNDARY status_count=1 latest=boundary.txt scans=3
+INDEXER requests=3 busy_operations=2 starts_during_busy=0 starts_after=1
+PASS pending status and deferred indexer scenarios
+
+process_returncode=0

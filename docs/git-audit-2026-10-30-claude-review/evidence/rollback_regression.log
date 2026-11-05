@@ -1,0 +1,5 @@
+STAGED_ROLLBACK_NATIVE exit=128 head=topic file=B index=B status=M  file.txt
+STAGED_ROLLBACK before_file=B before_index=B before_status=M  file.txt undo=0 head=topic after_file=A after_index=A after_status=
+PARTIAL_PUSH native_exit=1 native_upstream_set=1 project_branch_pushed=1 project_tag_pushed=0 project_upstream_set=0 logged_rejection=1
+
+process_returncode=0

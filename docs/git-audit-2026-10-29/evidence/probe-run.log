@@ -1,0 +1,38 @@
+--- index_worktree ---
+modify/delete state=1 Conflicted=3 hasConflicts=1 conflict.isValid=0
+before stage f: g
+after stage f: f
+safe path checkout result=1 contents=old tracked
+libgit2 safe path checkout result=-13 contents=precious untracked
+
+process_returncode=0
+
+--- merge_rebase ---
+REVERT result=1 state=2 REVERT_HEAD=1 staged=a
+REBASE state=0 committer=Configured User <configured@example.test> expected=Override User <override@example.test>
+NESTED_MERGE first=1 second=1 committed=1 files=a,main,one second_parent=1a3fb93 expected_one=23b5540 wrong_two=1a3fb93
+CHERRY_PICK_STAGED success=1 committed=1 files=a,picked,unrelated unrelated_cached_after=
+CHERRY_PICK_CANCEL success=1 aborted=1 unrelated_file_exists=0 cached_after=
+
+process_returncode=0
+
+--- refs_remotes ---
+upstream snapshots equal=0 changed refs=0
+push-to-backup result=0 source=master backup-trunk=1 backup-source=0
+set-upstream=local-upstream canUndo=0
+before fetch undo=Update master
+after fetch undo=Update master
+fetch=0 fetched-tag-before-undo=1 undo=1 fetched-tag-after-undo=0 actual-tags=
+linked-worktree git-branch-force-exit=128 setTarget-success=1 linked-file-exists=0 linked-status=D  only-in-new-commit.txt
+
+nested-rename=1 undo=0 old-name-exists=0 renamed-exists=1
+
+process_returncode=0
+
+--- optional_filter ---
+OPTIONAL_FILTER load=0 loaded=1; expected unchanged input on smudge exit 1
+optional_filter: /home/misha/repos/Gittyup/src/git/Filter.cpp:83: int git::{anonymous}::stream_close(git_writestream*): Assertion `false' failed.
+
+process_returncode=-6
+
+Saved probe binaries and logs: /tmp/gittyup-audit-probes-pjacuidk

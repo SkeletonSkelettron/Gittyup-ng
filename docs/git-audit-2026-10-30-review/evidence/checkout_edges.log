@@ -1,0 +1,11 @@
+scenario=0 native_result=-13 native_content=<absent>
+scenario=0 project_result=1 project_content=old
+scenario=0 cached_content=new
+scenario=1 native_result=-13 native_content=precious staged
+scenario=1 project_result=1 project_content=old
+scenario=1 cached_content=precious staged
+scenario=2 native_result=-13 native_content=precious staged
+scenario=2 project_result=1 project_content=old
+scenario=2 cached_content=old
+
+process_returncode=0

@@ -1,0 +1,5 @@
+SYMLINK before_hex=612e747874622e747874 whole_hex=612e7478744242420a4343430a whole=1 allowed=1
+SYMLINK_PARTIAL_STAGE whole=1 row=2 starting=1
+gittyup-whole-file-edges: /home/misha/repos/Gittyup/src/git/Patch.cpp:389: void git::Patch::apply(QList<QList<QByteArray> >&, int, QByteArray&) const: Assertion `start - 1 + numberLines <= image.length()' failed.
+
+EXIT -6

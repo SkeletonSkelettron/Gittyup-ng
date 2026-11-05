@@ -1,0 +1,28 @@
+{
+  "commit": "ed2e86c8c919f99fcbb2f78a8d953030d14e9569",
+  "build": {
+    "command": "cmake --build build --target check_build -j4",
+    "exit_code": 0,
+    "output": "ninja: no work to do."
+  },
+  "ctest": {
+    "command": "ctest --test-dir build --output-on-failure --timeout 120 -j1 -E '^ui_screenshot$'",
+    "exit_code": 0,
+    "passed": 44,
+    "failed": 0,
+    "log": "ctest-current.log"
+  },
+  "diff_check": {
+    "command": "git diff --check",
+    "exit_code": 0
+  },
+  "ordinary_diagnostic_programs": 7,
+  "optional_required_filter_probe": {
+    "returncode": -6,
+    "signal": "SIGABRT",
+    "root_log": "required_filter_partial-root.log",
+    "expected_product_defect": true
+  },
+  "final_snapshot_matches": true,
+  "report_links_exist": true
+}

@@ -1,0 +1,50 @@
+{
+  "head": "75fd7633",
+  "range": "9de91091..75fd7633",
+  "source": "src/app/CrashHandler.cpp",
+  "method": "Standalone actual-source MinGW harness, run via Wine in isolated /tmp prefix. Not a native Windows test.",
+  "compile": "x86_64-w64-mingw32-g++ -std=c++17 -g -Wall -Wextra -DGITTYUP_NAME='\"Gittyup-crash-review\"' -DGITTYUP_VERSION='\"test\"' -DBUILD_DESCRIPTION='\"\"' -I src/app -I /usr/x86_64-w64-mingw32/sys-root/mingw/include/qt6 -I /usr/x86_64-w64-mingw32/sys-root/mingw/include/qt6/QtCore /tmp/gittyup-crash-review/probe.cpp src/app/CrashHandler.cpp -o /tmp/gittyup-crash-review/probe.exe -lQt6Core -ldbghelp",
+  "compile_exit": 0,
+  "compile_warnings": [],
+  "modes": [
+    {
+      "mode": "fatal",
+      "exit": 21,
+      "seconds": 5.08
+    },
+    {
+      "mode": "throw",
+      "exit": 3,
+      "seconds": 5.02
+    },
+    {
+      "mode": "av",
+      "exit": 5,
+      "seconds": 32.0
+    }
+  ],
+  "reports": [
+    {
+      "file": "Gittyup-crash-review-test-20261104-234558-32-36.txt",
+      "text": "Gittyup-crash-review test crashed on 2026-11-04 at 23:45:58.\n\nFatal error: Review fatal\n(/tmp/gittyup-crash-review/probe.cpp:11, int main(int, char**))\n\nStack of thread 36:\n#0  probe.exe+0x26ce (0x1400026ce)\n#1  probe.exe+0x290c (0x14000290c)\n#2  Qt6Core.dll+0xd656 (0x2c0d3d656)\n#3  Qt6Core.dll+0xd7e7 (0x2c0d3d7e7)\n#4  Qt6Core.dll+0x4dbdbf (0x2c120bdbf)\n#5  probe.exe+0x159a (0x14000159a)\n#6  probe.exe+0x10da (0x1400010da)\n#7  probe.exe+0x1456 (0x140001456)\n#8  kernel32.dll+0x11709 (0x178011709)\n#9  ntdll.dll+0x1116f (0x17001116f)\n\naddr2line -f -C -e <module> <address in parentheses> shows the function and the line.\nThe dump of the process is next to this report.\n",
+      "minidump_bytes": 26234
+    },
+    {
+      "file": "Gittyup-crash-review-test-20261104-234603-32-36.txt",
+      "text": "Gittyup-crash-review test crashed on 2026-11-04 at 23:46:03.\n\nUncaught C++ exception std::runtime_error: Review exception\n\nStack of thread 36:\n#0  probe.exe+0x26ce (0x1400026ce)\n#1  probe.exe+0x2ac7 (0x140002ac7)\n#2  libstdc++-6.dll+0x1aa16 (0x3be97aa16)\n#3  libstdc++-6.dll+0x168d63 (0x3beac8d63)\n#4  libstdc++-6.dll+0x167a7d (0x3beac7a7d)\n#5  probe.exe+0x15f3 (0x1400015f3)\n#6  probe.exe+0x10da (0x1400010da)\n#7  probe.exe+0x1456 (0x140001456)\n#8  kernel32.dll+0x11709 (0x178011709)\n#9  ntdll.dll+0x1116f (0x17001116f)\n\naddr2line -f -C -e <module> <address in parentheses> shows the function and the line.\nThe dump of the process is next to this report.\n",
+      "minidump_bytes": 25114
+    },
+    {
+      "file": "Gittyup-crash-review-test-20261104-234608-32-36.txt",
+      "text": "Gittyup-crash-review test crashed on 2026-11-04 at 23:46:08.\n\nException 0xc0000005, access violation writing 0x0, at probe.exe+0x1616 (0x140001616).\n\nStack of thread 36:\n#0  probe.exe+0x1616 (0x140001616)\n#1  probe.exe+0x10da (0x1400010da)\n#2  probe.exe+0x1456 (0x140001456)\n#3  kernel32.dll+0x11709 (0x178011709)\n#4  ntdll.dll+0x1116f (0x17001116f)\n\naddr2line -f -C -e <module> <address in parentheses> shows the function and the line.\nThe dump of the process is next to this report.\n",
+      "minidump_bytes": 29434
+    }
+  ],
+  "cleanup": "Only WINEPREFIX=/tmp/gittyup-crash-review/wine was stopped with wineserver -k and waited with wineserver -w, exit 0. No further Wine runs. Temporary files retained, no production source changes.",
+  "finding": "No confirmed introduced issue in reviewed crash-handler, font, or Flatpak changes.",
+  "limits": [
+    "Not native Windows or corporate DLP.",
+    "No stack-overflow/heap-corruption/low-memory/GUI report dialog testing.",
+    "Flatpak manifest change reviewed, no new Flatpak deployment performed."
+  ]
+}

@@ -1,0 +1,29 @@
+ src/git/Cli.cpp             |  18 +++++++-
+ src/git/Cli.h               |   5 +-
+ src/git/Commit.cpp          |   5 +-
+ src/git/Filter.cpp          |  39 ++++++++++++----
+ src/git/RefState.cpp        |   7 ++-
+ src/git/Remote.cpp          |  12 ++++-
+ src/git/Remote.h            |   3 ++
+ src/git/Repository.cpp      |  32 ++++++++++---
+ src/git/Repository.h        |   9 +++-
+ src/git/Rewrite.cpp         |   9 +++-
+ src/git/RunResult.h         |   2 +
+ src/git/Signing.cpp         |  42 ++++++++++-------
+ src/git/Signing.h           |   9 ++--
+ src/git/Submodule.cpp       |  21 ++++-----
+ src/git/Submodule.h         |   4 ++
+ src/ui/DiffModel.cpp        |  11 +++--
+ src/ui/RemoteCallbacks.h    |   5 +-
+ src/ui/RepoView.cpp         |  18 +++-----
+ src/ui/UndoHistory.cpp      |   8 +++-
+ test/CMakeLists.txt         |   1 +
+ test/Filter.cpp             | 108 +++++++++++++++++++++++++++++++++-----------
+ test/Submodule.cpp          |  89 ++++++++++++++++++++++++++++++++++++
+ test/amend.cpp              |  37 +++++++++++++++
+ test/index.cpp              |  40 ++++++++++++++++
+ test/interactive_rebase.cpp |  21 +++++++++
+ test/signing.cpp            |  42 +++++++++++++++++
+ test/undo.cpp               |  53 ++++++++++++++++++++++
+ 27 files changed, 550 insertions(+), 100 deletions(-)
+test/transfer.cpp

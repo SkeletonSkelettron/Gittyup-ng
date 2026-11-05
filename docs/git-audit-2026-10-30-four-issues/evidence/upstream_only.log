@@ -1,0 +1,5 @@
+upstream-before=upstream-one
+upstream-after-change=upstream-two snapshots-equal=0 changed-refs=0 canUndo=0
+upstream-undo=0 resulting-upstream=upstream-two expected-if-supported=upstream-one
+
+process_returncode=0

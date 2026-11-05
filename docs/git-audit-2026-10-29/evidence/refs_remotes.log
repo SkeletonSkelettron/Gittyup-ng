@@ -1,0 +1,11 @@
+upstream snapshots equal=0 changed refs=0
+push-to-backup result=0 source=master backup-trunk=1 backup-source=0
+set-upstream=local-upstream canUndo=0
+before fetch undo=Update master
+after fetch undo=Update master
+fetch=0 fetched-tag-before-undo=1 undo=1 fetched-tag-after-undo=0 actual-tags=
+linked-worktree git-branch-force-exit=128 setTarget-success=1 linked-file-exists=0 linked-status=D  only-in-new-commit.txt
+
+nested-rename=1 undo=0 old-name-exists=0 renamed-exists=1
+
+process_returncode=0

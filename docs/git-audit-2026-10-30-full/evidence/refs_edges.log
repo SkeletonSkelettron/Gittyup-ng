@@ -1,0 +1,6 @@
+upstream-before: upstream=upstream undo=Create Branch unrelated
+upstream-after-unrelated-undo: undo=1 unrelated-exists=0 upstream=upstream
+ordinary-checkout-occupied: worktree-add=0 git-switch=128 primary-head=master linked-head=upstream
+linked-after-primary-commit: status=
+
+process_returncode=0

@@ -1,0 +1,5 @@
+checkout-before: head=topic file=A status= undo=Checkout topic
+checkout-undo-occupied: worktree-add=0 undo=0 head=topic file=B index=B status=M  file.txt
+
+
+process_returncode=0

@@ -1,0 +1,4 @@
+before first_initialized=1 second_initialized=1
+after first_url_exit=1 second_url_exit=0 second_worktree_exists=1
+
+process_returncode=0

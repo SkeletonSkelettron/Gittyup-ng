@@ -1,0 +1,8 @@
+date: 2026-10-30T13:42:07+04:00
+base_commit: 73fdd1d6a418ffc69f70d7f0918617b4925cec39
+git version 2.56.0
+cmake version 4.3.0
+Qt: 6.11.2
+Linux 7.2.13-200.fc44.x86_64
+build: build/ (Ninja, Debug)
+ctest: ctest --timeout 300 -j 1 -E ^ui_screenshot$ (offscreen)

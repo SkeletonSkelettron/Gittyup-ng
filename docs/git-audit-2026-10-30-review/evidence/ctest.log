@@ -1,0 +1,111 @@
+Test project /home/misha/repos/Gittyup/build
+      Start  1: bare_repo
+ 1/41 Test  #1: bare_repo ........................   Passed    0.21 sec
+      Start  2: init_repo
+ 2/41 Test  #2: init_repo ........................   Passed    2.67 sec
+      Start  3: merge
+ 3/41 Test  #3: merge ............................   Passed    1.56 sec
+      Start  4: external_tools_dialog
+ 4/41 Test  #4: external_tools_dialog ............   Passed    0.08 sec
+      Start  5: editor
+ 5/41 Test  #5: editor ...........................   Passed    0.10 sec
+      Start  6: index
+ 6/41 Test  #6: index ............................   Passed    0.33 sec
+      Start  7: line_endings
+ 7/41 Test  #7: line_endings .....................   Passed    0.25 sec
+      Start  8: log
+ 8/41 Test  #8: log ..............................   Passed    0.03 sec
+      Start  9: main_window
+ 9/41 Test  #9: main_window ......................   Passed    0.17 sec
+      Start 10: new_branch_dialog
+10/41 Test #10: new_branch_dialog ................   Passed    0.08 sec
+      Start 11: sanity
+11/41 Test #11: sanity ...........................   Passed    0.03 sec
+      Start 12: Diff
+12/41 Test #12: Diff .............................   Passed    0.03 sec
+      Start 13: DiffView
+13/41 Test #13: DiffView .........................   Passed    0.92 sec
+      Start 14: EditorLineInfos
+14/41 Test #14: EditorLineInfos ..................   Passed    2.79 sec
+      Start 15: CommitAuthorCommitter
+15/41 Test #15: CommitAuthorCommitter ............   Passed    0.25 sec
+      Start 16: rebase
+16/41 Test #16: rebase ...........................   Passed    3.12 sec
+      Start 17: TreeView
+17/41 Test #17: TreeView .........................   Passed    0.98 sec
+      Start 18: Submodule
+18/41 Test #18: Submodule ........................   Passed    1.89 sec
+      Start 19: amend
+19/41 Test #19: amend ............................   Passed    0.32 sec
+      Start 20: SshConfig
+20/41 Test #20: SshConfig ........................   Passed    0.05 sec
+      Start 21: store
+21/41 Test #21: store ............................   Passed    0.04 sec
+      Start 22: fileContextMenu
+22/41 Test #22: fileContextMenu ..................   Passed    1.37 sec
+      Start 23: Setting
+23/41 Test #23: Setting ..........................   Passed    0.04 sec
+      Start 24: commitMessageTemplate
+24/41 Test #24: commitMessageTemplate ............   Passed    0.13 sec
+      Start 25: commitEditor
+25/41 Test #25: commitEditor .....................   Passed    0.04 sec
+      Start 26: qml_views
+26/41 Test #26: qml_views ........................   Passed    5.59 sec
+      Start 27: undo
+27/41 Test #27: undo .............................   Passed    0.85 sec
+      Start 28: refdrop
+28/41 Test #28: refdrop ..........................   Passed    0.35 sec
+      Start 29: interactive_rebase
+29/41 Test #29: interactive_rebase ...............   Passed    0.39 sec
+      Start 30: signing
+30/41 Test #30: signing ..........................***Failed    0.14 sec
+********* Start testing of TestSigning *********
+Config: Using QtTest library 6.11.2, Qt 6.11.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 16.2.1 20260819 (Red Hat 16.2.1-2)), fedora 44
+PASS   : TestSigning::initTestCase()
+PASS   : TestSigning::unsigned_()
+PASS   : TestSigning::commit()
+PASS   : TestSigning::amend()
+PASS   : TestSigning::rewrite()
+PASS   : TestSigning::missingKey()
+FAIL!  : TestSigning::gpg() Compared values are not the same
+   Actual   (process.exitCode()): 2
+   Expected (0)                 : 0
+   Loc: [/home/misha/repos/Gittyup/test/signing.cpp(151)]
+PASS   : TestSigning::rebase()
+PASS   : TestSigning::cleanupTestCase()
+Totals: 8 passed, 1 failed, 0 skipped, 0 blacklisted, 96ms
+********* Finished testing of TestSigning *********
+
+      Start 31: pull_branch
+31/41 Test #31: pull_branch ......................   Passed    0.53 sec
+      Start 32: ssh_credentials
+32/41 Test #32: ssh_credentials ..................   Passed    0.38 sec
+      Start 33: open_repository
+33/41 Test #33: open_repository ..................   Passed    0.04 sec
+      Start 34: workdir_refresh
+34/41 Test #34: workdir_refresh ..................   Passed   17.37 sec
+      Start 35: tags
+35/41 Test #35: tags .............................   Passed    0.29 sec
+      Start 36: remotes
+36/41 Test #36: remotes ..........................   Passed    0.10 sec
+      Start 37: stashes
+37/41 Test #37: stashes ..........................   Passed    0.29 sec
+      Start 38: revert
+38/41 Test #38: revert ...........................   Passed    0.31 sec
+      Start 39: theme
+39/41 Test #39: theme ............................   Passed    0.04 sec
+      Start 40: take_side
+40/41 Test #40: take_side ........................   Passed    0.52 sec
+      Start 41: Filter
+41/41 Test #41: Filter ...........................   Passed    0.05 sec
+
+98% tests passed, 1 tests failed out of 41
+
+Label Time Summary:
+NO_WIN32_OFFSCREEN    =   1.37 sec*proc (1 test)
+
+Total Test time (real) =  44.74 sec
+
+The following tests FAILED:
+	 30 - signing (Failed)
+Errors while running CTest

@@ -1,0 +1,7 @@
+STALE_AMEND accepted=0 newer_preserved=1
+EMPTY_REWORD valid=1 result_is_base=0 message=renamed marker parent_is_base=1
+SIGNED_NEW_TIP accepted=0 concurrent_preserved=1
+PROJECT_SAME_TIP_SWITCH accepted=1 head=refs/heads/other original_preserved=1 other_moved=1
+NATIVE_SAME_TIP_SWITCH exit=0 head=refs/heads/other original_preserved=1 other_moved=1
+
+process_returncode=0

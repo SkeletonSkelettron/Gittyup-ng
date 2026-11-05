@@ -1,0 +1,12 @@
+{
+  "commit": "73fdd1d6a418ffc69f70d7f0918617b4925cec39",
+  "confirmed_findings": 12,
+  "p1": 3,
+  "p2": 9,
+  "ctest_distinct_passed": 43,
+  "ctest_first_run_passed": 40,
+  "ctest_environment_retry_passed": 3,
+  "probe_sources": 16,
+  "probe_runs": 17,
+  "tracked_tree_unchanged": true
+}

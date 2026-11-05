@@ -1,0 +1,10 @@
+FIRST_COMMIT_UNDO offered=1 undo=1 unborn=1 cached=file.txt
+HEAD_LOCK_NATIVE exit=128 file=B status=M  file.txt
+HEAD_LOCK_UNDO before=A before_status= undo=0 head=topic file=A index=A status=
+STALE_PUSH remote_branch_exists=1 logged_up_to_date=0 tracking_exists=1
+STALE_PUSH_NATIVE exit=0 remote_branch_exists=1
+REJECTED_PUSH_NATIVE exit=1 upstream_set=0
+REJECTED_PUSH remote_unchanged=1 upstream_set=0 logged_rejection=1
+CANCELED_FETCH cancel_wait_ms=0 tracking_updated=0 logged_canceled=1
+
+process_returncode=0

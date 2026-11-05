@@ -1,0 +1,5 @@
+SYMLINK before_hex=612e747874622e747874 whole_hex=612e747874622e747874 whole=0 allowed=1
+SYMLINK_PARTIAL_STAGE whole=0 row=2 starting=1
+SYMLINK_PARTIAL_STAGE returned=1 staged_hex=612e747874622e747874
+
+EXIT 0

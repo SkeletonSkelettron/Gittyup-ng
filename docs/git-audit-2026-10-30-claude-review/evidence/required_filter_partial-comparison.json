@@ -1,0 +1,13 @@
+{
+  "current_commit": "ed2e86c8c919f99fcbb2f78a8d953030d14e9569",
+  "historical_model_commit": "73fdd1d6a418ffc69f70d7f0918617b4925cec39",
+  "comparison": "Historical DiffModel.cpp linked with current headers and libraries; not a complete historical build",
+  "runs": {
+    "current": {
+      "returncode": -6
+    },
+    "historical_model_hybrid": {
+      "returncode": -6
+    }
+  }
+}
