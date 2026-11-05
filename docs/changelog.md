@@ -1,3 +1,26 @@
+### v0.0.9 - 2026-11-04
+
+#### Added
+
+* A Whole file check box in the header of the diff shows the lines that didn't change too. Added, deleted, untracked, binary, LFS and conflicted files don't have it
+* Crashes on Windows leave a minidump and a report in the Gittyup-ng folder of the temporary folder, and a message tells where. Before, only some crashes left a dump
+
+#### Changed
+
+* The interface uses the Inter font on all platforms. The system fonts draw what Inter has no glyphs for, like Georgian
+* Text is antialiased and snaps to the pixels on all platforms. Small text was blurry, and the text of Windows jagged
+* The text of lists, menus and fields is a pixel smaller
+* The merge editor ignores the line endings, so a side that only changed them doesn't conflict at each of its lines. The merge itself is still the one of git
+
+#### Fixed
+
+* Context menus could shrink to their last entry while they were open, like the menu of a branch to Squash into Current Branch
+* The window froze during merges and checkouts of thousands of files while a new status waited for the running one
+* The spinner of an operation stopped for seconds while the search indexer started
+* A branch dragged over other branches and commits stuttered, and so did the pointer
+
+----
+
 ### v0.0.8 - 2026-10-30
 
 #### Changed
@@ -8,7 +31,6 @@
 
 * Undo that failed, like while another git process locked a branch, didn't put back the staged changes, the files deleted locally and the modes and links of the files as they were
 * Staging lines of a new file whose required clean filter fails staged the unfiltered file, or broke when the filter began to fail after the file was shown. It shows the filter's error now and doesn't stage
-* A branch dragged over other branches and commits stuttered, and so did the pointer
 
 ----
 
