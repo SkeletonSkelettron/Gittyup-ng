@@ -1,3 +1,11 @@
+### v0.1.0 - 2026-11-05
+
+#### Changed
+
+* The history loads only the newest 1000 commits, which is faster in big repositories. Commits under History in the General settings sets how many, and 0 loads all of them. The history of a path is still searched to the end
+
+----
+
 ### v0.0.9 - 2026-11-04
 
 #### Added
