@@ -17,6 +17,7 @@
 #include "dialogs/DeleteTagDialog.h"
 #include "dialogs/MergeDialog.h"
 #include "git/Branch.h"
+#include "git/Cli.h"
 #include "git/Commit.h"
 #include "git/Config.h"
 #include "git/Remote.h"
@@ -79,6 +80,10 @@ void RefsModel::toggle(int row) {
 bool RefsModel::isExpanded(const QString &key) const {
   // Show everything that matches while filtering.
   return !mFilter.isEmpty() || !mCollapsed.contains(key);
+}
+
+bool RefsModel::isMerged(const Item &item) const {
+  return item.kind == RemoteBranch && mMerged.contains(item.refName);
 }
 
 bool RefsModel::matches(const QString &name) const {
@@ -367,6 +372,8 @@ QVariant RefsModel::data(const QModelIndex &index, int role) const {
     case Qt::ToolTipRole:
       if (!item.tip.isEmpty())
         return item.tip;
+      if (isMerged(item))
+        return tr("%1\nMerged into %2").arg(item.refName, mMergedInto);
       return !item.refName.isEmpty() ? item.refName : item.name;
     case KindRole:
       return item.kind;
@@ -411,6 +418,8 @@ QVariant RefsModel::data(const QModelIndex &index, int role) const {
     }
     case NumberRole:
       return item.kind == PullRequest ? item.index : 0;
+    case MergedRole:
+      return isMerged(item);
     case RefNameRole:
       if (item.kind == RemoteGroup)
         return QString("remote:%1").arg(item.name);
@@ -446,6 +455,17 @@ void RefsModel::setSolo(const QStringList &solo) {
     emit dataChanged(index(0), index(mItems.size() - 1), {SoloRole});
 }
 
+void RefsModel::setMerged(const QSet<QString> &merged, const QString &into) {
+  if (merged == mMerged && into == mMergedInto)
+    return;
+
+  mMerged = merged;
+  mMergedInto = into;
+  if (!mItems.isEmpty())
+    emit dataChanged(index(0), index(mItems.size() - 1),
+                     {MergedRole, Qt::ToolTipRole});
+}
+
 QHash<int, QByteArray> RefsModel::roleNames() const {
   return {{Qt::ToolTipRole, "toolTip"}, {KindRole, "kind"},
           {SectionRole, "section"},     {NameRole, "name"},
@@ -454,7 +474,8 @@ QHash<int, QByteArray> RefsModel::roleNames() const {
           {BehindRole, "behind"},       {CountRole, "count"},
           {ExpandedRole, "expanded"},   {ExpandableRole, "expandable"},
           {SoloRole, "soloed"},         {RefNameRole, "refName"},
-          {HiddenRole, "hidden"},       {NumberRole, "number"}};
+          {HiddenRole, "hidden"},       {NumberRole, "number"},
+          {MergedRole, "merged"}};
 }
 
 RefsPanel::RefsPanel(const git::Repository &repo, RepoView *view)
@@ -758,6 +779,19 @@ void RefsPanel::showMenu(RefsModel::Item item, qreal x, qreal y) {
           menu.addAction(tr("Show All Hidden Branches"),
                          [commits] { commits->showAll(); });
 
+        // Mark the remote branches that are left after they were merged.
+        if (item.kind == RefsModel::RemoteBranch) {
+          git::Reference current = mRepo.head();
+          if (current.isValid())
+            menu.addAction(
+                tr("Mark Branches Merged into %1").arg(current.name()),
+                [this] { markMerged(true); });
+
+          if (mModel->hasMerged())
+            menu.addAction(tr("Unmark Merged Branches"),
+                           [this] { markMerged(false); });
+        }
+
         menu.addSeparator();
       }
 
@@ -870,6 +904,52 @@ void RefsPanel::showMenu(RefsModel::Item item, qreal x, qreal y) {
   }
 
   QmlSupport::execMenu(&menu, mView->mapFromPage(x, y));
+}
+
+void RefsPanel::markMerged(bool mark) {
+  int request = ++mMarkRequests;
+  git::Reference head = mRepo.head();
+  if (!mark || !head.isValid()) {
+    mModel->setMerged({});
+    return;
+  }
+
+  // The upstream of the current branch is the same branch.
+  QString upstream;
+  if (head.isLocalBranch()) {
+    if (git::Branch branch = git::Branch(head).upstream())
+      upstream = branch.qualifiedName();
+  }
+
+  // Like 'git branch -r --merged'. git finds them in one walk of the graph,
+  // with the commit-graph. libgit2 would walk it once for each branch, and
+  // there are thousands in some repositories.
+  QString path = mRepo.workdir().path();
+  QString id = head.target().id().toString();
+  QString into = head.name();
+  using Watcher = QFutureWatcher<QSet<QString>>;
+  auto *watcher = new Watcher(this);
+  connect(watcher, &Watcher::finished, this, [this, watcher, request, into] {
+    if (request == mMarkRequests)
+      mModel->setMerged(watcher->result(), into);
+    watcher->deleteLater();
+  });
+
+  watcher->setFuture(QtConcurrent::run([path, id, upstream] {
+    git::Cli cli(path);
+    git::RunResult result = cli.run({"for-each-ref", "--merged=" + id,
+                                     "--format=%(refname)", "refs/remotes/"});
+    QSet<QString> merged;
+    if (result.exitCode != 0)
+      return merged;
+
+    for (const QByteArray &line : result.output.split('\n')) {
+      QString name = QString::fromUtf8(line).trimmed();
+      if (!name.isEmpty() && name != upstream)
+        merged.insert(name);
+    }
+    return merged;
+  }));
 }
 
 void RefsPanel::add(int section) {
