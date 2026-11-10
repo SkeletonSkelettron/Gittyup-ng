@@ -768,6 +768,21 @@ Rectangle {
         onReleased: autoScroll.stop()
         onCanceled: autoScroll.stop()
 
+        // The edit actions of the code, like the ones of read-only fields.
+        // It takes the press from the selection, which a TapHandler would
+        // let have it too and move. Hunk headers keep their own menus.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+
+            onPressed: (mouse) => {
+                const item = listView.itemAtIndex(selectionMouse.position(mouse.x, mouse.y).row)
+                mouse.accepted = item !== null && !item.isHunk
+            }
+
+            onClicked: host.showViewMenu(root, root.hasSelection)
+        }
+
         // Scroll while the mouse is above or below the list.
         Timer {
             id: autoScroll

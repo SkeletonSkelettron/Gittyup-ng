@@ -149,6 +149,15 @@ void QmlHost::showEditMenu(QQuickItem *field) {
   QmlSupport::execMenu(&menu, QCursor::pos());
 }
 
+void QmlHost::showViewMenu(QQuickItem *view, bool selected) {
+  if (!view)
+    return;
+
+  QMenu menu;
+  QmlSupport::addViewActions(&menu, view, selected);
+  QmlSupport::execMenu(&menu, QCursor::pos());
+}
+
 QPoint QmlHost::mapToGlobal(qreal x, qreal y) const {
   return mView->mapToGlobal(QPointF(x, y).toPoint());
 }
@@ -372,6 +381,17 @@ void callLater(QObject *context, std::function<void()> function) {
   QTimer::singleShot(0, context, std::move(function));
 }
 
+// Add an edit action to 'menu' that calls 'act' when it's enabled.
+static void addEditAction(QMenu *menu, const QString &text,
+                          QKeySequence::StandardKey key, bool enabled,
+                          const std::function<void()> &act) {
+  QAction *action = menu->addAction(text);
+  action->setShortcut(key);
+  action->setEnabled(enabled);
+  if (enabled)
+    QObject::connect(action, &QAction::triggered, act);
+}
+
 void addEditActions(QMenu *menu, QQuickItem *field) {
   // The menu takes the focus, and the field loses its selection with it.
   // Give both back before acting on the field.
@@ -386,10 +406,7 @@ void addEditActions(QMenu *menu, QQuickItem *field) {
   auto add = [menu, target, start,
               end](const QString &text, QKeySequence::StandardKey key,
                    bool enabled, std::function<void(QQuickItem *)> act) {
-    QAction *action = menu->addAction(text);
-    action->setShortcut(key);
-    action->setEnabled(enabled);
-    QObject::connect(action, &QAction::triggered, [target, start, end, act] {
+    addEditAction(menu, text, key, enabled, [target, start, end, act] {
       if (!target)
         return;
 
@@ -424,6 +441,32 @@ void addEditActions(QMenu *menu, QQuickItem *field) {
   menu->addSeparator();
   add(QMenu::tr("Select All"), QKeySequence::SelectAll,
       !field->property("text").toString().isEmpty(), invoke("selectAll"));
+}
+
+void addViewActions(QMenu *menu, QQuickItem *view, bool selected) {
+  // The menu takes the focus. Give it back before acting on the view.
+  QPointer<QQuickItem> target(view);
+  auto invoke = [target](const char *method) {
+    return [target, method] {
+      if (!target)
+        return;
+
+      target->forceActiveFocus();
+      QMetaObject::invokeMethod(target, method);
+    };
+  };
+
+  addEditAction(menu, QMenu::tr("Undo"), QKeySequence::Undo, false, {});
+  addEditAction(menu, QMenu::tr("Redo"), QKeySequence::Redo, false, {});
+  menu->addSeparator();
+  addEditAction(menu, QMenu::tr("Cut"), QKeySequence::Cut, false, {});
+  addEditAction(menu, QMenu::tr("Copy"), QKeySequence::Copy, selected,
+                invoke("copySelection"));
+  addEditAction(menu, QMenu::tr("Paste"), QKeySequence::Paste, false, {});
+  addEditAction(menu, QMenu::tr("Delete"), QKeySequence::Delete, false, {});
+  menu->addSeparator();
+  addEditAction(menu, QMenu::tr("Select All"), QKeySequence::SelectAll, true,
+                invoke("selectAll"));
 }
 
 } // namespace QmlSupport
