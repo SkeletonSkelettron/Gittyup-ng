@@ -630,13 +630,14 @@ Rectangle {
                         field: summaryField
                     }
 
-                    TapHandler {
+                    // Like EditMenuHandler, it takes the press from the field.
+                    MouseArea {
+                        anchors.fill: parent
                         acceptedButtons: Qt.RightButton
-                        onTapped: (eventPoint) => {
-                            const p = eventPoint.position
+                        onClicked: (mouse) => {
                             detailView.spellCheck.showMenu("summary", summaryField,
-                                                           summaryField.positionAt(p.x, p.y),
-                                                           p.x, p.y)
+                                                           summaryField.positionAt(mouse.x, mouse.y),
+                                                           mouse.x, mouse.y)
                         }
                     }
 
@@ -700,13 +701,14 @@ Rectangle {
                             field: descriptionField
                         }
 
-                        TapHandler {
+                        // Like EditMenuHandler, it takes the press from the field.
+                        MouseArea {
+                            anchors.fill: parent
                             acceptedButtons: Qt.RightButton
-                            onTapped: (eventPoint) => {
-                                const p = eventPoint.position
+                            onClicked: (mouse) => {
                                 detailView.spellCheck.showMenu("description", descriptionField,
-                                                               descriptionField.positionAt(p.x, p.y),
-                                                               p.x, p.y)
+                                                               descriptionField.positionAt(mouse.x, mouse.y),
+                                                               mouse.x, mouse.y)
                             }
                         }
 
