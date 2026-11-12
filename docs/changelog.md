@@ -1,3 +1,21 @@
+### v0.1.1 - 2026-11-12
+
+#### Added
+
+* A Whitespace check box before Whole file in the header of the diff shows the lines where only whitespace changed, when the settings ignore whitespace
+* A right click on the code of the diff shows the edit menu, to copy the selection or select the whole diff
+* Mark Branches Merged into the current branch, in the menu of a remote branch, tints the remote branches whose commits are all in the current branch green, like `git branch -r --merged`. Unmark Merged Branches removes the marks
+
+#### Changed
+
+* The windows draw their title bar in the colors of the theme instead of the system. The menus, the title and the buttons to minimize, maximize and close are in one row, which moves the window, and a double click maximizes it. Use the title bar of the system, in the Window settings, brings back the title bar of the system
+
+#### Fixed
+
+* A right click in a text field lost its selection, so Cut, Copy and Delete of the edit menu had nothing left to act on
+
+----
+
 ### v0.1.0 - 2026-11-05
 
 #### Changed
