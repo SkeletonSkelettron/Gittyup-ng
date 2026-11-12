@@ -10,6 +10,7 @@
 #include "EditorWindow.h"
 #include "FileEditor.h"
 #include "MenuBar.h"
+#include "WindowFrame.h"
 #include "conf/Settings.h"
 #include "dialogs/ConfirmDialog.h"
 #include "git/Reference.h"
@@ -51,10 +52,13 @@ EditorWindow::EditorWindow(const git::Repository &repo, QWidget *parent)
   connect(Settings::instance(), &Settings::settingsChanged, this,
           &EditorWindow::menuBarVisibleChanged);
 
+  // The view draws the title bar instead of the system.
+  WindowFrame *frame = new WindowFrame(this);
   mView = QmlSupport::createView(
       "EditorPage",
       {{"editor", QVariant::fromValue<QObject *>(mEditor)},
-       {"editorWindow", QVariant::fromValue<QObject *>(this)}},
+       {"editorWindow", QVariant::fromValue<QObject *>(this)},
+       {"windowFrame", QVariant::fromValue<QObject *>(frame)}},
       this);
   QmlSupport::setDrawsPopups(mView, true);
   setCentralWidget(mView);

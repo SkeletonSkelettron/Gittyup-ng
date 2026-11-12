@@ -92,6 +92,7 @@ Rectangle {
         MenuBarRow {
             Layout.fillWidth: true
             target: editorWindow
+            frame: windowFrame
         }
 
         FindBar {
@@ -225,5 +226,10 @@ Rectangle {
                 }
             }
         }
+    }
+
+    // The edges of the window, over everything else.
+    WindowEdges {
+        frame: windowFrame
     }
 }

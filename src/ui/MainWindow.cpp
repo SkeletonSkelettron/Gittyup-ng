@@ -18,6 +18,7 @@
 #include "TabStrip.h"
 #include "TabWidget.h"
 #include "ToolBar.h"
+#include "WindowFrame.h"
 #include "qml/QmlSupport.h"
 #include "conf/RecentRepositories.h"
 #include "conf/Settings.h"
@@ -143,11 +144,14 @@ MainWindow::MainWindow(const git::Repository &repo, QWidget *parent,
   if (!mMenuBar->isNativeMenuBar())
     mMenuBar->hide();
 
-  // Draw everything in one view, with the sidebar as it was.
+  // Draw everything in one view, with the sidebar as it was, and the title
+  // bar instead of the system.
   mIsSideBarVisible = QSettings().value(kSidebarKey, true).toBool();
+  WindowFrame *frame = new WindowFrame(this);
   mView = QmlSupport::createView(
       "MainPage",
       {{"mainWindow", QVariant::fromValue<QObject *>(this)},
+       {"windowFrame", QVariant::fromValue<QObject *>(frame)},
        {"tabStrip", QVariant::fromValue<QObject *>(mTabStrip)},
        {"toolbar", QVariant::fromValue<QObject *>(mToolBar)},
        {"search", QVariant::fromValue<QObject *>(mToolBar->searchField())},

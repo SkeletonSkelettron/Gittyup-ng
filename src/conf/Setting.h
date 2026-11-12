@@ -45,6 +45,7 @@ public:
     OpenAllReposInTabs,
     AutoHideRepoSiderbar,
     HideMenuBar,
+    SystemTitleBar,
     ShowAvatars,
     ShowMaximized,
     AutoCollapseAddedFiles,

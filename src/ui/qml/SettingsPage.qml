@@ -480,6 +480,13 @@ PreferencesPage {
                         text: qsTr("Hide the menu bar")
                     }
 
+                    // macOS always has its own title bar.
+                    SettingCheck {
+                        visible: Qt.platform.os !== "osx"
+                        setting: "SystemTitleBar"
+                        text: qsTr("Use the title bar of the system")
+                    }
+
                     SettingCheck {
                         setting: "ShowAvatars"
                         text: qsTr("Show avatars")

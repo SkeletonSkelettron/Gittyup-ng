@@ -27,6 +27,7 @@ Rectangle {
         MenuBarRow {
             Layout.fillWidth: true
             target: mainWindow
+            frame: windowFrame
         }
 
         TabStrip {
@@ -106,5 +107,10 @@ Rectangle {
                 }
             }
         }
+    }
+
+    // The edges of the window, over everything else.
+    WindowEdges {
+        frame: windowFrame
     }
 }

@@ -21,6 +21,7 @@ void Setting::initialize(QMap<Id, QString> &keys) {
   keys[Id::OpenAllReposInTabs] = "window/tabs/repository";
   keys[Id::AutoHideRepoSiderbar] = "window/view/autoHideRepoSidebar";
   keys[Id::HideMenuBar] = "window/view/menuBarHidden";
+  keys[Id::SystemTitleBar] = "window/view/systemTitleBar";
   keys[Id::ShowAvatars] = "window/view/avatarsVisible";
   keys[Id::ShowMaximized] = "window/view/showMaximized";
   keys[Id::AutoCollapseAddedFiles] = "collapse/added";

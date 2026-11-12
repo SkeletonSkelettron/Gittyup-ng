@@ -41,6 +41,7 @@ add_library(
   TreeModel.cpp
   UndoHistory.cpp
   WelcomePage.cpp
+  WindowFrame.cpp
   ConfigKeys.cpp
   qml/CommitGraphItem.cpp
   qml/QmlSupport.cpp
