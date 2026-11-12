@@ -59,6 +59,8 @@ private slots:
   void loadsAllHunks();
   void wholeFile_data();
   void wholeFile();
+  void whitespaceChanges_data();
+  void whitespaceChanges();
 };
 
 void TestDiffView::loadsAllHunks_data() {
@@ -231,6 +233,123 @@ void TestDiffView::wholeFile() {
   details->selectPath("file.txt");
   QVERIFY(!diff->isWholeFile());
   QCOMPARE(diff->hunkCount(), 2);
+
+  details->closeFile();
+}
+
+void TestDiffView::whitespaceChanges_data() {
+  QTest::addColumn<bool>("committed");
+
+  QTest::newRow("working tree") << false;
+  QTest::newRow("commit") << true;
+}
+
+// The changes of whitespace that the settings ignore are shown on request,
+// until another file is shown. Their lines are staged like those of the diff.
+void TestDiffView::whitespaceChanges() {
+  QFETCH(bool, committed);
+
+  // The tests share the settings of the application.
+  Settings *settings = Settings::instance();
+  bool ignored = settings->isWhitespaceIgnored();
+  auto restore = qScopeGuard(
+      [settings, ignored] { settings->setWhitespaceIgnored(ignored); });
+  settings->setWhitespaceIgnored(true);
+
+  auto text = [](const QMap<int, QString> &changes) {
+    QString text;
+    for (int i = 1; i <= 30; ++i)
+      text += changes.value(i, QString("line %1").arg(i)) + "\n";
+    return text;
+  };
+
+  // The trailing spaces of line 5 are removed.
+  ScratchRepository repo;
+  QDir workdir = repo->workdir();
+  QVERIFY(writeFiles(
+      workdir, {{"file.txt", text({{5, "line 5  "}})}, {"other.txt", "a\n"}}));
+  repo->index().setStaged({"file.txt", "other.txt"}, true);
+  QVERIFY(repo->commit("initial"));
+
+  QVERIFY(writeFiles(workdir, {{"file.txt", text({{25, "changed 25"}})},
+                               {"other.txt", "b\n"}}));
+  if (committed) {
+    repo->index().setStaged({"file.txt", "other.txt"}, true);
+    QVERIFY(repo->commit("change"));
+  }
+
+  MainWindow window(repo);
+  window.show();
+  QVERIFY(qWaitForWindowExposed(&window));
+
+  RepoView *repoView = window.currentView();
+  if (committed)
+    repoView->selectFirstCommit();
+
+  auto details = repoView->findChild<DetailView *>();
+  QVERIFY(details);
+
+  QAbstractItemModel *files =
+      committed ? details->files() : details->unstagedFiles();
+  QTRY_COMPARE_WITH_TIMEOUT(files->property("fileCount").toInt(), 2, 10000);
+
+  auto diff = qobject_cast<DiffModel *>(details->diffModel());
+  QVERIFY(diff);
+
+  details->selectPath("file.txt");
+  QVERIFY(diff->canShowWhitespaceChanges());
+  QVERIFY(!diff->showsWhitespaceChanges());
+  QCOMPARE(diff->hunkCount(), 1);
+  QCOMPARE(diff->additions(), 1);
+
+  diff->setWhitespaceChanges(true);
+  QVERIFY(diff->showsWhitespaceChanges());
+  QCOMPARE(diff->hunkCount(), 2);
+  QCOMPARE(diff->additions(), 2);
+  QCOMPARE(diff->deletions(), 2);
+  QList<DiffLines::Line> lines = diff->lines(0);
+
+  // With the whole file too.
+  diff->setWholeFile(true);
+  QCOMPARE(diff->hunkCount(), 1);
+  QCOMPARE(diff->additions(), 2);
+  diff->setWholeFile(false);
+  QCOMPARE(diff->hunkCount(), 2);
+
+  if (!committed) {
+    // Stage only the removal of the spaces.
+    int row = -1;
+    for (int i = 0; i < lines.size() && row < 0; ++i) {
+      if (lines.at(i).content == "line 5\n")
+        row = diff->row(0, i);
+    }
+    QVERIFY(row > 0);
+    diff->setLinesStaged(row - 1, row, true);
+
+    git::Commit head = repo->head().target();
+    auto staged = [&repo, &head] {
+      git::Diff staged = repo->diffTreeToIndex(head.tree());
+      int index = staged.indexOf("file.txt");
+      return index < 0 ? git::Patch() : staged.patch(index);
+    };
+    QTRY_VERIFY(staged().isValid());
+    git::Patch patch = staged();
+    QCOMPARE(patch.lineStats().additions, 1);
+    QCOMPARE(patch.lineStats().deletions, 1);
+    QCOMPARE(repo->index().isStaged("file.txt"), git::Index::PartiallyStaged);
+  }
+
+  // They are hidden again for another file.
+  details->selectPath("other.txt");
+  QVERIFY(!diff->showsWhitespaceChanges());
+  details->selectPath("file.txt");
+  QVERIFY(!diff->showsWhitespaceChanges());
+
+  // Nothing is hidden when the settings don't ignore whitespace.
+  settings->setWhitespaceIgnored(false);
+  details->selectPath("other.txt");
+  details->selectPath("file.txt");
+  QVERIFY(!diff->canShowWhitespaceChanges());
 
   details->closeFile();
 }

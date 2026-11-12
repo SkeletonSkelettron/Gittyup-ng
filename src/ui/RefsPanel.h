@@ -57,7 +57,9 @@ public:
     // The branch or remote is hidden in the graph.
     HiddenRole,
     // The number of a pull request.
-    NumberRole
+    NumberRole,
+    // The remote branch is merged into the branch of setMerged().
+    MergedRole
   };
 
   struct Item {
@@ -97,6 +99,11 @@ public:
   // The open pull requests, when the host of the repository is supported.
   void setPullRequests(PullRequestList *pullRequests);
 
+  // Mark the remote branches with these qualified names as merged into the
+  // branch 'into'. No names clear the marks.
+  void setMerged(const QSet<QString> &merged, const QString &into = QString());
+  bool hasMerged() const { return !mMerged.isEmpty(); }
+
   int rowCount(const QModelIndex &parent = QModelIndex()) const override;
   QVariant data(const QModelIndex &index,
                 int role = Qt::DisplayRole) const override;
@@ -117,6 +124,7 @@ private:
   void assemble();
 
   bool isExpanded(const QString &key) const;
+  bool isMerged(const Item &item) const;
   bool matches(const QString &name) const;
   void addHeader(Section section, const QString &name, int count);
 
@@ -130,6 +138,8 @@ private:
   QList<Item> mItems;
   QStringList mSolo;
   QStringList mHidden;
+  QSet<QString> mMerged;
+  QString mMergedInto;
   PullRequestList *mPullRequests = nullptr;
 };
 
@@ -179,12 +189,17 @@ private:
   void setCurrent(const git::Reference &ref);
   void showMenu(RefsModel::Item item, qreal x, qreal y);
   void toggleHidden(const RefsModel::Item &item);
+  // Mark the remote branches that are merged into the current branch, or
+  // clear the marks.
+  void markMerged(bool mark);
 
   RepoView *mView;
   git::Repository mRepo;
   RefsModel *mModel;
   bool mSoloActive = false;
   git::Reference mEmitted;
+  // The last request to mark merged branches wins.
+  int mMarkRequests = 0;
 };
 
 #endif

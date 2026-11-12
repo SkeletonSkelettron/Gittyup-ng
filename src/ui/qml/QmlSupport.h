@@ -44,6 +44,9 @@ public:
   // Show the edit actions of 'field', a TextInput or a TextEdit, at the
   // mouse.
   Q_INVOKABLE void showEditMenu(QQuickItem *field);
+  // Show the edit actions of 'view', see QmlSupport::addViewActions(), at
+  // the mouse.
+  Q_INVOKABLE void showViewMenu(QQuickItem *view, bool selected);
 
   QString toolTipText() const { return mToolTipText; }
   QRectF toolTipRect() const { return mToolTipRect; }
@@ -99,6 +102,11 @@ void callLater(QObject *context, std::function<void()> function);
 // Add Undo, Redo, Cut, Copy, Paste, Delete and Select All for 'field', a
 // TextInput or a TextEdit, to 'menu'.
 void addEditActions(QMenu *menu, QQuickItem *field);
+
+// Add the same actions for 'view', which shows text that can't be edited,
+// like a read-only field. Copy calls its function copySelection() and Select
+// All its function selectAll(). The others are disabled.
+void addViewActions(QMenu *menu, QQuickItem *view, bool selected);
 
 // Images for QML at "image://images/<key>". Remove them when they're no
 // longer shown.

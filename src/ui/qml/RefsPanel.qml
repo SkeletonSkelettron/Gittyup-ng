@@ -82,6 +82,7 @@ Rectangle {
                 required property string refName
                 required property bool hidden
                 required property int number
+                required property bool merged
 
                 readonly property bool isHeader: kind === root.kindHeader
                 readonly property bool isBranch: kind === root.kindBranch
@@ -115,7 +116,10 @@ Rectangle {
                     color: row.dropTarget ? Qt.rgba(Theme.accent.r, Theme.accent.g,
                                                     Theme.accent.b, 0.18)
                            : row.highlighted ? Theme.selected
-                           : row.hovered ? Theme.hover : "transparent"
+                           : row.hovered ? Theme.hover
+                           : row.merged ? Qt.rgba(Theme.added.r, Theme.added.g,
+                                                  Theme.added.b, 0.14)
+                           : "transparent"
                     border.width: row.dropTarget ? 1 : 0
                     border.color: Theme.accent
                 }
@@ -217,6 +221,14 @@ Rectangle {
                         font.bold: row.isHeader || row.isHead
                         font.capitalization: row.isHeader ? Font.AllUppercase : Font.MixedCase
                         font.letterSpacing: row.isHeader ? 0.8 : 0
+                    }
+
+                    // Merged into the current branch, see RefsModel::setMerged().
+                    Icon {
+                        visible: row.merged
+                        name: "check"
+                        size: 14
+                        color: row.highlighted ? Theme.selectedText : Theme.added
                     }
 
                     // Show the branch alone in the graph, like GitKraken.
