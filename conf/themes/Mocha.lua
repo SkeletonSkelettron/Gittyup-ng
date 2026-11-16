@@ -190,6 +190,41 @@ theme['tooltip']   = {
   background       = '#2A82DA'
 }
 
+-- the colors of the QML interface, in the Catppuccin Mocha palette. The
+-- panels, the sidebar and the tool bar are Mantle, a shade darker than the
+-- commit list (Base). Fields are lighter than both, with a Surface 1 border.
+-- The accent is Blue, and the selection is tinted with it, so that it differs
+-- from hover (Surface 0).
+theme['ui']        = {
+  dark             = true,
+  base             = '#1E1E2E',
+  alternate        = '#212133',
+  panel            = '#181825',
+  toolbar          = '#181825',
+  sidebar          = '#181825',
+  field            = '#282839',
+  border           = '#45475A',
+  text             = '#CDD6F4',
+  text_muted       = '#9399B2',
+  text_disabled    = '#6C7086',
+  hover            = '#313244',
+  pressed          = '#3E4055',
+  selected         = '#37405E',
+  selected_text    = '#CDD6F4',
+  accent           = '#89B4FA',
+  accent_text      = '#1E1E2E',
+  badge            = '#F38BA8',
+  badge_text       = '#1E1E2E',
+  ahead            = '#A6E3A1',
+  behind           = '#FAB387',
+  star             = '#F9E2AF',
+  modified         = '#F9E2AF',
+  tooltip          = '#313244',
+  tooltip_text     = '#CDD6F4',
+  alert            = '#C2566F',
+  alert_text       = '#FFFFFF'
+}
+
 -- editor styles
 -- Styles are composed of a string like:
 --   fore:<color>,back:<color>,bold,italics,underline

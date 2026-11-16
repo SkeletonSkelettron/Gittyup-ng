@@ -154,31 +154,36 @@ theme['tooltip']   = {
   background       = '#34324A'
 }
 
+-- The panels, the sidebar and the tool bar are a shade darker than the commit
+-- list, so that the areas stand apart. Fields are lighter than both, with a
+-- border that differs from their fill. The accent is the light purple of
+-- Palenight, which reads as text and icons on the dark panels.
 theme['ui']        = {
   dark             = true,
   base             = '#292D3E',
   alternate        = '#2C3043',
-  panel            = '#292D3E',
-  toolbar          = '#292D3E',
-  sidebar          = '#292D3E',
-  field            = '#313850',
-  border           = '#32374D',
-  text             = '#BFC7D5',
-  text_muted       = '#8A91B4',
-  text_disabled    = '#4E5579',
-  hover            = '#31364A',
-  pressed          = '#3A3F58',
+  panel            = '#222533',
+  toolbar          = '#222533',
+  sidebar          = '#222533',
+  field            = '#30344A',
+  border           = '#424760',
+  text             = '#C9D0DE',
+  text_muted       = '#959CBF',
+  text_disabled    = '#5A6187',
+  hover            = '#353A50',
+  pressed          = '#3F4560',
   selected         = '#444267',
   selected_text    = '#FFFFFF',
-  accent           = '#7E57C2',
-  accent_text      = '#FFFFFF',
+  accent           = '#C792EA',
+  accent_text      = '#292D3E',
   badge            = '#FF5370',
   badge_text       = '#292D3E',
   ahead            = '#C3E88D',
   behind           = '#F78C6C',
   star             = '#FFCB6B',
-  tooltip          = '#34324A',
-  tooltip_text     = '#BFC7D5',
+  modified         = '#FFCB6B',
+  tooltip          = '#383C55',
+  tooltip_text     = '#C9D0DE',
   alert            = '#B3364B',
   alert_text       = '#FFFFFF'
 }
@@ -214,19 +219,19 @@ QScrollBar::add-page, QScrollBar::sub-page {
 
 QLineEdit {
   background: #313850;
-  border: 1px solid #3A3F58;
+  border: 1px solid #424760;
   border-radius: 5px;
   padding: 2px 4px;
   selection-background-color: #444267;
 }
 QLineEdit:focus {
-  border: 1px solid #7E57C2;
+  border: 1px solid #C792EA;
 }
 
 QPushButton {
   background: #32374D;
   color: #BFC7D5;
-  border: 1px solid #3A3F58;
+  border: 1px solid #424760;
   border-radius: 5px;
   padding: 4px 14px;
 }
@@ -237,12 +242,12 @@ QPushButton:pressed {
   background: #444267;
 }
 QPushButton:default {
-  background: #7E57C2;
-  border-color: #7E57C2;
-  color: #FFFFFF;
+  background: #C792EA;
+  border-color: #C792EA;
+  color: #292D3E;
 }
 QPushButton:default:hover {
-  background: #8E67D2;
+  background: #D2A6EE;
 }
 QPushButton:disabled {
   background: #2C3043;
@@ -252,7 +257,7 @@ QPushButton:disabled {
 
 QMenu {
   background: #2C3043;
-  border: 1px solid #3A3F58;
+  border: 1px solid #424760;
   padding: 4px;
 }
 QMenu::item {
@@ -283,7 +288,7 @@ QHeaderView::section {
   background: #292D3E;
   color: #8A91B4;
   border: none;
-  border-bottom: 1px solid #32374D;
+  border-bottom: 1px solid #424760;
   padding: 4px 6px;
 }
 
