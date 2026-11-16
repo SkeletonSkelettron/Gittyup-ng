@@ -684,26 +684,58 @@ Result Remote::push(Callbacks *callbacks, const Reference &src,
 
 Result Remote::clone(Callbacks *callbacks, const QString &url,
                      const QString &path, bool bare) {
-  git_repository *repo = nullptr;
-  git_clone_options opts = GIT_CLONE_OPTIONS_INIT;
-#ifndef USE_SYSTEM_LIBGIT2
-  opts.fetch_opts.callbacks.connected = &Remote::Callbacks::connected;
-  opts.fetch_opts.callbacks.about_to_disconnect =
-      &Remote::Callbacks::about_to_disconnect;
-#endif
-  opts.fetch_opts.callbacks.sideband_progress = &Remote::Callbacks::sideband;
-  opts.fetch_opts.callbacks.credentials = &Remote::Callbacks::credentials;
-  opts.fetch_opts.callbacks.certificate_check = &Remote::Callbacks::certificate;
-  opts.fetch_opts.callbacks.transfer_progress = &Remote::Callbacks::transfer;
-  opts.fetch_opts.callbacks.update_tips = &Remote::Callbacks::update;
-  opts.fetch_opts.callbacks.remote_ready = &Remote::Callbacks::remoteReady;
-  opts.fetch_opts.callbacks.payload = callbacks;
-  opts.bare = bare;
+  if (url.isEmpty() || path.isEmpty())
+    return Result(-1, tr("The URL and the folder of the clone are needed."));
 
-  QByteArray proxy = proxyUrl(url, opts.fetch_opts.proxy_opts.type);
-  opts.fetch_opts.proxy_opts.url = proxy;
+  // The repository doesn't exist yet, git runs in the folder above it.
+  QString parent = QFileInfo(path).absolutePath();
+  QDir().mkpath(parent);
 
-  return git_clone(&repo, url.toUtf8(), path.toUtf8(), &opts);
+  QStringList args = {"clone", "--progress"};
+  if (bare)
+    args.append("--bare");
+  args << "--" << url << path;
+
+  git::Cli cli(parent);
+  RunResult result = cli.run(args, {}, {}, [callbacks] {
+    return callbacks && callbacks->isCanceled();
+  });
+
+  // What the remote said, also when the clone failed.
+  QStringList errors;
+  for (QByteArray line : result.errors.split('\n')) {
+    // Progress rewrites its line after '\r'. Keep what was there last.
+    while (line.endsWith('\r'))
+      line.chop(1);
+    line = line.mid(line.lastIndexOf('\r') + 1);
+
+    if (line.startsWith("fatal: ") || line.startsWith("error: "))
+      errors.append(QString::fromUtf8(line));
+
+    QString text = QString::fromUtf8(line.mid(8)).trimmed();
+    if (callbacks && line.startsWith("remote: ") && !text.isEmpty())
+      callbacks->sideband(text + '\n');
+  }
+
+  if (result.canceled)
+    return Result(GIT_EUSER, tr("The clone was canceled."));
+  if (result.exitCode != 0)
+    return Result(-1, errors.isEmpty()
+                          ? QString::fromUtf8(result.errors).trimmed()
+                          : errors.join('\n'));
+
+  // Tell the callbacks about the new references like libgit2 does.
+  Repository repo = Repository::open(path);
+  if (callbacks && repo.isValid()) {
+    for (const Reference &ref : repo.refs()) {
+      // A bare clone has the branches of the remote as its own.
+      bool branch = bare ? ref.isLocalBranch() : ref.isRemoteBranch();
+      if ((branch || ref.isTag()) && !ref.name().endsWith("/HEAD"))
+        callbacks->update(ref.qualifiedName(), Id(), ref.targetId());
+    }
+  }
+
+  return 0;
 }
 
 QByteArray Remote::proxyUrl(const QString &url, git_proxy_t &type) {
