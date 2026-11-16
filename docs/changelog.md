@@ -1,3 +1,12 @@
+### v0.1.2 - 2026-11-16
+
+#### Changed
+
+* Cloning runs git instead of libgit2. The messages of the remote show while it clones, and a failed clone shows the errors of git
+* git asks for the credentials of fetch, push and clone itself: its credential helper for HTTPS, and ssh with the SSH agent, the keys and ~/.ssh/config for SSH. The dialogs of Gittyup-ng for HTTPS credentials and SSH passphrases, and Log Remote Connection in the menu, are gone. A key with a passphrase needs the SSH agent or the askpass program of the desktop, a new host has to be in ~/.ssh/known_hosts, and the SSH settings of Gittyup-ng aren't used for now
+
+----
+
 ### v0.1.1 - 2026-11-12
 
 #### Added
