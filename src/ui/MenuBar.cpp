@@ -926,12 +926,6 @@ MenuBar::MenuBar(QWidget *parent) : QMenuBar(parent) {
     connect(cred, &QAction::triggered,
             [](bool checked) { CredentialHelper::setLoggingEnabled(checked); });
 
-    QAction *remote = debug->addAction(tr("Log Remote Connection"));
-    remote->setCheckable(true);
-    remote->setChecked(git::Remote::isLoggingEnabled());
-    connect(remote, &QAction::triggered,
-            [](bool checked) { git::Remote::setLoggingEnabled(checked); });
-
     QAction *debugMessages = debug->addAction(tr("Log Debug Messages"));
     debugMessages->setCheckable(true);
     debugMessages->setChecked(Debug::isLogging());

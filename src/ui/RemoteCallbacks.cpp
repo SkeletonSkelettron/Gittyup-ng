@@ -9,19 +9,9 @@
 
 #include "qtsupport.h"
 #include "RemoteCallbacks.h"
-#include "conf/Settings.h"
-#include "cred/CredentialHelper.h"
-#include "dialogs/InputDialog.h"
-#include "git/Command.h"
 #include "git/Id.h"
 #include "git/RevWalk.h"
-#include "git2/sys/errors.h"
 #include "log/LogEntry.h"
-#include <libssh2.h>
-#include <QApplication>
-#include <QDir>
-#include <QEventLoop>
-#include <QProcess>
 #include <QRegularExpression>
 #include <QTextStream>
 #include <QUrl>
@@ -87,84 +77,20 @@ RemoteCallbacks::RemoteCallbacks(Kind kind, LogEntry *log, const QString &url,
                                  const git::Repository &repo)
     : QObject(parent), git::Remote::Callbacks(url, repo), mKind(kind),
       mLog(log), mName(name) {
-  // Credentials and interactive have to block.
-  QObject::connect(this, &RemoteCallbacks::queueCredentials, this,
-                   &RemoteCallbacks::credentialsImpl,
-                   Qt::BlockingQueuedConnection);
-  QObject::connect(this, &RemoteCallbacks::queueInteractiveAuth, this,
-                   &RemoteCallbacks::interactiveAuthImpl,
-                   Qt::BlockingQueuedConnection);
-
-  // The rest are automatic.
   QObject::connect(this, &RemoteCallbacks::queueSideband, this,
                    &RemoteCallbacks::sidebandImpl);
   QObject::connect(this, &RemoteCallbacks::queueTransfer, this,
                    &RemoteCallbacks::transferImpl);
-  QObject::connect(this, &RemoteCallbacks::queueResolve, this,
-                   &RemoteCallbacks::resolveImpl);
   QObject::connect(this, &RemoteCallbacks::queueUpdate, this,
                    &RemoteCallbacks::updateImpl);
   QObject::connect(this, &RemoteCallbacks::queueRejected, this,
                    &RemoteCallbacks::rejectedImpl);
-  QObject::connect(this, &RemoteCallbacks::queueAdd, this,
-                   &RemoteCallbacks::addImpl);
-  QObject::connect(this, &RemoteCallbacks::queueDelta, this,
-                   &RemoteCallbacks::deltaImpl);
 
   mTimer.start();
 }
 
 void RemoteCallbacks::setCanceled(bool canceled) {
   mCanceled = canceled;
-  stop();
-}
-
-void RemoteCallbacks::storeDeferredCredentials() {
-  // FIXME: Prompt user to remember?
-  if (!mDeferredUrl.isEmpty()) {
-    CredentialHelper *helper = CredentialHelper::instance();
-    helper->store(mDeferredUrl, mDeferredUsername, mDeferredPassword);
-  }
-}
-
-bool RemoteCallbacks::credentials(const QString &url, QString &username,
-                                  QString &password) {
-  if (mCanceled)
-    return false;
-
-  QString error;
-  emit queueCredentials(url, username, password, error);
-
-  // Set error on the thread that requested credentials.
-  if (!error.isEmpty())
-    git_error_set_str(GIT_ERROR_NET, error.toUtf8());
-
-  return error.isEmpty();
-}
-
-bool RemoteCallbacks::passphrase(const QString &url, const QString &keyFile,
-                                 QString &passphrase) {
-  // The dialog names the key. The passphrase is stored for the key.
-  mKeyFile = keyFile;
-  QString username = keyFile;
-  bool result = credentials(url, username, passphrase);
-  mKeyFile.clear();
-  return result;
-}
-
-void RemoteCallbacks::interactiveAuth(
-    const QString &name, const QString &instruction,
-    const QVector<git::Remote::SshInteractivePrompt> &prompts,
-    QVector<QString> &responses) {
-  if (mCanceled)
-    return;
-
-  QString error;
-  emit queueInteractiveAuth(name, instruction, prompts, responses, error);
-
-  // Set error on the thread that requested interactive auth.
-  if (!error.isEmpty())
-    git_error_set_str(GIT_ERROR_NET, error.toUtf8());
 }
 
 void RemoteCallbacks::sideband(const QString &text) {
@@ -181,15 +107,6 @@ bool RemoteCallbacks::transfer(int total, int current, size_t bytes) {
   return !mCanceled;
 }
 
-bool RemoteCallbacks::resolve(int total, int current) {
-  if (current == 0 || current == total || mTimer.elapsed() > 100) {
-    emit queueResolve(total, current);
-    mTimer.restart();
-  }
-
-  return !mCanceled;
-}
-
 void RemoteCallbacks::update(const QString &name, const git::Id &a,
                              const git::Id &b) {
   emit queueUpdate(name, a, b);
@@ -197,183 +114,6 @@ void RemoteCallbacks::update(const QString &name, const git::Id &a,
 
 void RemoteCallbacks::rejected(const QString &name, const QString &status) {
   emit queueRejected(name, status);
-}
-
-void RemoteCallbacks::add(int total, int current) {
-  emit queueAdd(total, current);
-}
-
-void RemoteCallbacks::delta(int total, int current) {
-  emit queueDelta(total, current);
-}
-
-bool RemoteCallbacks::negotiation(
-    const QList<git::Remote::PushUpdate> &updates) {
-  if (!mRepo.isValid())
-    return true;
-
-  QDir dir = mRepo.dir();
-  if (!dir.exists("hooks/pre-push"))
-    return true;
-
-  QString bash = git::Command::bashPath();
-  if (bash.isEmpty()) {
-    QString error = tr("failed to execute pre-push hook: bash not found");
-    git_error_set_str(GIT_ERROR_NET, error.toUtf8());
-    return false;
-  }
-
-  QEventLoop loop;
-  QProcess process;
-  process.setWorkingDirectory(mRepo.workdir().path());
-  using Signal = void (QProcess::*)(int, QProcess::ExitStatus);
-  auto signal = static_cast<Signal>(&QProcess::finished);
-  QObject::connect(&process, signal, &loop, &QEventLoop::exit);
-
-  // Print hook output with the same semantics as sideband.
-  QObject::connect(&process, &QProcess::readyReadStandardOutput,
-                   [this, &process] {
-                     emit queueSideband(process.readAllStandardOutput());
-                     if (mCanceled)
-                       process.terminate();
-                   });
-
-  // Start process.
-  process.start(bash, {dir.filePath("hooks/pre-push"), mName, mUrl});
-
-  // Write updates.
-  QTextStream out(&process);
-  for (const git::Remote::PushUpdate &update : updates)
-    out << update.dstName << " " << update.dstId.toString() << " "
-        << update.srcName << " " << update.srcId.toString() << Qt::endl;
-  process.closeWriteChannel();
-
-  if (loop.exec()) {
-    QString error = process.readAllStandardError();
-    if (error.isEmpty())
-      error = process.errorString();
-
-    QString text = tr("failed to execute pre-push hook: %1").arg(error);
-    git_error_set_str(GIT_ERROR_NET, text.toUtf8());
-
-    return false;
-  }
-
-  return true;
-}
-
-QString RemoteCallbacks::keyFilePath() const {
-  return Settings::instance()->value(Setting::Id::SshKeyFilePath).toString();
-}
-
-QString RemoteCallbacks::configFilePath() const {
-  return Settings::instance()->value(Setting::Id::SshConfigFilePath).toString();
-}
-
-bool RemoteCallbacks::connectToAgent() const {
-  LIBSSH2_SESSION *session = libssh2_session_init();
-  LIBSSH2_AGENT *agent = libssh2_agent_init(session);
-  int error = libssh2_agent_connect(agent);
-  if (error != LIBSSH2_ERROR_NONE) {
-    char *msg;
-    libssh2_session_last_error(session, &msg, nullptr, 0);
-    git::Remote::log(QString("agent: %1 (%2)").arg(msg).arg(error));
-  }
-
-  libssh2_agent_disconnect(agent);
-  libssh2_agent_free(agent);
-  libssh2_session_free(session);
-  return (error == LIBSSH2_ERROR_NONE);
-}
-
-void RemoteCallbacks::credentialsImpl(const QString &url, QString &username,
-                                      QString &password, QString &error) {
-  CredentialHelper *helper = CredentialHelper::instance();
-  if (helper->get(url, username, password)) {
-    QStringList key({url, username, password});
-    if (!mQueriedCredentials.contains(key)) {
-      mQueriedCredentials.insert(key);
-      return;
-    }
-  }
-
-  // Automatic fetches don't interrupt with dialogs.
-  if (!mInteractive) {
-    error = tr("authentication required");
-    return;
-  }
-
-  // Prompt for the passphrase of an SSH key, or for a password.
-  QString scheme = QUrl(url).scheme().toLower();
-  bool https = (scheme == "http" || scheme == "https");
-  QString host = QUrl(url).host();
-  if (host.isEmpty())
-    host = url;
-
-  QString title;
-  QString text;
-  QString label = tr("Password");
-  QString accept = tr("Sign In");
-  QList<InputDialog::Field> fields;
-  if (!mKeyFile.isEmpty()) {
-    title = tr("SSH Passphrase");
-    text = tr("Enter the passphrase of the SSH key %1 for %2.")
-               .arg(QDir::toNativeSeparators(mKeyFile), host);
-    label = tr("Passphrase");
-    accept = tr("Unlock");
-  } else if (https) {
-    title = tr("HTTPS Credentials");
-    text = tr("Sign in to %1.").arg(host);
-    fields.append({tr("Username"), username});
-  } else {
-    // The server didn't accept the SSH keys and allows passwords.
-    title = tr("SSH Password");
-    text = tr("%1 didn't accept your SSH keys. Enter the password of %2 on "
-              "%1, or add your public key to your account there.")
-               .arg(host, username);
-  }
-
-  fields.append({label, QString(), true});
-  InputDialog dialog(title, text, fields, QApplication::activeWindow(), accept);
-  if (!dialog.exec()) {
-    error = tr("authentication canceled");
-    return;
-  }
-
-  if (https)
-    username = dialog.value(0);
-  password = dialog.values().last();
-
-  // Remember in keychain.
-  mDeferredUrl = url;
-  mDeferredUsername = username;
-  mDeferredPassword = password;
-}
-
-void RemoteCallbacks::interactiveAuthImpl(
-    const QString &name, const QString &instruction,
-    const QVector<git::Remote::SshInteractivePrompt> &prompts,
-    QVector<QString> &responses, QString &error) {
-  // Automatic fetches don't interrupt with dialogs.
-  if (!mInteractive) {
-    error = tr("authentication required");
-    return;
-  }
-
-  QList<InputDialog::Field> fields;
-  for (const git::Remote::SshInteractivePrompt &prompt : prompts)
-    fields.append({prompt.text, QString(), !prompt.echo, false});
-
-  QString text = instruction.isEmpty() ? name : instruction;
-  InputDialog dialog(tr("SSH Authentication"), text, fields,
-                     QApplication::activeWindow());
-  if (!dialog.exec()) {
-    error = tr("authentication canceled");
-    return;
-  }
-
-  for (int i = 0; i < prompts.length(); ++i)
-    responses[i] = dialog.value(i);
 }
 
 void RemoteCallbacks::sidebandImpl(const QString &text, const QString &fmt) {
@@ -435,20 +175,6 @@ void RemoteCallbacks::transferImpl(int total, int current, size_t bytes,
   setText(text, mLog, mTransferItem);
 }
 
-void RemoteCallbacks::resolveImpl(int total, int current) {
-  // Calculate percent.
-  int percent = (total > 0) ? 100 * (static_cast<float>(current) / total) : 0;
-
-  // Write text.
-  QString text;
-  QTextStream stream(&text);
-  stream << "Resolving deltas: " << percent << "% (" << current << "/" << total
-         << ")" << (current == total ? ", done" : QString()) << ".";
-
-  // Update the list item.
-  setText(text, mLog, mResolveItem);
-}
-
 void RemoteCallbacks::updateImpl(const QString &name, const git::Id &a,
                                  const git::Id &b) {
   if (mState == Resolve) {
@@ -503,37 +229,4 @@ void RemoteCallbacks::rejectedImpl(const QString &name, const QString &status) {
   QString fromTo = kFromToFmt.arg(relativeName, relativeName);
   QString text = QString("[remote rejected] %1 (%2)").arg(fromTo, status);
   mLog->addEntry(LogEntry::Error, text);
-}
-
-void RemoteCallbacks::addImpl(int total, int current) {
-  // Write text.
-  QString text;
-  QTextStream stream(&text);
-  stream << "Counting objects: " << current
-         << (current == total ? ", done" : QString()) << ".";
-
-  // Update the list item.
-  setText(text, mLog, mAddItem);
-}
-
-void RemoteCallbacks::deltaImpl(int total, int current) {
-  // Finish off the add stage.
-  if (!mDeltaItem)
-    addImpl(total, total);
-
-  // Write text.
-  QString text;
-  QTextStream stream(&text);
-  stream << "Compressing objects: "
-         << static_cast<int>(100 * (static_cast<float>(current) / total))
-         << "% (" << current << "/" << total << ")"
-         << (current == total ? ", done" : QString()) << ".";
-
-  // Update the list item.
-  setText(text, mLog, mDeltaItem);
-
-  // Delta compression only reports progress once at the beginning.
-  // Post another update for completion after processing events.
-  if (current != total)
-    deltaImpl(total, total);
 }

@@ -12,16 +12,12 @@
 
 #include "Repository.h"
 #include "Result.h"
-#include "git2/proxy.h"
 #include <QSet>
 #include <QStringList>
 #include <QString>
 #include <QSharedPointer>
 
-struct git_cred;
-struct git_oid;
 struct git_remote;
-struct git_indexer_progress;
 
 namespace git {
 
@@ -32,18 +28,6 @@ class Remote {
   Q_DECLARE_TR_FUNCTIONS(Remote)
 
 public:
-  struct PushUpdate {
-    QByteArray srcName;
-    QByteArray dstName;
-    Id srcId;
-    Id dstId;
-  };
-
-  struct SshInteractivePrompt {
-    QString text;
-    bool echo;
-  };
-
   class Callbacks {
   public:
     enum State { Transfer, Resolve, Update };
@@ -53,92 +37,23 @@ public:
 
     QString url() const { return mUrl; }
 
-    State state() const { return mState; }
-
     Repository repo() const { return mRepo; }
 
     virtual void sideband(const QString &text) {}
-
-    virtual bool credentials(const QString &url, QString &username,
-                             QString &password) {
-      return true;
-    }
-
-    // Ask for the passphrase of the encrypted SSH identity file 'keyFile'.
-    virtual bool passphrase(const QString &url, const QString &keyFile,
-                            QString &passphrase) {
-      QString username;
-      return credentials(url, username, passphrase);
-    }
-
-    virtual void interactiveAuth(const QString &name,
-                                 const QString &instruction,
-                                 const QVector<SshInteractivePrompt> &prompts,
-                                 QVector<QString> &responses) {}
 
     virtual bool transfer(int total, int current, size_t bytes) { return true; }
 
     // git stops the transfers that are canceled, see Cli::run().
     virtual bool isCanceled() const { return false; }
 
-    virtual bool resolve(int total, int current) { return true; }
-
     virtual void update(const QString &name, const Id &a, const Id &b) {}
 
     virtual void rejected(const QString &name, const QString &status) {}
 
-    virtual void add(int total, int current) {}
-
-    virtual void delta(int total, int current) {}
-
-    // pre-push hook
-    virtual bool negotiation(const QList<PushUpdate> &updates) { return true; }
-
-    // url resolution hook
-    virtual bool url(QString &url) { return true; }
-
-    // user setting hooks
-    virtual QString keyFilePath() const { return QString(); }
-    virtual QString configFilePath() const { return QString(); }
-
-    // agent availability hook
-    virtual bool connectToAgent() const { return false; }
-
-    // static callback wrappers
-#ifndef USE_SYSTEM_LIBGIT2
-    static void connected(git_remote *remote, void *payload);
-
-    static void about_to_disconnect(git_remote *remote, void *payload);
-#endif
-
-    static int sideband(const char *str, int len, void *payload);
-
-    static int credentials(git_credential **out, const char *url,
-                           const char *name, unsigned int types, void *payload);
-
-    static int certificate(git_cert *cert, int valid, const char *host,
-                           void *payload);
-
-    static int transfer(const git_indexer_progress *stats, void *payload);
-
-    static int update(const char *name, const git_oid *a, const git_oid *b,
-                      void *payload);
-
-    static int remoteReady(git_remote *remote, int direction, void *payload);
-
   protected:
-    // Try to stop the current remote.
-    void stop();
-
     QString mUrl;
     Repository mRepo;
     State mState = Transfer;
-    QSet<QString> mAgentNames;
-#ifndef USE_SYSTEM_LIBGIT2
-    git_remote *mRemote = nullptr;
-#endif
-    // The SSH identity files that were tried, in order.
-    QStringList mKeyFiles;
   };
 
   Remote();
@@ -160,12 +75,6 @@ public:
 
   static Result clone(Callbacks *callbacks, const QString &url,
                       const QString &path, bool bare = false);
-
-  static QByteArray proxyUrl(const QString &url, git_proxy_t &type);
-
-  static bool isLoggingEnabled();
-  static void setLoggingEnabled(bool enabled);
-  static void log(const QString &text);
 
 private:
   Remote(git_remote *remote);

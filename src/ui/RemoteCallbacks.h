@@ -33,74 +33,25 @@ public:
   bool isCanceled() const override { return mCanceled; }
   void setCanceled(bool canceled);
 
-  void storeDeferredCredentials();
-
-  // Callbacks of automatic fetches don't ask for credentials. They use only
-  // the stored ones.
-  bool isInteractive() const { return mInteractive; }
-  void setInteractive(bool interactive) { mInteractive = interactive; }
-
-  bool credentials(const QString &url, QString &username,
-                   QString &password) override;
-  bool passphrase(const QString &url, const QString &keyFile,
-                  QString &passphrase) override;
-
-  virtual void
-  interactiveAuth(const QString &name, const QString &instruction,
-                  const QVector<git::Remote::SshInteractivePrompt> &prompts,
-                  QVector<QString> &responses) override;
-
   void sideband(const QString &text) override;
   bool transfer(int total, int current, size_t bytes) override;
-  bool resolve(int total, int current) override;
   void update(const QString &name, const git::Id &a, const git::Id &b) override;
   void rejected(const QString &name, const QString &status) override;
-  void add(int total, int current) override;
-  void delta(int total, int current) override;
-
-  // pre-push hook
-  bool negotiation(const QList<git::Remote::PushUpdate> &updates) override;
-
-  // user setting hooks
-  QString keyFilePath() const override;
-  QString configFilePath() const override;
-
-  // agent availability hook
-  bool connectToAgent() const override;
 
 signals:
   void referenceUpdated(const QString &name);
 
   // These are implementation details.
-  void queueCredentials(const QString &url, QString &username,
-                        QString &password, QString &error);
-
-  void queueInteractiveAuth(
-      const QString &name, const QString &instruction,
-      const QVector<git::Remote::SshInteractivePrompt> &prompts,
-      QVector<QString> &responses, QString &error);
   void queueSideband(const QString &text, const QString &fmt = QString());
   void queueTransfer(int total, int current, size_t bytes, int elapsed);
-  void queueResolve(int total, int current);
   void queueUpdate(const QString &name, const git::Id &a, const git::Id &b);
   void queueRejected(const QString &name, const QString &status);
-  void queueAdd(int total, int current);
-  void queueDelta(int total, int current);
 
 private:
-  void credentialsImpl(const QString &url, QString &username, QString &password,
-                       QString &error);
-  void
-  interactiveAuthImpl(const QString &name, const QString &instruction,
-                      const QVector<git::Remote::SshInteractivePrompt> &prompts,
-                      QVector<QString> &responses, QString &error);
   void sidebandImpl(const QString &text, const QString &fmt = QString());
   void transferImpl(int total, int current, size_t bytes, int elapsed);
-  void resolveImpl(int total, int current);
   void updateImpl(const QString &name, const git::Id &a, const git::Id &b);
   void rejectedImpl(const QString &name, const QString &status);
-  void addImpl(int total, int current);
-  void deltaImpl(int total, int current);
 
   Kind mKind;
   LogEntry *mLog;
@@ -110,22 +61,9 @@ private:
   QString mSideband;
   size_t mBytesReceived = 0;
   std::atomic<bool> mCanceled{false};
-  bool mInteractive = true;
-
-  // The encrypted identity file whose passphrase is asked for.
-  QString mKeyFile;
 
   LogEntry *mSidebandItem = nullptr;
   LogEntry *mTransferItem = nullptr;
-  LogEntry *mResolveItem = nullptr;
-  LogEntry *mAddItem = nullptr;
-  LogEntry *mDeltaItem = nullptr;
-
-  QSet<QStringList> mQueriedCredentials;
-
-  QString mDeferredUrl;
-  QString mDeferredUsername;
-  QString mDeferredPassword;
 };
 
 #endif

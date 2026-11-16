@@ -1207,7 +1207,6 @@ QFuture<git::Result> RepoView::fetch(const git::Remote &rmt, bool tags,
             }
           }
         } else {
-          mCallbacks->storeDeferredCredentials();
           if (entry->entries().isEmpty()) {
             entry->addEntry(tr("Everything up-to-date."));
           } else if (!interactive) {
@@ -1227,7 +1226,6 @@ QFuture<git::Result> RepoView::fetch(const git::Remote &rmt, bool tags,
   QString url = remote.url();
   mCallbacks = new RemoteCallbacks(RemoteCallbacks::Receive, entry, url,
                                    remote.name(), mWatcher, mRepo);
-  mCallbacks->setInteractive(interactive);
   connect(mCallbacks, &RemoteCallbacks::referenceUpdated, this,
           &RepoView::notifyReferenceUpdated);
 
@@ -2069,7 +2067,6 @@ void RepoView::push(const git::Remote &rmt, const git::Reference &src,
             }
           }
         } else {
-          mCallbacks->storeDeferredCredentials();
           if (entry->entries().isEmpty())
             entry->addEntry(tr("Everything up-to-date."));
 
@@ -2753,8 +2750,6 @@ void RepoView::resetSubmodulesAsync(const QList<SubmoduleInfo> &submodules,
             } else if (!result) {
               QString name = info.submodule.name();
               error(entry, tr("update submodule"), name, result.errorString());
-            } else {
-              mCallbacks->storeDeferredCredentials();
             }
 
             mWatcher->deleteLater();
@@ -2914,8 +2909,6 @@ void RepoView::updateSubmodulesAsync(const QList<SubmoduleInfo> &submodules,
             } else if (!result) {
               QString name = info.submodule.name();
               error(entry, tr("update submodule"), name, result.errorString());
-            } else {
-              mCallbacks->storeDeferredCredentials();
             }
 
             mWatcher->deleteLater();

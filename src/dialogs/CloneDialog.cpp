@@ -223,7 +223,6 @@ void CloneDialog::startClone() {
             } else if (!result) {
               error(entry, tr("clone"), path, result.errorString());
             } else {
-              mCallbacks->storeDeferredCredentials();
               success = true;
             }
 
