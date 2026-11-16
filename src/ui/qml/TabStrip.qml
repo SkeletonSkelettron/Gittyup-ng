@@ -29,8 +29,6 @@ Rectangle {
         property string tip
         property string icon: "repo"
         property bool current: false
-        // Hide the separator before the current tab and the one after it.
-        property bool separator: true
         // The position of a tab that can be dragged to another position.
         property int tabIndex: -1
 
@@ -48,15 +46,19 @@ Rectangle {
         z: dragging ? 1 : 0
         transform: Translate { x: tab.dragOffset }
 
+        // Every tab has an outline, and a gap of 2 pixels keeps the outlines of
+        // neighbors apart. Only the current tab is filled.
         Rectangle {
             anchors.fill: parent
+            anchors.leftMargin: 1
+            anchors.rightMargin: 1
             anchors.bottomMargin: -radius
             radius: 7
             color: tab.current ? Theme.toolbar
                                : mouse.containsMouse ? Qt.rgba(Theme.hover.r, Theme.hover.g,
                                                                Theme.hover.b, 0.6)
                                                      : "transparent"
-            border.color: tab.current ? Theme.border : "transparent"
+            border.color: Theme.border
             Behavior on color { ColorAnimation { duration: 80 } }
         }
 
@@ -69,15 +71,6 @@ Rectangle {
             height: 2
             radius: 1
             color: Theme.accent
-        }
-
-        Rectangle {
-            visible: tab.separator && !tab.current && !mouse.containsMouse
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            width: 1
-            height: 16
-            color: Theme.border
         }
 
         MouseArea {
@@ -215,7 +208,6 @@ Rectangle {
                 tip: modelData.path
                 tabIndex: index
                 current: !tabStrip.welcome && index === tabStrip.current
-                separator: tabStrip.welcome || index + 1 !== tabStrip.current
                 onActivated: tabStrip.selectTab(index)
                 onClosed: tabStrip.closeTab(index)
                 onMenuRequested: (x, y) => tabStrip.showMenu(index, x, y)

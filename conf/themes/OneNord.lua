@@ -154,31 +154,36 @@ theme['tooltip']   = {
   background       = '#3B4252'
 }
 
+-- The panels, the sidebar and the tool bar are a shade darker than the commit
+-- list, so that the areas stand apart. Fields are lighter than both, with a
+-- border that differs from their fill. The selection is tinted with the blue of
+-- Nord, so that it differs from hover.
 theme['ui']        = {
   dark             = true,
   base             = '#2E3440',
-  alternate        = '#313744',
-  panel            = '#2E3440',
-  toolbar          = '#2E3440',
-  sidebar          = '#2E3440',
-  field            = '#3B4252',
-  border           = '#3B4252',
-  text             = '#C8D0E0',
-  text_muted       = '#8A93A5',
-  text_disabled    = '#5B6577',
-  hover            = '#353B45',
-  pressed          = '#3F4758',
-  selected         = '#434C5E',
+  alternate        = '#323845',
+  panel            = '#262B34',
+  toolbar          = '#262B34',
+  sidebar          = '#262B34',
+  field            = '#353C4A',
+  border           = '#434C5E',
+  text             = '#D8DEE9',
+  text_muted       = '#97A0B3',
+  text_disabled    = '#636D81',
+  hover            = '#3B4252',
+  pressed          = '#454E62',
+  selected         = '#3C4C63',
   selected_text    = '#ECEFF4',
   accent           = '#88C0D0',
   accent_text      = '#2E3440',
   badge            = '#BF616A',
   badge_text       = '#ECEFF4',
   ahead            = '#A3BE8C',
-  behind           = '#D08F70',
+  behind           = '#D08770',
   star             = '#EBCB8B',
+  modified         = '#EBCB8B',
   tooltip          = '#3B4252',
-  tooltip_text     = '#C8D0E0',
+  tooltip_text     = '#E5E9F0',
   alert            = '#9E3F49',
   alert_text       = '#ECEFF4'
 }
