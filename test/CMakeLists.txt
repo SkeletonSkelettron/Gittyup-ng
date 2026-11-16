@@ -79,7 +79,6 @@ target_include_directories(testlib PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_definitions(
   testlib
   PRIVATE TESTREPOSITORIES_PATH="${CMAKE_CURRENT_SOURCE_DIR}/testRepos"
-  PUBLIC SSH_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}"
   PUBLIC GIT_EXECUTABLE="${GIT_EXECUTABLE}")
 
 execute_process(
@@ -110,7 +109,6 @@ test(NAME TreeView)
 test(NAME Submodule)
 test(NAME referencelist)
 test(NAME amend)
-test(NAME SshConfig)
 test(NAME store)
 test(NAME fileContextMenu NO_WIN32_OFFSCREEN)
 test(NAME Setting)
@@ -122,7 +120,6 @@ test(NAME refdrop)
 test(NAME interactive_rebase)
 test(NAME signing)
 test(NAME pull_branch)
-test(NAME ssh_credentials)
 test(NAME open_repository)
 test(NAME workdir_refresh)
 test(NAME tags)
