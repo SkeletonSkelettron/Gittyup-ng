@@ -1,3 +1,13 @@
+### v0.1.3 - 2026-11-17
+
+#### Changed
+
+* Initializing a repository runs git instead of libgit2
+* The OneNord, Palenight and Mocha themes are easier to see. Their panels, sidebar and tool bar are a shade darker than the commit list, fields have a border that differs from their fill, hover differs from the selection and the text is a little brighter. The accent of Mocha is blue instead of gray, and the accent of Palenight is a lighter purple
+* Inactive tabs have an outline, like the current tab
+
+----
+
 ### v0.1.2 - 2026-11-16
 
 #### Changed
