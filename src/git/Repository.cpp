@@ -1213,7 +1213,10 @@ bool Repository::merge(const AnnotatedCommit &mergeHead) {
   int current = state();
 
   // Merge the commit itself rather than a name that git looks up again.
-  QStringList args = {"merge", "--no-commit", "--no-ff", "-m",
+  QStringList args = {"merge",
+                      "--no-commit",
+                      "--no-ff",
+                      "-m",
                       mergeHead.mergeMessage(),
                       mergeHead.commit().id().toString()};
   if (forcesDiff3Conflicts())
@@ -1762,9 +1765,29 @@ QDir Repository::appDir(const QDir &dir) {
 }
 
 Repository Repository::init(const QString &path, bool bare) {
-  git_repository *repo = nullptr;
-  git_repository_init(&repo, util::canonicalizePath(path).toUtf8(), bare);
-  return Repository(repo);
+  if (path.isEmpty())
+    return Repository();
+
+  QFileInfo info(path);
+  QDir().mkpath(info.absolutePath());
+
+  QStringList args = {"init"};
+
+  if (bare)
+    args.append("--bare");
+
+  args.append("--");
+  args.append(info.absoluteFilePath());
+  git::Cli cli(info.absolutePath());
+
+  RunResult result = cli.run(args);
+
+  if (result.exitCode != 0) {
+    setError(GIT_ERROR_OS, QString::fromUtf8(result.errors).trimmed());
+    return Repository();
+  }
+
+  return open(path);
 }
 
 Repository Repository::open(const QString &path, bool searchParents) {
