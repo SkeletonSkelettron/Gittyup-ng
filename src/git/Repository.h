@@ -297,6 +297,10 @@ public:
   static Repository init(const QString &path, bool bare = false);
   static Repository open(const QString &path, bool searchParents = false);
 
+  // Trust the repository at 'path' that belongs to another user, like git
+  // suggests: add it to safe.directory of the global configuration.
+  static bool trust(const QString &path);
+
   static void init();
   static void shutdown();
 

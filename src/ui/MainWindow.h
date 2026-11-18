@@ -117,7 +117,9 @@ private:
   void updateInterface();
   void updateWindowTitle(int ahead = -1, int behind = -1);
 
-  static void warnInvalidRepo(const QString &path);
+  // Say why 'path' isn't opened. True when the user trusted the folder of
+  // another user: open it again.
+  static bool warnInvalidRepo(const QString &path);
 
   QStringList paths() const;
   QString windowGroup() const;

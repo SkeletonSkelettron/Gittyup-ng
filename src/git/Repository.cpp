@@ -54,6 +54,7 @@
 #include <QMutex>
 #include <QPair>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
 #include <QStandardPaths>
@@ -1806,6 +1807,28 @@ Repository Repository::open(const QString &path, bool searchParents) {
   }
 
   return Repository(repo);
+}
+
+bool Repository::trust(const QString &path) {
+  Cli cli(path);
+  RunResult result = cli.run({"rev-parse", "--git-dir"});
+  if (result.exitCode == 0)
+    return true;
+
+  // git says which folder to trust, quoted when it has to be.
+  QRegularExpression re("safe\\.directory (.+)$",
+                        QRegularExpression::MultilineOption);
+  QRegularExpressionMatch match = re.match(QString::fromUtf8(result.errors));
+  if (!match.hasMatch())
+    return false;
+
+  QString dir = match.captured(1).trimmed();
+  if (dir.size() > 1 && dir.startsWith('\'') && dir.endsWith('\''))
+    dir = dir.mid(1, dir.size() - 2).replace("'\\''", "'");
+
+  Cli home(QDir::homePath());
+  return home.run({"config", "--global", "--add", "safe.directory", dir})
+             .exitCode == 0;
 }
 
 void Repository::init() {

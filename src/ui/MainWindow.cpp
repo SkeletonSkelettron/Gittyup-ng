@@ -304,10 +304,10 @@ RepoView *MainWindow::addTab(const QString &path) {
   }
 
   git::Repository repo = git::Repository::open(path, true);
-  if (!repo.isValid()) {
-    warnInvalidRepo(path);
+  if (!repo.isValid() && warnInvalidRepo(path))
+    repo = git::Repository::open(path, true);
+  if (!repo.isValid())
     return nullptr;
-  }
 
   return addTab(repo);
 }
@@ -442,11 +442,10 @@ MainWindow *MainWindow::open(const QString &path, bool warnOnInvalid) {
     return nullptr;
 
   git::Repository repo = git::Repository::open(path, true);
-  if (!repo.isValid()) {
-    if (warnOnInvalid)
-      warnInvalidRepo(path);
+  if (!repo.isValid() && warnOnInvalid && warnInvalidRepo(path))
+    repo = git::Repository::open(path, true);
+  if (!repo.isValid())
     return nullptr;
-  }
 
   if (Settings::instance()->value(Setting::Id::OpenAllReposInTabs).toBool()) {
     if (MainWindow *win = activeWindow()) {
@@ -550,22 +549,39 @@ void MainWindow::dropEvent(QDropEvent *event) {
     addTab(url.toLocalFile());
 }
 
-void MainWindow::warnInvalidRepo(const QString &path) {
+bool MainWindow::warnInvalidRepo(const QString &path) {
   // Say why, like that the repository belongs to another user.
   QString reason;
   if (git::Repository::lastErrorKind() != 0)
     reason = git::Repository::lastError();
 
+  bool owner = reason.contains("not owned by current user");
   QString title = tr("Invalid Git Repository");
   QString text = tr("%1 does not contain a valid git repository.").arg(path);
   if (!reason.isEmpty())
     text += "\n\n" + reason;
-  if (reason.contains("not owned by current user"))
-    text += "\n\n" + tr("Start %1 as the user that owns the repository, "
-                        "or trust it with 'git config --global --add "
-                        "safe.directory <path>'.")
+  if (owner)
+    text += "\n\n" + tr("Start %1 as the user that owns the repository, or "
+                        "trust the folder: it's added to safe.directory of "
+                        "the global git configuration.")
                          .arg(QCoreApplication::applicationName());
-  ConfirmDialog::warning(activeWindow(), title, text);
+
+  ConfirmDialog dialog(activeWindow());
+  dialog.setTitle(title);
+  dialog.setText(text);
+  dialog.setWarning(true);
+  dialog.setCancelVisible(false);
+  int trust = owner ? dialog.addButton(tr("Trust Folder")) : -1;
+  dialog.exec();
+  if (trust < 0 || dialog.clickedButton() != trust)
+    return false;
+
+  if (git::Repository::trust(path))
+    return true;
+
+  ConfirmDialog::warning(activeWindow(), title,
+                         tr("%1 could not be trusted.").arg(path));
+  return false;
 }
 
 void MainWindow::updateTabNames() {
