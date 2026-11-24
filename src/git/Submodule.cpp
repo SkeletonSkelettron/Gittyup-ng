@@ -56,11 +56,12 @@ QString Submodule::url() const { return git_submodule_url(d.data()); }
 void Submodule::setUrl(const QString &url) {
   if (url == this->url())
     return;
-
-  QByteArray buffer = url.toUtf8();
-  const char *data = !buffer.isEmpty() ? buffer.constData() : nullptr;
-  git_repository *repo = git_submodule_owner(d.data());
-  git_submodule_set_url(repo, git_submodule_name(d.data()), data);
+  Repository repo(git_submodule_owner(d.data()));
+  RunResult result = Cli(repo.workdir().path())
+                         .run({"submodule", "set-url", "--", path(), url});
+  if (result.exitCode != 0)
+    emit repo.notifier()->gitCommandFailed(tr("set submodule URL"),
+                                           QString::fromUtf8(result.errors));
 }
 
 QString Submodule::branch() const { return git_submodule_branch(d.data()); }
