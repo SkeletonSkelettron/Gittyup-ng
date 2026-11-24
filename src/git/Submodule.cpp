@@ -69,11 +69,21 @@ QString Submodule::branch() const { return git_submodule_branch(d.data()); }
 void Submodule::setBranch(const QString &branch) {
   if (branch == this->branch())
     return;
+  QStringList args = {"submodule", "set-branch"};
+  if (!branch.isEmpty()) {
+    args.append("--branch");
+    args.append(branch);
+  } else {
+    args.append("--default");
+  }
+  args.append("--");
+  args.append(path());
 
-  QByteArray buffer = branch.toUtf8();
-  const char *data = !buffer.isEmpty() ? buffer.constData() : nullptr;
-  git_repository *repo = git_submodule_owner(d.data());
-  git_submodule_set_branch(repo, git_submodule_name(d.data()), data);
+  Repository repo(git_submodule_owner(d.data()));
+  RunResult result = Cli(repo.workdir().path()).run(args);
+  if (result.exitCode != 0)
+    emit repo.notifier()->gitCommandFailed(tr("set submodule branch"),
+                                           QString::fromUtf8(result.errors));
 }
 
 Id Submodule::headId() const { return git_submodule_head_id(d.data()); }
