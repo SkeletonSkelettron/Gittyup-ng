@@ -1596,7 +1596,34 @@ int Repository::state() const { return git_repository_state(d->repo); }
 
 void Repository::cleanupState() {
   int current = state();
-  git_repository_state_cleanup(d->repo);
+  QStringList args;
+
+  if (current == GIT_REPOSITORY_STATE_REBASE_INTERACTIVE ||
+      current == GIT_REPOSITORY_STATE_REBASE_MERGE ||
+      current == GIT_REPOSITORY_STATE_REBASE ||
+      current == GIT_REPOSITORY_STATE_APPLY_MAILBOX_OR_REBASE) {
+    args.append({"rebase", "--quit"});
+  } else if (current == GIT_REPOSITORY_STATE_APPLY_MAILBOX) {
+    args.append({"am", "--quit"});
+  } else if (current == GIT_REPOSITORY_STATE_MERGE) {
+    args.append({"merge", "--quit"});
+  } else if (current == GIT_REPOSITORY_STATE_REVERT ||
+             current == GIT_REPOSITORY_STATE_REVERT_SEQUENCE) {
+    args.append({"revert", "--quit"});
+  } else if (current == GIT_REPOSITORY_STATE_CHERRYPICK ||
+             current == GIT_REPOSITORY_STATE_CHERRYPICK_SEQUENCE) {
+    args.append({"cherry-pick", "--quit"});
+  } else if (current == GIT_REPOSITORY_STATE_BISECT) {
+    args.append({"bisect", "reset", "HEAD"});
+  } else {
+    return;
+  }
+
+  RunResult result = Cli(workdir().path()).run(args);
+  if (result.exitCode != 0)
+    emit notifier()->gitCommandFailed(tr("clean up the repository state"),
+                                      QString::fromUtf8(result.errors));
+
   if (state() != current) {
     Patch::clearConflictResolutions(d->repo);
     emit d->notifier->stateChanged();
