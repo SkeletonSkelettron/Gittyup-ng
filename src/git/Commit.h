@@ -74,7 +74,7 @@ public:
   QString signatureKind() const;
 
   bool amend(const Signature &author, const Signature &committer,
-             const QString &commitMessage, const Tree &tree) const;
+             const QString &commitMessage) const;
 
   // Reset HEAD to this commit. The caller reads the index again on the main
   // thread: libgit2 can't read it while another thread uses it.

@@ -818,18 +818,7 @@ bool Repository::amend(const git::Commit &commitToAmend,
                        const git::Signature &author,
                        const git::Signature &committer,
                        const QString &commitMessage) {
-
-  // Write the index tree.
-  Index idx = index();
-  if (!idx.isValid())
-    return false;
-
-  // Add new staged files to the amended commit
-  Tree tree = idx.writeTree();
-  if (!tree.isValid())
-    return false;
-
-  return commitToAmend.amend(author, committer, commitMessage, tree);
+  return commitToAmend.amend(author, committer, commitMessage);
 }
 
 Commit Repository::commit(const QString &message,

@@ -35,6 +35,15 @@
 namespace git {
 
 namespace {
+// A date like git reads it: the seconds and the offset from UTC.
+QString gitDate(const QDateTime &date) {
+  int offset = date.offsetFromUtc() / 60;
+  return QString("%1 %2%3%4")
+      .arg(date.toSecsSinceEpoch())
+      .arg(offset < 0 ? '-' : '+')
+      .arg(qAbs(offset) / 60, 2, 10, QChar('0'))
+      .arg(qAbs(offset) % 60, 2, 10, QChar('0'));
+}
 
 QString sEmojiFile;
 QMap<QString, QString> sEmojiCache;
@@ -290,47 +299,41 @@ QString Commit::signatureKind() const {
 }
 
 bool Commit::amend(const Signature &author, const Signature &committer,
-                   const QString &commitMessage, const Tree &tree) const {
+                   const QString &commitMessage) const {
   Repository repo = this->repo();
 
-  // Replace this commit with one that has the same parents, signed when the
-  // configuration asks for it.
-  QVector<git_commit *> parents;
-  for (unsigned int i = 0; i < git_commit_parentcount(*this); ++i) {
-    git_commit *parent = nullptr;
-    if (!git_commit_parent(&parent, *this, i))
-      parents.append(parent);
-  }
-
-  // Keep what isn't given.
-  const git_signature *authorSig =
-      author.isValid() ? &*author : git_commit_author(*this);
-  const git_signature *committerSig =
-      committer.isValid() ? &*committer : git_commit_committer(*this);
-  git_tree *oldTree = nullptr;
-  if (!tree.isValid())
-    git_commit_tree(&oldTree, *this);
-  const git_tree *newTree = tree.isValid() ? (const git_tree *)tree : oldTree;
-
-  git_oid oid;
-  QByteArray message = commitMessage.toUtf8();
-  int error = Signing::createCommit(
-      &oid, repo, nullptr, authorSig, committerSig, message.constData(),
-      newTree, parents.size(), (const git_commit **)parents.data());
   // HEAD may have moved on since the amend started, like while the dialog of
   // the amend is open. Its commits stay then.
-  if (!error) {
-    QByteArray log = "commit (amend): " + message.split('\n').value(0);
-    error = Signing::updateReference(repo, "HEAD", &oid, git_commit_id(*this),
-                                     log.constData());
+  if (repo.head().targetId() != id()) {
+    Repository::setError(GIT_ERROR_REFERENCE,
+                         tr("HEAD moved since the amend started."));
+    return false;
   }
 
-  git_tree_free(oldTree);
-  for (git_commit *parent : parents)
-    git_commit_free(parent);
+  QStringList args = {"commit", "--amend", "--allow-empty",
+                      "--cleanup=verbatim", "--no-verify"};
 
+  // Keep what isn't given. git keeps the author, but not the committer.
+  if (author.isValid())
+    args << QString("--author=%1 <%2>").arg(author.name(), author.email())
+         << "--date=" + gitDate(author.date());
+  args << "-F"
+       << "-";
+
+  Signature sig = committer.isValid() ? committer : this->committer();
+  QMap<QString, QString> env = {{"GIT_COMMITTER_NAME", sig.name()},
+                                {"GIT_COMMITTER_EMAIL", sig.email()},
+                                {"GIT_COMMITTER_DATE", gitDate(sig.date())}};
+  Cli cli(repo.workdir().path());
+  RunResult result = cli.run(args, commitMessage.toUtf8(), env);
+
+  if (result.exitCode != 0) {
+    Repository::setError(GIT_ERROR_OBJECT,
+                         QString::fromUtf8(result.errors).trimmed());
+    return false;
+  }
   emit repo.notifier()->referenceUpdated(repo.head());
-  return !error;
+  return true;
 }
 
 bool Commit::reset(git_reset_t type, bool triggerReferenceUpdated) const {
