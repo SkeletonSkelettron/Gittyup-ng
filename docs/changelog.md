@@ -1,3 +1,15 @@
+### v0.1.4 - 2026-11-25
+
+#### Added
+
+* When a repository belongs to another user, like the Administrators when a program that made it ran elevated, the warning that git doesn't open it has a Trust Folder button. It adds the folder to safe.directory of the global configuration and opens the repository again
+
+#### Changed
+
+* Amending a commit, setting the URL and the branch of a submodule, and ending the state of a merge, revert or cherry-pick after its commit or a squash merge run git instead of libgit2
+
+----
+
 ### v0.1.3 - 2026-11-17
 
 #### Changed
