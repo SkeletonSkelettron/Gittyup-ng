@@ -60,8 +60,7 @@ void TestAmend::testAmend() {
       "New Committer", "New Committer Email",
       QDateTime::fromString("Mon May 23 11:36:26 2022 +0200", Qt::RFC2822Date));
 
-  Tree tree;
-  c.amend(authorSignature, committerSignature, commitMessage, tree);
+  QVERIFY(c.amend(authorSignature, committerSignature, commitMessage));
 
   master = repo.lookupRef(QString("refs/heads/master"));
   QVERIFY(master.isValid());
@@ -84,9 +83,12 @@ void TestAmend::testAmendAddFile() {
   // Create repo
   Test::ScratchRepository mRepo;
   auto mMainBranch = mRepo->unbornHeadName();
-  auto mWindow = new MainWindow(mRepo);
+  // Close the window before the scratch repository is removed. A window left
+  // open on a removed repository fails an assertion when its sidebar redraws
+  // in a later test.
+  QScopedPointer<MainWindow> mWindow(new MainWindow(mRepo));
   mWindow->show();
-  QVERIFY(QTest::qWaitForWindowExposed(mWindow));
+  QVERIFY(QTest::qWaitForWindowExposed(mWindow.data()));
   RepoView *view = mWindow->currentView();
 
   {
