@@ -326,6 +326,10 @@ Config Repository::appConfig() const {
   Config config = Config::appGlobal();
   QString path = appDir().filePath(kConfigFile);
   config.addFile(path, GIT_CONFIG_LEVEL_LOCAL, d->repo);
+
+  // git doesn't read the files of the app. libgit2 writes them without
+  // starting git on the GUI thread, which froze the window on slow machines.
+  config.mScope.clear();
   return config;
 }
 
