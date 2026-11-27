@@ -351,6 +351,8 @@ void Index::add(const QString &path, const QByteArray &buffer) {
 void Index::read() { git_index_read(d->index, false); }
 
 Tree Index::writeTree() const {
+  // git may have changed the index file since it was read.
+  git_index_read(d->index, false);
   // Write the index tree.
   git_oid id;
   if (git_index_write_tree(&id, d->index))
