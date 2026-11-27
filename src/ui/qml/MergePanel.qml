@@ -430,16 +430,9 @@ Rectangle {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 10
+                anchors.leftMargin: 10
+                anchors.rightMargin: 8
                 spacing: 8
-
-                ActionButton {
-                    compact: true
-                    icon: "close"
-                    tip: qsTr("Close the merge editor (Esc)")
-                    onClicked: detailView.closeFile()
-                }
 
                 StatusBadge {
                     status: "!"
@@ -514,6 +507,13 @@ Rectangle {
                     text: qsTr("Save")
                     tip: qsTr("Save the output and mark the conflicts as resolved")
                     onClicked: root.merge.save()
+                }
+
+                ActionButton {
+                    compact: true
+                    icon: "close"
+                    tip: qsTr("Close the merge editor (Esc)")
+                    onClicked: detailView.closeFile()
                 }
             }
 

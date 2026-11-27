@@ -64,16 +64,9 @@ Rectangle {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 10
+                anchors.leftMargin: 10
+                anchors.rightMargin: 8
                 spacing: 8
-
-                ActionButton {
-                    compact: true
-                    icon: "close"
-                    tip: qsTr("Close the file (Esc)")
-                    onClicked: detailView.closeFile()
-                }
 
                 Icon {
                     name: "file"
@@ -132,6 +125,13 @@ Rectangle {
                     icon: "pencil"
                     tip: qsTr("Open in an editor window")
                     onClicked: detailView.openTreeFile(root.content.path)
+                }
+
+                ActionButton {
+                    compact: true
+                    icon: "close"
+                    tip: qsTr("Close the file (Esc)")
+                    onClicked: detailView.closeFile()
                 }
             }
 
