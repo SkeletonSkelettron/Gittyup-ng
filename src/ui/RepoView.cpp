@@ -438,8 +438,11 @@ RepoView::RepoView(const git::Repository &repo, MainWindow *parent)
               checkReferences();
           });
 
-  // The changes of the view itself are known.
-  auto changed = [this] { mReferencesChanged = true; };
+  // The changes of the view itself are known. Look at the references right
+  // away: a flag would hide the changes that other programs make later, until
+  // the next check.
+  mReferences = references();
+  auto changed = [this] { mReferences = references(); };
   connect(notifier, &git::RepositoryNotifier::referenceUpdated, this, changed);
   connect(notifier, &git::RepositoryNotifier::referenceAdded, this, changed);
   connect(notifier, &git::RepositoryNotifier::referenceRemoved, this, changed);
@@ -592,11 +595,11 @@ QString RepoView::references() const {
 
 void RepoView::checkReferences() {
   QString state = references();
-  bool changed = !mReferencesChanged && state != mReferences;
+  if (state == mReferences)
+    return;
+
   mReferences = state;
-  mReferencesChanged = false;
-  if (changed)
-    refresh(false);
+  refresh(false);
 }
 
 QPoint RepoView::mapFromPage(qreal x, qreal y) const {

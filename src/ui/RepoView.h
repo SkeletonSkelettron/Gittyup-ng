@@ -436,9 +436,8 @@ private:
   void checkReferences();
 
   bool mBusy = false;
+  // The references as the view knows them.
   QString mReferences;
-  // The view changed the references itself since it last looked at them.
-  bool mReferencesChanged = true;
 
   struct SubmoduleInfo {
     git::Submodule submodule;
