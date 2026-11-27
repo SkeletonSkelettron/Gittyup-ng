@@ -106,7 +106,7 @@ ListView {
                 text: row.name
                 elide: Text.ElideMiddle
                 color: row.selected ? Theme.selectedText : Theme.text
-                font.pixelSize: 12
+                font.pixelSize: 13
             }
 
             Text {
